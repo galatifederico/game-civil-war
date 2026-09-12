@@ -1,0 +1,23 @@
+# Go
+backend/bin/
+*.exe
+*.test
+*.out
+
+# Env / secrets
+.env
+deploy/.env
+
+# Godot
+godot-client/.godot/
+godot-client/export_presets.cfg
+*.import
+
+# Node (admin-web)
+admin-web/node_modules/
+admin-web/dist/
+admin-web/.svelte-kit/
+
+# OS/editor
+.DS_Store
+*.swp
