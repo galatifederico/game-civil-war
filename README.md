@@ -1,26 +1,26 @@
 # The Game
 
-MMO realtime a griglia, mondo persistente, tono satirico/adulto. Concept e decisioni in [docs/main.md](docs/main.md), [docs/design.md](docs/design.md), [docs/tecnico.md](docs/tecnico.md). Stato di avanzamento e prossimi passi in [docs/roadmap.md](docs/roadmap.md).
+Riavvio da zero come MVP: una scacchiera con alcune pedine, client in Unity. Clicca una pedina
+per selezionarla, poi clicca una casella vuota per spostarla li'. Nessuna regola di movimento,
+nessun backend: tutto e' locale nel client.
 
-## Avvio rapido (sviluppo locale)
+La visione a lungo termine (MMO realtime, mondo persistente) resta documentata in
+[docs/main.md](docs/main.md), [docs/design.md](docs/design.md), [docs/tecnico.md](docs/tecnico.md)
+e [docs/roadmap.md](docs/roadmap.md), ma il codice attuale riparte da questo MVP minimale — quei
+documenti descrivono uno stato futuro, non l'implementazione presente.
 
-Go non è installato sull'host di sviluppo: tutti i comandi passano per Docker (vedi `backend/Makefile`).
+## Avvio rapido
 
-```bash
-# Postgres + Redis, migrazioni (idempotenti, si possono rilanciare sempre), backend in foreground
-make start-local   # oppure: make start:local
-
-# in un altro terminale, il client
-godot --path godot-client
-```
-
-`make start-local` resta in foreground mostrando i log del server — `Ctrl+C` lo ferma (Postgres/Redis restano su). Per fermare anche quelli: `make stop-local`.
-
-Server su http://localhost:8080 — `/healthz`, `/auth/register`, `/auth/login`, `/ws`. Porta Postgres: **5433** (non 5432, occupata da un altro progetto su questa macchina). Redis: 6379.
+1. Apri Unity Hub, "Add" -> seleziona la cartella `unity-client/` (Unity 2022.3 LTS o successivo;
+   se non hai quella patch esatta, Unity Hub ti propone comunque di aprire il progetto con la
+   versione installata).
+2. Apri la scena `Assets/Scenes/Main.unity`.
+3. Premi Play: scacchiera 8x8 e pedine (rosse/blu) vengono generate a runtime dallo script
+   `BoardManager` — non serve altro setup nella scena.
 
 ## Struttura
 
-- `backend/` — server Go autoritativo (REST + WebSocket + simulazione board)
-- `godot-client/` — client Godot 4.x
-- `admin-web/` — pannello admin (non ancora iniziato, vedi roadmap M6)
-- `deploy/` — docker-compose per Postgres/Redis
+- `unity-client/` — client Unity (scacchiera, pedine, selezione/spostamento click-based)
+- `backend/` — vuoto per ora: nessun backend necessario per l'MVP locale; da reintrodurre in Go
+  quando servira' persistenza o multiplayer
+- `docs/` — visione di lungo periodo e note di design/roadmap (non ancora implementate)

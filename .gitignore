@@ -1,4 +1,18 @@
-# Go
+# Unity
+unity-client/Library/
+unity-client/Temp/
+unity-client/Obj/
+unity-client/Build/
+unity-client/Builds/
+unity-client/Logs/
+unity-client/MemoryCaptures/
+unity-client/UserSettings/
+unity-client/.vs/
+unity-client/*.csproj
+unity-client/*.sln
+unity-client/*.user
+
+# Go (backend futuro)
 backend/bin/
 *.exe
 *.test
@@ -7,16 +21,6 @@ backend/bin/
 # Env / secrets
 .env
 deploy/.env
-
-# Godot
-godot-client/.godot/
-godot-client/export_presets.cfg
-*.import
-
-# Node (admin-web)
-admin-web/node_modules/
-admin-web/dist/
-admin-web/.svelte-kit/
 
 # OS/editor
 .DS_Store
