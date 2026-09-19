@@ -5,7 +5,7 @@ Questo documento raccoglie le decisioni tecniche/architetturali prese durante la
 ## Vincoli
 
 ### Budget: solo soluzioni open source / gratuite
-Nessun costo per licenze software o tool: si useranno esclusivamente engine, framework, librerie e database open source e gratuiti.
+Nessun costo per licenze software o tool: si useranno engine, framework, librerie e database gratuiti, open source ovunque possibile. **Eccezione:** il client usa Unity, gratuito con la licenza Personal ma non open source (la scelta iniziale era Godot, licenza MIT). Backend, database e cache restano tutti open source.
 
 **Aggiornamento:** per ora il gioco non verrà pubblicato sugli store, si gioca privatamente con un gruppo di amici. Questo rimuove per il momento la necessità delle fee Apple/Google — restano solo come eventualità futura se si deciderà di pubblicare pubblicamente. Eventuali costi di hosting/infrastruttura (server) sono da valutare a parte più avanti (self-hosting possibile per azzerarli in fase di sviluppo/MVP).
 
@@ -16,10 +16,10 @@ iOS/Android, non browser né desktop. Per ora nessuna pubblicazione su store: di
 
 **Nota:** Android permette il sideload di un APK gratuitamente senza vincoli. iOS invece richiede comunque una forma di firma dell'app anche per uso privato (account Apple Developer gratuito con resign ogni 7 giorni, oppure Apple Developer Program a pagamento per TestFlight/durata più lunga) — da chiarire se il gruppo di amici include utenti iOS o solo Android.
 
-### Client: Godot
-Godot è stato scelto per la parte client (rendering, tilemap isometriche, input, export mobile iOS/Android). È open source (licenza MIT), completamente gratuito anche per uso commerciale, senza royalty.
+### Client: Unity
+Unity (C#) è stato scelto per la parte client (rendering, tilemap isometriche, input, build mobile iOS/Android). Il client vive in `unity-client/`.
 
-**Nota architetturale:** il multiplayer built-in di Godot non è adatto a un server autoritativo persistente su larga scala — verrà usato solo come client "dumb" che comunica via WebSocket con un backend custom.
+**Nota architetturale:** il networking ufficiale di Unity (es. Netcode for GameObjects) non è adatto a un server autoritativo persistente custom su larga scala — Unity verrà usato solo come client "dumb" che comunica via WebSocket con il backend Go (es. `System.Net.WebSockets.ClientWebSocket`).
 
 ### Backend: Go
 Linguaggio scelto per il server autoritativo realtime: Go. Open source, gratuito, ottime performance e concorrenza nativa (goroutine) adatte a gestire molte connessioni WebSocket simultanee con basso consumo di risorse.
@@ -32,7 +32,7 @@ Piccola in numero di giocatori (indicativamente 6-15 persone/squadre per mondo, 
 ### Pannello admin: editor visuale fin dal primo MVP
 Confermato un editor visuale (non solo file di configurazione a mano) per creare/modificare mondi, board, razze, regole di creazione/riproduzione e condizioni di vittoria senza programmare — coerente con lo scope MVP "ambizioso" già scelto in design.md.
 
-**Proposta implementativa:** un pannello admin come applicazione **web separata** (non dentro Godot/l'app mobile), che parla con lo stesso backend Go tramite API REST — più veloce da costruire di un editor visuale dentro un motore di gioco, e riutilizza il backend esistente come unica fonte di verità. Il motore di regole configurabile (vedi sotto) è ciò che l'editor va effettivamente a modificare.
+**Proposta implementativa:** un pannello admin come applicazione **web separata** (non dentro Unity/l'app mobile), che parla con lo stesso backend Go tramite API REST — più veloce da costruire di un editor visuale dentro un motore di gioco, e riutilizza il backend esistente come unica fonte di verità. Il motore di regole configurabile (vedi sotto) è ciò che l'editor va effettivamente a modificare.
 
 ### Motore di regole configurabile (priorità architetturale)
 Più meccaniche di design (razze, obiettivi individuali, regole di creazione/riproduzione delle pedine, conquista territorio, condizioni di vittoria) devono essere configurabili e modificabili per mondo dall'admin, non hard-coded. Il backend Go deve trattare queste regole come **dati/configurazione per mondo** (caricati es. da database), non come logica fissa nel codice — l'editor admin scrive su questa configurazione.
