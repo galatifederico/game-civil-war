@@ -74,7 +74,7 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 
-	// A test NPC and item close to where the first team spawns (its champion starts near (3,2),
+	// A test NPC and item close to where the first team spawns (its champion starts near (4,3),
 	// with a vision of 5), so the actions can be tried without walking across the board.
 	e.db, err = pgx.Connect(ctx, e.dsn)
 	if err != nil {
@@ -183,6 +183,30 @@ func (c *wsClient) expect(what string, pred func(protocol.ServerMessage) bool) p
 	}
 }
 
+// expectNothingAbout fails if, within the window, the client receives anything about an entity.
+func (c *wsClient) expectNothingAbout(id string, window time.Duration) {
+	c.t.Helper()
+	timeout := time.After(window)
+	for {
+		select {
+		case m, ok := <-c.msgs:
+			if !ok {
+				return
+			}
+			if _, found := findEntity(m.Entities, func(en protocol.Entity) bool { return en.ID == id }); found {
+				c.t.Fatalf("received an update about %s that is out of sight: %+v", id, m)
+			}
+			for _, removed := range m.Removed {
+				if removed == id {
+					c.t.Fatalf("received a removal of %s that was never in sight", id)
+				}
+			}
+		case <-timeout:
+			return
+		}
+	}
+}
+
 func ofType(typ string) func(protocol.ServerMessage) bool {
 	return func(m protocol.ServerMessage) bool { return m.Type == typ }
 }
@@ -257,6 +281,9 @@ func TestGameplayAndPersistence(t *testing.T) {
 		t.Fatalf("bad snapshot: %+v", snap)
 	}
 
+	if _, seen := findEntity(snap.Entities, func(en protocol.Entity) bool { return en.Name == "Mercante" }); seen {
+		t.Fatal("the Mercante is far from the team: fog of war should hide it")
+	}
 	mine := 0
 	for _, en := range snap.Entities {
 		if en.OwnerID == idA {
@@ -267,17 +294,21 @@ func TestGameplayAndPersistence(t *testing.T) {
 		t.Fatalf("player owns %d units, want %d", mine, 1+game.MinorsPerTeam)
 	}
 
-	// A second player joins: Alice sees the new team and the scoreboard.
+	// A second player joins far away: Alice learns about the new scoreboard entry, but with
+	// fog of war she does not see Bob's team, and Bob does not see hers.
 	tokB, idB := e.register("b@test.io", "Bob")
 	b := e.dial(tokB)
-	b.expect("bob snapshot", ofType(protocol.TypeSnapshot))
-	joined := a.expect("bob's team", func(m protocol.ServerMessage) bool { return m.Type == protocol.TypeDelta && len(m.Entities) > 1 })
-	if len(joined.Scores) != 2 {
-		t.Fatalf("scores after the second player joined = %+v", joined.Scores)
+	bobSnap := b.expect("bob snapshot", ofType(protocol.TypeSnapshot))
+	joined := a.expect("scoreboard update", func(m protocol.ServerMessage) bool { return m.Type == protocol.TypeDelta && len(m.Scores) == 2 })
+	if len(joined.Entities) != 0 {
+		t.Fatalf("Alice should not see Bob's team, got %d entities", len(joined.Entities))
+	}
+	if _, seen := findEntity(bobSnap.Entities, func(en protocol.Entity) bool { return en.OwnerID == idA }); seen {
+		t.Fatal("Bob's snapshot should not contain Alice's units")
 	}
 
 	champ, _ := findEntity(snap.Entities, func(en protocol.Entity) bool { return en.Kind == "champion" && en.OwnerID == idA })
-	bobChamp, _ := findEntity(joined.Entities, func(en protocol.Entity) bool { return en.Kind == "champion" && en.OwnerID == idB })
+	bobChamp, _ := findEntity(bobSnap.Entities, func(en protocol.Entity) bool { return en.Kind == "champion" && en.OwnerID == idB })
 	npc, _ := findEntity(snap.Entities, func(en protocol.Entity) bool { return en.Name == "Test NPC" })
 	item, _ := findEntity(snap.Entities, func(en protocol.Entity) bool { return en.Name == "Test Item" })
 	if npc.ID == "" || item.ID == "" {
@@ -297,11 +328,14 @@ func TestGameplayAndPersistence(t *testing.T) {
 		}
 	}
 	a.send(protocol.ClientMessage{Type: protocol.TypeMove, UnitID: champ.ID, X: to[0], Y: to[1]})
-	moved := b.expect("bob sees alice move", func(m protocol.ServerMessage) bool {
-		return m.Type == protocol.TypeDelta && len(m.Entities) == 1 && m.Entities[0].ID == champ.ID
+	// The move may also bring new things into view, so look for the champion among the entities.
+	movedMsg := a.expect("alice's own move", func(m protocol.ServerMessage) bool {
+		_, ok := findEntity(m.Entities, func(en protocol.Entity) bool { return en.ID == champ.ID })
+		return m.Type == protocol.TypeDelta && ok
 	})
-	if moved.Entities[0].X != to[0] || moved.Entities[0].Y != to[1] || moved.Entities[0].ReadyInMs <= 0 {
-		t.Fatalf("moved entity = %+v, want %v with a cooldown", moved.Entities[0], to)
+	moved, _ := findEntity(movedMsg.Entities, func(en protocol.Entity) bool { return en.ID == champ.ID })
+	if moved.X != to[0] || moved.Y != to[1] || moved.ReadyInMs <= 0 {
+		t.Fatalf("moved entity = %+v, want %v with a cooldown", moved, to)
 	}
 
 	// Rule violations come back as errors to the sender only.
@@ -332,14 +366,15 @@ func TestGameplayAndPersistence(t *testing.T) {
 	if inv := a.expect("inventory", ofType(protocol.TypeInventory)); len(inv.Inventory) != 1 || inv.Inventory[0].Name != "Test Item" {
 		t.Fatalf("inventory = %+v", inv.Inventory)
 	}
-	b.expect("bob sees the item disappear", func(m protocol.ServerMessage) bool { return len(m.Removed) == 1 && m.Removed[0] == item.ID })
+	b.expectNothingAbout(item.ID, 200*time.Millisecond) // Bob never saw it, so he is not told it is gone
 
 	time.Sleep(game.PickupCooldown + 100*time.Millisecond)
 	a.send(protocol.ClientMessage{Type: protocol.TypeBuild, UnitID: champ.ID, X: 3, Y: 7})
-	built := b.expect("bob sees the new structure", func(m protocol.ServerMessage) bool {
+	built := a.expect("the new structure", func(m protocol.ServerMessage) bool {
 		_, ok := findEntity(m.Entities, func(en protocol.Entity) bool { return en.Kind == "structure" })
 		return ok
 	})
+	b.expectNothingAbout(champ.ID, 200*time.Millisecond) // nothing Alice did was ever in Bob's sight
 	structure, _ := findEntity(built.Entities, func(en protocol.Entity) bool { return en.Kind == "structure" })
 	if structure.X != 3 || structure.Y != 7 || structure.OwnerID != idA {
 		t.Fatalf("structure = %+v", structure)

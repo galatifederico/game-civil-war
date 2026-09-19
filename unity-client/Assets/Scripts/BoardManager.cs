@@ -25,6 +25,10 @@ public class BoardManager : MonoBehaviour
     readonly Dictionary<string, Piece> pieces = new Dictionary<string, Piece>();
     readonly List<GameObject> squareObjects = new List<GameObject>();
     Square[,] grid;
+    bool[,] visibleCells;
+    bool[,] hasTint;
+    Color[,] tint;
+    MaterialPropertyBlock paint;
     Material lightMaterial, darkMaterial;
     Piece selected;
     Transform rangeOutline;
@@ -36,7 +40,11 @@ public class BoardManager : MonoBehaviour
 
     public static Vector3 CellToWorld(int x, int y, float height) => new Vector3(x * CellSize, height, y * CellSize);
 
-    void Awake() => Instance = this;
+    void Awake()
+    {
+        Instance = this;
+        paint = new MaterialPropertyBlock();
+    }
 
     public void Init(NetworkClient network, InfoPanel infoPanel, Hud hud, Camera camera)
     {
@@ -57,6 +65,7 @@ public class BoardManager : MonoBehaviour
         BuildSquares();
         FitCamera();
         foreach (var e in snapshot.entities) Spawn(e);
+        RefreshFog(force: true);
     }
 
     public void ApplyDelta(ServerMessage delta)
@@ -71,9 +80,11 @@ public class BoardManager : MonoBehaviour
             if (!pieces.TryGetValue(id, out var piece)) continue;
             if (piece == selected) ClearSelection();
             if (panel.Current == piece) panel.Hide();
+            if (piece.Data.kind == Kinds.Structure) SetTint(piece.Data.x, piece.Data.y, false, default);
             pieces.Remove(id);
             Destroy(piece.gameObject);
         }
+        RefreshFog(force: false);
     }
 
     public void Clear()
@@ -93,6 +104,9 @@ public class BoardManager : MonoBehaviour
             darkMaterial = NewMaterial(DarkSquare);
         }
         grid = new Square[width, height];
+        visibleCells = new bool[width, height];
+        hasTint = new bool[width, height];
+        tint = new Color[width, height];
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
@@ -123,10 +137,45 @@ public class BoardManager : MonoBehaviour
     }
 
     // Il territorio si vede: la casella sotto una struttura prende il colore della squadra.
-    void TintSquare(int x, int y, Color owner)
+    void SetTint(int x, int y, bool on, Color owner)
     {
-        var baseColor = (x + y) % 2 == 0 ? LightSquare : DarkSquare;
-        grid[x, y].GetComponent<Renderer>().material.color = Color.Lerp(baseColor, owner, 0.55f);
+        hasTint[x, y] = on;
+        tint[x, y] = owner;
+        PaintSquare(x, y);
+    }
+
+    // Nebbia di guerra: le caselle fuori dalla vista delle mie pedine in gioco sono scurite.
+    // Il server manda solo cio' che vedo; qui si limita a mostrarlo.
+    void RefreshFog(bool force)
+    {
+        var now = new bool[width, height];
+        foreach (var p in pieces.Values)
+        {
+            if (!p.Movable || p.Defeated) continue;
+            int r = p.Data.vision;
+            for (int x = Mathf.Max(0, p.Data.x - r); x <= Mathf.Min(width - 1, p.Data.x + r); x++)
+                for (int y = Mathf.Max(0, p.Data.y - r); y <= Mathf.Min(height - 1, p.Data.y + r); y++)
+                    now[x, y] = true;
+        }
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                if (!force && now[x, y] == visibleCells[x, y]) continue;
+                visibleCells[x, y] = now[x, y];
+                PaintSquare(x, y);
+            }
+        }
+    }
+
+    void PaintSquare(int x, int y)
+    {
+        var color = (x + y) % 2 == 0 ? LightSquare : DarkSquare;
+        if (hasTint[x, y]) color = Color.Lerp(color, tint[x, y], 0.55f);
+        if (!visibleCells[x, y]) color *= 0.4f;
+        color.a = 1f;
+        paint.SetColor("_Color", color);
+        grid[x, y].GetComponent<Renderer>().SetPropertyBlock(paint);
     }
 
     void FitCamera()
@@ -191,7 +240,7 @@ public class BoardManager : MonoBehaviour
         piece.Init(e, mine, color);
         pieces[e.id] = piece;
 
-        if (e.kind == Kinds.Structure) TintSquare(e.x, e.y, color);
+        if (e.kind == Kinds.Structure) SetTint(e.x, e.y, true, color);
     }
 
     static void Look(EntityData e, bool mine, out PrimitiveType shape, out Vector3 scale, out float halfHeight, out Color color)

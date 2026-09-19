@@ -1,6 +1,7 @@
 package game
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -113,6 +114,29 @@ func TestPlanTeam(t *testing.T) {
 		seen[p] = true
 		if e.OwnerID != "p1" {
 			t.Fatalf("owner = %q", e.OwnerID)
+		}
+	}
+}
+
+func TestFirstTeamsSpawnOutOfEachOthersSight(t *testing.T) {
+	b := NewBoard("b", "test", 24, 24, nil)
+	players := []string{"p0", "p1", "p2", "p3", "p4", "p5"}
+	for _, id := range players {
+		team, err := b.PlanTeam(id, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for j, e := range team {
+			e.ID = fmt.Sprintf("%s-%d", id, j)
+			b.Add(e)
+		}
+		b.EnsurePlayer(id, id, 0)
+	}
+	for _, id := range players {
+		for entityID := range b.VisibleTo(id) {
+			if owner := b.entities[entityID].OwnerID; owner != id {
+				t.Errorf("%s sees a unit of %s at the start (%s)", id, owner, entityID)
+			}
 		}
 	}
 }

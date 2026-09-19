@@ -35,6 +35,7 @@ type Loop struct {
 	store   Persister
 	cmds    chan func()
 	clients map[*Client]struct{}
+	seen    map[string]map[string]struct{} // per connected player: the entity ids their client has
 	writes  chan func(context.Context) error
 	now     func() time.Time
 	done    chan struct{}
@@ -46,6 +47,7 @@ func NewLoop(board *Board, store Persister) *Loop {
 		store:   store,
 		cmds:    make(chan func(), 256),
 		clients: map[*Client]struct{}{},
+		seen:    map[string]map[string]struct{}{},
 		writes:  make(chan func(context.Context) error, 1024),
 		now:     time.Now,
 		done:    make(chan struct{}),
@@ -82,7 +84,7 @@ func (l *Loop) tick() {
 	for _, e := range revived {
 		l.saveUnit(e)
 	}
-	l.broadcast(l.delta(revived))
+	l.sync(revived, false)
 }
 
 func (l *Loop) writeWorker(ctx context.Context) {
@@ -151,9 +153,7 @@ func (l *Loop) EnsureTeam(ctx context.Context, playerID, username string) error 
 		for _, e := range team {
 			l.board.Add(e)
 		}
-		msg := l.delta(team)
-		msg.Scores = l.scores()
-		l.broadcast(msg)
+		l.sync(team, true)
 		return nil
 	})
 }
@@ -161,13 +161,19 @@ func (l *Loop) EnsureTeam(ctx context.Context, playerID, username string) error 
 func (l *Loop) Register(c *Client) {
 	l.do(func() {
 		l.clients[c] = struct{}{}
+		visible := l.board.VisibleTo(c.PlayerID)
+		l.seen[c.PlayerID] = visible
+		entities := make([]*Entity, 0, len(visible))
+		for id := range visible {
+			entities = append(entities, l.board.entities[id])
+		}
 		l.send(c, protocol.ServerMessage{
 			Type: protocol.TypeSnapshot,
 			Board: &protocol.Board{
 				ID: l.board.ID, Name: l.board.Name, Width: l.board.Width, Height: l.board.Height, Grid: "square",
 			},
 			YourPlayerID: c.PlayerID,
-			Entities:     l.dtos(l.board.All()),
+			Entities:     l.dtos(entities),
 			Scores:       l.scores(),
 			Inventory:    l.inventory(c.PlayerID),
 		})
@@ -190,7 +196,7 @@ func (l *Loop) Move(c *Client, unitID string, to Point) {
 			return
 		}
 		l.saveUnit(e)
-		l.broadcast(l.delta([]*Entity{e}))
+		l.sync([]*Entity{e}, false)
 	})
 }
 
@@ -233,12 +239,7 @@ func (l *Loop) publish(playerID string, out *Outcome) {
 	}
 
 	if len(out.Changed) > 0 || len(out.Removed) > 0 || out.Points != 0 {
-		msg := l.delta(out.Changed)
-		msg.Removed = out.Removed
-		if out.Points != 0 {
-			msg.Scores = l.scores()
-		}
-		l.broadcast(msg)
+		l.sync(out.Changed, out.Points != 0)
 	}
 	if out.Picked != nil {
 		l.sendToPlayer(playerID, protocol.ServerMessage{Type: protocol.TypeInventory, Inventory: l.inventory(playerID)})
@@ -248,8 +249,55 @@ func (l *Loop) publish(playerID string, out *Outcome) {
 	}
 }
 
-func (l *Loop) delta(entities []*Entity) protocol.ServerMessage {
-	return protocol.ServerMessage{Type: protocol.TypeDelta, Entities: l.dtos(entities)}
+// sync tells every connected player what changed, as far as they can see (fog of war): entities
+// that came into view are sent in full, changed entities that were already in view are updated,
+// and entities that left the view (or the board) are reported as removed.
+func (l *Loop) sync(changed []*Entity, withScores bool) {
+	changedByID := make(map[string]*Entity, len(changed))
+	for _, e := range changed {
+		changedByID[e.ID] = e
+	}
+	for _, playerID := range l.connectedPlayers() {
+		visible := l.board.VisibleTo(playerID)
+		before := l.seen[playerID]
+
+		var send []*Entity
+		for id := range visible {
+			if _, had := before[id]; !had {
+				send = append(send, l.board.entities[id])
+			} else if e, ok := changedByID[id]; ok {
+				send = append(send, e)
+			}
+		}
+		var removed []string
+		for id := range before {
+			if _, ok := visible[id]; !ok {
+				removed = append(removed, id)
+			}
+		}
+		l.seen[playerID] = visible
+
+		if len(send) == 0 && len(removed) == 0 && !withScores {
+			continue
+		}
+		msg := protocol.ServerMessage{Type: protocol.TypeDelta, Entities: l.dtos(send), Removed: removed}
+		if withScores {
+			msg.Scores = l.scores()
+		}
+		l.sendToPlayer(playerID, msg)
+	}
+}
+
+func (l *Loop) connectedPlayers() []string {
+	seen := make(map[string]struct{}, len(l.clients))
+	var out []string
+	for c := range l.clients {
+		if _, dup := seen[c.PlayerID]; !dup {
+			seen[c.PlayerID] = struct{}{}
+			out = append(out, c.PlayerID)
+		}
+	}
+	return out
 }
 
 func (l *Loop) dtos(entities []*Entity) []protocol.Entity {
@@ -315,17 +363,6 @@ func (l *Loop) sendToPlayer(playerID string, msg protocol.ServerMessage) {
 	}
 }
 
-func (l *Loop) broadcast(msg protocol.ServerMessage) {
-	data, err := json.Marshal(msg)
-	if err != nil {
-		log.Printf("encode message: %v", err)
-		return
-	}
-	for c := range l.clients {
-		l.sendRaw(c, data)
-	}
-}
-
 // sendRaw never blocks the loop: a client whose buffer is full is too slow and gets dropped.
 func (l *Loop) sendRaw(c *Client, data []byte) {
 	select {
@@ -338,4 +375,10 @@ func (l *Loop) sendRaw(c *Client, data []byte) {
 func (l *Loop) drop(c *Client) {
 	delete(l.clients, c)
 	close(c.Send)
+	for other := range l.clients {
+		if other.PlayerID == c.PlayerID {
+			return
+		}
+	}
+	delete(l.seen, c.PlayerID)
 }

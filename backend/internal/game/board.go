@@ -152,6 +152,32 @@ func (b *Board) HasUnitsOf(playerID string) bool {
 	return false
 }
 
+// VisibleTo returns the ids of the entities a player can see (fog of war): everything that
+// belongs to them, plus whatever is within the vision of one of their units still in the game.
+// "Vista" is both sight and action range (design.md), so anything a unit can act on is visible.
+func (b *Board) VisibleTo(playerID string) map[string]struct{} {
+	var eyes []*Entity
+	for _, e := range b.entities {
+		if e.OwnerID == playerID && e.Controllable() && e.Health > 0 {
+			eyes = append(eyes, e)
+		}
+	}
+	visible := make(map[string]struct{})
+	for _, e := range b.entities {
+		if e.OwnerID == playerID {
+			visible[e.ID] = struct{}{}
+			continue
+		}
+		for _, eye := range eyes {
+			if distance(Point{eye.X, eye.Y}, Point{e.X, e.Y}) <= eye.Vision {
+				visible[e.ID] = struct{}{}
+				break
+			}
+		}
+	}
+	return visible
+}
+
 // ownedUnit finds a unit and checks the player may give it orders.
 func (b *Board) ownedUnit(playerID, unitID string) (*Entity, error) {
 	e, ok := b.entities[unitID]
@@ -227,11 +253,7 @@ func (b *Board) ScheduleRespawns(now time.Time) {
 // cells nearest to a per-player anchor, so teams spawn in separate areas. The entities have no
 // ID yet: the persistence layer assigns it.
 func (b *Board) PlanTeam(playerID, username string) ([]*Entity, error) {
-	slot := len(b.players)
-	anchor := Point{
-		X: min(3+(slot%3)*8, b.Width-1),
-		Y: min(2+((slot/3)*4)%max(b.Height-3, 1), b.Height-1),
-	}
+	anchor := spawnAnchor(len(b.players), b.Width, b.Height)
 
 	type candidate struct {
 		p    Point
@@ -280,6 +302,19 @@ func (b *Board) PlanTeam(playerID, username string) ([]*Entity, error) {
 		})
 	}
 	return team, nil
+}
+
+// spawnAnchor spreads the teams over the board: the first six along the two sides, then the
+// middle. With fog of war, teams that start out of each other's sight is what makes exploring
+// and meeting the others matter. Later rounds are shifted so they do not pile up on one anchor.
+func spawnAnchor(slot, width, height int) Point {
+	fractions := [][2]float64{{0.17, 0.13}, {0.83, 0.13}, {0.17, 0.5}, {0.83, 0.5}, {0.17, 0.87}, {0.83, 0.87}, {0.5, 0.3}, {0.5, 0.7}}
+	f := fractions[slot%len(fractions)]
+	round := slot / len(fractions)
+	return Point{
+		X: min(int(f[0]*float64(width))+round*3, width-1),
+		Y: min(int(f[1]*float64(height))+round*2, height-1),
+	}
 }
 
 func (b *Board) inBounds(p Point) bool {

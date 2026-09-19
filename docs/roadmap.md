@@ -16,7 +16,7 @@ the_game/
 
 - **M0 — Scaffold**: backend Go che parte, migrazioni, `/healthz`, docker-compose.
 - **M1 — Slice verticale** ✅: register/login (bcrypt + JWT), una board seedata con NPC e oggetti, alla registrazione ogni giocatore riceve la sua squadra (1 campione + 12 pedine), movimento autoritativo via WebSocket con limite di distanza e cooldown (velocità), posizioni persistite su Postgres. Client Unity: login, snapshot, click per muovere le proprie pedine, menu info di ogni pedina.
-- **M2 — Tick loop, azioni a raggio** ✅ (Redis escluso, vedi sotto): attack / pickup / talk / build entro la "vista" della pedina; morte e respawn (solo cooldown); punti e classifica; inventario condiviso. Manca ancora lo stato caldo su Redis.
+- **M2 — Tick loop, azioni a raggio** ✅ (Redis escluso, vedi sotto): attack / pickup / talk / build / create entro la "vista" della pedina; morte e respawn (solo cooldown); punti e classifica; inventario condiviso; nebbia di guerra (anticipata da M4). Manca ancora lo stato caldo su Redis.
 - **M3 — Multi-board e griglie miste**: board contigue di un'unica mappa, esagonale di prova, astrazione `Grid`.
 - **M4 — Motore regole**: razze, compatibilità, regole di creazione pedine, riproduzione, inventario condiviso (solo campione), "vista" = visibilità + raggio.
 - **M5 — Obiettivi, punteggio, condizioni di vittoria.**
@@ -25,29 +25,32 @@ the_game/
 
 ## Stato attuale
 
-**M0, M1 e M2 completati e verificati end-to-end** (client Unity vero contro backend e Postgres veri, più una sonda Go temporanea con due giocatori):
+**M0, M1 e M2 completati e verificati end-to-end** (client Unity vero contro backend e Postgres veri; test Go di regole, loop e integrazione con due giocatori):
 
 - Backend (`backend/`): `internal/game` (regole pure e testate: `Board.Move`, `Board.Do` per le azioni, `PlanTeam`, `Tick`; `Loop` = una goroutine possiede lo stato della board a un tick di 250 ms, gli altri parlano con lei via canale; le scritture su Postgres passano da una coda ordinata), `internal/store` (pgx, migrazioni embedded applicate all'avvio), `internal/transport` (REST `/auth/register`, `/auth/login`, `/healthz`; WebSocket `/ws` con `auth` come primo messaggio). Protocollo JSON in `internal/protocol`: client→server `auth`, `move`, `attack`, `talk`, `pickup`, `build`; server→client `snapshot`, `delta`, `event`, `inventory`, `error`.
 - **Movimento**: solo le proprie pedine, casella libera e dentro la board, distanza (Chebyshev) ≤ velocità, cooldown dopo la mossa = distanza / velocità secondi. Campione velocità 3, pedine 2.
-- **Azioni** (raggio = "vista": campione 5, pedina 3; cooldown d'azione condiviso: attacco 1,5 s, raccolta 0,5 s, costruzione 3 s, parlare nessuno): *attack* solo contro pedine di altre squadre (NPC non attaccabili, come da design), danno = forza (campione 30, pedina 15); *talk* con un NPC restituisce una battuta a caso (dialoghi nella colonna `units.dialogue`); *pickup* toglie l'oggetto dalla board e lo mette nell'inventario condiviso di squadra, qualunque sia la distanza dal campione; *build* mette un avamposto su una casella libera, che diventa territorio della squadra.
+- **Azioni** (raggio = "vista": campione 5, pedina 3; cooldown d'azione condiviso: attacco 1,5 s, raccolta 0,5 s, costruzione 3 s, creazione 5 s, parlare nessuno): *attack* solo contro pedine di altre squadre (NPC non attaccabili, come da design), danno = forza (campione 30, pedina 15); *talk* con un NPC restituisce una battuta a caso (dialoghi nella colonna `units.dialogue`); *pickup* toglie l'oggetto dalla board e lo mette nell'inventario condiviso di squadra, qualunque sia la distanza dal campione; *build* mette un avamposto su una casella libera, che diventa territorio della squadra; *create* (solo il campione) paga 20 punti vita e fa comparire una nuova pedina su una casella libera accanto al campione (seconda via di creazione del design; nessuna rigenerazione di vita per ora, quindi è una risorsa finita: da bilanciare in M4).
 - **Morte**: a vita 0 la pedina resta sulla casella fuori gioco e rinasce dopo 10 s con vita piena, senza altre penalità. Al riavvio del server le pedine già sconfitte rinascono dopo 10 s.
 - **Punti** (design.md: ogni azione può cambiare i punti; eliminare il campione dà un grosso bonus, non la vittoria): colpo +5, sconfitta pedina +25, sconfitta campione +100, raccolta +5, costruzione +20. Classifica di tutti i giocatori sempre visibile.
-- **Persistenza**: posizioni, vita, oggetti raccolti, inventario, strutture e punti su Postgres. Il cooldown è stato effimero.
+- **Nebbia di guerra** (design.md: "vista" = visibilità + raggio d'azione): il server manda a ogni giocatore solo le entità entro la vista di una sua pedina ancora in gioco (più tutto ciò che è suo). `Board.VisibleTo` calcola l'insieme, `Loop.sync` invia a ogni giocatore connesso le entità entrate in vista (complete), gli aggiornamenti di quelle già in vista e le uscite come `removed`. La classifica è pubblica. Non c'è memoria delle zone esplorate: una cosa fuori vista sparisce. Il client scurisce le caselle fuori vista.
+- **Partenza delle squadre**: `spawnAnchor` le distribuisce (prime sei ai lati, poi al centro) così che all'inizio siano fuori vista l'una dall'altra (test dedicato su 24x24).
+- **Persistenza**: posizioni, vita, oggetti raccolti, inventario, strutture, nuove pedine e punti su Postgres. Il cooldown è stato effimero.
 - **Client Unity** (`unity-client/`): `GameController` crea tutto a runtime (nessun setup nella scena); `NetworkClient` (REST via UnityWebRequest + `ClientWebSocket`), `BoardManager` (snapshot/delta, click, azioni, territorio colorato), `Piece`, `InfoPanel` (scheda + pulsanti azione con motivo del blocco), `LoginScreen`, `Hud` (classifica, inventario, notifiche/dialoghi), tutti in IMGUI senza dipendenze da UGUI. Rendering con primitive 3D viste dall'alto: è un placeholder, la grafica vera arriva in M7.
 - **Come si gioca**: clic su una tua pedina la seleziona (poi una casella vuota la sposta). Con una pedina selezionata, clic su un NPC / oggetto / pedina nemica apre la sua scheda con "Parla" / "Raccogli" / "Attacca". Clic sulla pedina selezionata (scheda con "Costruisci avamposto") e poi su una casella libera costruisce.
 
 **Non ancora fatto / da sapere:**
 
-- Nessun test automatico per store e transport (solo per le regole in `internal/game`). La verifica end-to-end è stata manuale.
+- Test: `make -C backend test` (regole e loop, senza DB) e `make -C backend test-integration` (REST + WebSocket su Postgres reale, database temporaneo per ogni esecuzione). Il client Unity non ha test automatici: si verifica a mano o via MCP.
 - Il click reale del mouse non è stato provato dall'automazione: si è simulato `OnMouseDown` e l'esecuzione dei pulsanti. I pannelli ignorano i click che cadono su di sé (`BlocksPointer`).
-- Ogni giocatore vede tutta la board (niente fog of war: arriva con la "vista" in M4). Le squadre nascono attorno a un'ancora per slot (`Board.PlanTeam`), 3 per riga.
+- `Board.VisibleTo` è O(entità × pedine): va bene per pochi giocatori, da ottimizzare (indice spaziale) se le pedine crescono molto. La board di 24x24 regge bene 6 squadre fuori vista; per 6-15 giocatori serve una board più grande (parametro di mondo, M6).
 - Il territorio è solo visivo (casella colorata): il perimetro, il suo valore in punti e la conquista contesa non sono definiti. Gli oggetti non si possono ancora spostare né usare; l'inventario si vede ma non si gestisce (solo il campione potrà, come da design).
 - Redis è avviato ma il backend non lo usa ancora. La grafica isometrica pixel art e il layout mobile (verticale) non sono iniziati.
 - Se il server viene fermato mentre un cooldown è in corso, il cooldown si azzera al riavvio (è effimero).
 
 ## Prossimi passi consigliati
 
-1. Provare il gioco con più giocatori reali (due istanze del client) per verificare broadcast, formazione delle squadre e bilanciamento di danno/punti.
-2. Test di integrazione per REST/WebSocket (DB temporaneo) prima che il protocollo cresca ancora.
-3. Redis per lo stato caldo (posizioni/cooldown) quando le pedine per giocatore crescono davvero.
-4. M3 (multi-board, griglie miste) oppure M4 (razze, riproduzione, fog of war con la "vista"): scegliere in base a cosa serve di più giocando.
+1. Provare il gioco con più giocatori reali (due istanze del client) per verificare bilanciamento di danno, punti e costo di creazione, e come si sente la nebbia.
+2. Regole di creazione: aggiungere le altre vie previste (risorse raccolte, edifici, riproduzione) e trasformare tutte le costanti (costi, cooldown, punti, statistiche) in dati per mondo: è il motore di regole di M4.
+3. Spostamento degli oggetti (design: "raccogliere/spostare oggetti") e uso dell'inventario da parte del campione.
+4. Redis per lo stato caldo quando le pedine per giocatore crescono davvero.
+5. M3 (multi-board, griglie miste) e il resto di M4 (razze, riproduzione), poi grafica e layout mobile.
