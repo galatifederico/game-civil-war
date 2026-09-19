@@ -20,10 +20,11 @@ public class Hud : MonoBehaviour
     readonly List<Toast> toasts = new List<Toast>();
     string status = "", hint = "", eventTitle = "", eventText = "", inventoryText = "";
     ScoreData[] scores = new ScoreData[0];
+    GoalData[] goals = new GoalData[0];
     string myPlayerId;
     float eventUntil;
     Rect eventRect;
-    GUIStyle buttonStyle, statusStyle, toastStyle, scoreStyle, mineScoreStyle, hintStyle, boxStyle, eventTitleStyle, eventTextStyle;
+    GUIStyle goalStyle, doneGoalStyle, buttonStyle, statusStyle, toastStyle, scoreStyle, mineScoreStyle, hintStyle, boxStyle, eventTitleStyle, eventTextStyle;
 
     public event System.Action LogoutClicked;
 
@@ -78,6 +79,8 @@ public class Hud : MonoBehaviour
         myPlayerId = playerId;
     }
 
+    public void SetGoals(GoalData[] newGoals) => goals = newGoals ?? new GoalData[0];
+
     public void SetInventory(ItemData[] items)
     {
         if (items == null || items.Length == 0)
@@ -96,6 +99,7 @@ public class Hud : MonoBehaviour
         logoutVisible = false;
         boardNames = new string[0];
         scores = new ScoreData[0];
+        goals = new GoalData[0];
         eventUntil = 0f;
         toasts.Clear();
     }
@@ -136,6 +140,20 @@ public class Hud : MonoBehaviour
             y += 6f;
             GUI.Label(new Rect(12f, y, 420f, 22f), inventoryText, scoreStyle);
             y += 24f;
+        }
+        if (goals.Length > 0)
+        {
+            y += 6f;
+            foreach (var g in goals)
+            {
+                string line;
+                if (g.scope == "world")
+                    line = g.completed ? $"Mondo: {g.title} - vinto da {g.achieved_by}" : $"Mondo: {g.title} {g.progress}/{g.target}";
+                else
+                    line = g.completed ? $"[fatto] {g.title}" : $"Obiettivo: {g.title} {g.progress}/{g.target} (+{g.reward} pt)";
+                GUI.Label(new Rect(12f, y, 420f, 20f), line, g.completed ? doneGoalStyle : goalStyle);
+                y += 20f;
+            }
         }
         y += 6f;
         foreach (var toast in toasts)
@@ -187,6 +205,10 @@ public class Hud : MonoBehaviour
         scoreStyle.normal.textColor = new Color(0.75f, 0.8f, 0.9f);
         mineScoreStyle = new GUIStyle(scoreStyle) { fontStyle = FontStyle.Bold };
         mineScoreStyle.normal.textColor = new Color(1f, 0.85f, 0.4f);
+        goalStyle = new GUIStyle(GUI.skin.label) { fontSize = 13 };
+        goalStyle.normal.textColor = new Color(0.65f, 0.9f, 0.75f);
+        doneGoalStyle = new GUIStyle(goalStyle);
+        doneGoalStyle.normal.textColor = new Color(0.5f, 0.55f, 0.6f);
         toastStyle = new GUIStyle(GUI.skin.label) { fontSize = 14 };
         toastStyle.normal.textColor = new Color(1f, 0.55f, 0.5f);
         hintStyle = new GUIStyle(GUI.skin.label) { fontSize = 15, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };

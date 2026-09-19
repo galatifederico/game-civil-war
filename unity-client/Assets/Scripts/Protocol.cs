@@ -44,6 +44,21 @@ public class ItemData
 }
 
 [Serializable]
+public class GoalData
+{
+    public string id;
+    public string scope;
+    public string kind;
+    public string title;
+    public string description;
+    public int target;
+    public int progress;
+    public int reward;
+    public bool completed;
+    public string achieved_by;
+}
+
+[Serializable]
 public class ScoreData
 {
     public string player_id;
@@ -85,6 +100,7 @@ public class ServerMessage
     public string[] removed;
     public ScoreData[] scores;
     public ItemData[] inventory;
+    public GoalData[] goals;
 }
 
 [Serializable]

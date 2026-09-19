@@ -20,6 +20,7 @@ const (
 	TypeDelta     = "delta"
 	TypeEvent     = "event"
 	TypeInventory = "inventory"
+	TypeGoals     = "goals"
 	TypeError     = "error"
 )
 
@@ -76,6 +77,20 @@ type Item struct {
 	Effect      string `json:"effect"` // a short description of what using it does
 }
 
+// Goal is a goal as one player sees it: every world goal plus their own individual ones.
+type Goal struct {
+	ID          string `json:"id"`
+	Scope       string `json:"scope"` // "world" or "individual"
+	Kind        string `json:"kind"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Target      int    `json:"target"`
+	Progress    int    `json:"progress"`
+	Reward      int    `json:"reward"`
+	Completed   bool   `json:"completed"`
+	AchievedBy  string `json:"achieved_by"` // world goals: the name of whoever won it
+}
+
 type Score struct {
 	PlayerID string `json:"player_id"`
 	Username string `json:"username"`
@@ -104,6 +119,7 @@ type ServerMessage struct {
 	Removed      []string `json:"removed,omitempty"`
 	Scores       []Score  `json:"scores,omitempty"`
 	Inventory    []Item   `json:"inventory,omitempty"`
+	Goals        []Goal   `json:"goals,omitempty"`
 	Code         string   `json:"code,omitempty"`
 	Title        string   `json:"title,omitempty"`
 	Message      string   `json:"message,omitempty"`

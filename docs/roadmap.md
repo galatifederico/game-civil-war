@@ -19,11 +19,20 @@ the_game/
 - **M2 — Tick loop, azioni a raggio** ✅ (Redis escluso, vedi sotto): attack / pickup / talk / build / create entro la "vista" della pedina; morte e respawn (solo cooldown); punti e classifica; inventario condiviso; nebbia di guerra (anticipata da M4). Manca ancora lo stato caldo su Redis.
 - **M3 — Multi-board e griglie miste** ✅: board contigue di un'unica mappa collegate da passaggi, board esagonale di prova, astrazione `Grid`.
 - **M4 — Motore regole** ✅: razze, compatibilità e ereditarietà, tutte le vie di creazione pedine (vita del campione, oggetti dell'inventario, riproduzione, edifici), inventario gestito solo dal campione con effetti degli oggetti. Tutto è dato per mondo.
-- **M5 — Obiettivi, punteggio, condizioni di vittoria.**
+- **M5 — Obiettivi, punteggio, condizioni di vittoria** ✅: obiettivi di mondo e individuali configurabili, assegnazione casuale o manuale.
 - **M6 — Admin web app** (`admin-web/`) e lobby mondi lato giocatore. Lobby e mondi multipli ✅; admin web app da fare.
 - **M7 — Hardening**: riconnessione/afk (riconnessione automatica del client ✅), grafica 2D isometrica pixel art vera, Cloudflare Tunnel.
 
 ## Stato attuale
+
+**M5 — obiettivi e condizioni di vittoria (migrazione `0007`):**
+
+- Design.md: la fine della partita non è un evento globale e ci sono più condizioni, anche per singolo giocatore, configurabili dall'admin. Sono `goals` (dati del mondo) con `scope`: **`world`** (vince il primo giocatore che li raggiunge: `achieved_by`; il mondo persistente continua e l'admin può azzerarli) e **`individual`** (uno alla volta per giocatore).
+- Tipi (`kind`): `points`, `kills` (unità avversarie sconfitte), `champion_kills`, `pickups` (oggetti raccolti), `structures` (avamposti posseduti), `units` (pedine della squadra), `talks` (NPC **diversi** con cui si è parlato). Misurati da contatori per giocatore (`memberships.stats`) o contando le entità. Completare un obiettivo individuale o vincerne uno di mondo dà `reward` punti.
+- **Assegnazione** (`Rules.GoalAssignment`, per mondo): `"random"` (il sistema ne assegna uno alla prima connessione e un altro dopo ogni obiettivo completato, tra quelli non ancora fatti) oppure `"manual"` (li assegna solo l'admin: `World.AssignGoal`).
+- `World.Evaluate` valuta gli obiettivi dopo ogni azione (e dopo un edificio che genera pedine); una ricompensa può a sua volta completare un obiettivo a punti (a cascata). Vittorie annunciate a tutti (`event` "Vittoria"); il giocatore riceve un messaggio `goals` con i suoi obiettivi, i progressi e gli obiettivi di mondo (con il vincitore).
+- Persistenza: `goals`, `player_goals` (assegnato/completato), contatori e `achieved_by`; tutto si ricarica al riavvio.
+- HUD del client: "Obiettivo: titolo n/m (+ricompensa)" e "Mondo: titolo n/m" (o "vinto da X"). Mondo di prova: 5 obiettivi individuali e 3 di mondo.
 
 **M4 — motore regole (dati per mondo, migrazione `0006`):**
 

@@ -18,12 +18,21 @@ func (noStore) DeleteInventoryItems(context.Context, []string) error     { retur
 func (noStore) InsertStructure(context.Context, *Entity) error           { return nil }
 func (noStore) SaveItemPosition(context.Context, string, int, int) error { return nil }
 func (noStore) DeleteItem(context.Context, string) error                 { return nil }
+func (noStore) SaveStats(context.Context, string, string, Stats) error   { return nil }
+func (noStore) AssignGoal(context.Context, string, string) error         { return nil }
+func (noStore) CompleteGoal(context.Context, string, string) error       { return nil }
+func (noStore) SetGoalAchieved(context.Context, string, string) error    { return nil }
 func (noStore) AddInventory(context.Context, string, string, Item) error { return nil }
 func (noStore) AddPoints(context.Context, string, string, int) error     { return nil }
 
 // fogWorld: player p1 has a champion at (2,2) (vision 5); p2 has a minor unit at (8,2) (vision 3).
 // An NPC and an item sit near p1, another NPC is far from everyone.
 func fogWorld(t *testing.T) (loop *Loop, advance func(time.Duration), p1, p2 *Client) {
+	return fogWorldWith(t, nil)
+}
+
+// fogWorldWith is fogWorld after letting the test change the world before its loop starts.
+func fogWorldWith(t *testing.T, setup func(*World)) (loop *Loop, advance func(time.Duration), p1, p2 *Client) {
 	board := newTestWorld("b", "fog", 30, 30, []*Entity{
 		{ID: "champ", OwnerID: "p1", Kind: KindChampion, Name: "Champion", X: 2, Y: 2, Speed: 3, Health: 200, MaxHealth: 200, Vision: 5, Strength: 30},
 		{ID: "minor", OwnerID: "p2", Kind: KindMinor, Name: "Pedina", X: 8, Y: 2, Speed: 2, Health: 100, MaxHealth: 100, Vision: 3, Strength: 15},
@@ -33,6 +42,9 @@ func fogWorld(t *testing.T) (loop *Loop, advance func(time.Duration), p1, p2 *Cl
 	})
 	board.EnsurePlayer("p1", "Anna", 0)
 	board.EnsurePlayer("p2", "Bob", 0)
+	if setup != nil {
+		setup(board)
+	}
 
 	loop = NewLoop(board, noStore{})
 	var mu sync.Mutex
@@ -200,5 +212,12 @@ func TestVisibleToRules(t *testing.T) {
 		if _, ok := v[id]; ok != want {
 			t.Errorf("visible[%s] = %v, want %v", id, ok, want)
 		}
+	}
+}
+
+func mustUnmarshal(t *testing.T, data []byte, v any) {
+	t.Helper()
+	if err := json.Unmarshal(data, v); err != nil {
+		t.Fatal(err)
 	}
 }

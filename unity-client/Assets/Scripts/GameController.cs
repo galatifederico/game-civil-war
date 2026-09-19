@@ -60,6 +60,7 @@ public class GameController : MonoBehaviour
                 hud.SetScores(message.scores, message.your_player_id);
                 hud.SetInventory(message.inventory);
                 board.SetInventory(message.inventory);
+                hud.SetGoals(message.goals);
                 break;
             case "delta":
                 board.ApplyDelta(message);
@@ -68,6 +69,9 @@ public class GameController : MonoBehaviour
             case "inventory":
                 hud.SetInventory(message.inventory);
                 board.SetInventory(message.inventory);
+                break;
+            case "goals":
+                hud.SetGoals(message.goals);
                 break;
             case "event":
                 hud.ShowEvent(message.title, message.message);

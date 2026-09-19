@@ -250,14 +250,17 @@ func (s *Store) LoadWorld(ctx context.Context, id string) (*game.World, error) {
 		return nil, err
 	}
 
-	err = s.each(ctx, `SELECT p.id::text, p.username, m.points, COALESCE(m.race_id::text, '') FROM memberships m
+	err = s.each(ctx, `SELECT p.id::text, p.username, m.points, COALESCE(m.race_id::text, ''), m.stats FROM memberships m
 		JOIN players p ON p.id = m.player_id WHERE m.world_id = $1::uuid`, []any{id}, func(rows pgx.Rows) error {
 		var pid, username, raceID string
 		var points int
-		if err := rows.Scan(&pid, &username, &points, &raceID); err != nil {
+		var stats game.Stats
+		if err := rows.Scan(&pid, &username, &points, &raceID, &stats); err != nil {
 			return err
 		}
-		world.EnsurePlayer(pid, username, points).RaceID = raceID
+		player := world.EnsurePlayer(pid, username, points)
+		player.RaceID = raceID
+		player.Stats = stats
 		return nil
 	})
 	if err != nil {
@@ -274,6 +277,44 @@ func (s *Store) LoadWorld(ctx context.Context, id string) (*game.World, error) {
 			}
 			p := world.Player(pid)
 			p.Inventory = append(p.Inventory, item)
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.each(ctx, `SELECT id::text, scope, kind, target, reward, title, description, COALESCE(achieved_by::text, '')
+		FROM goals WHERE world_id = $1::uuid ORDER BY position, title`, []any{id}, func(rows pgx.Rows) error {
+		g := &game.Goal{}
+		var scope, kind string
+		if err := rows.Scan(&g.ID, &scope, &kind, &g.Target, &g.Reward, &g.Title, &g.Description, &g.AchievedBy); err != nil {
+			return err
+		}
+		g.Scope, g.Kind = game.GoalScope(scope), game.GoalKind(kind)
+		world.AddGoal(g)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	// The latest goal a player was given and has not completed is the one they are working on.
+	err = s.each(ctx, `SELECT pg.player_id::text, pg.goal_id::text, pg.completed_at IS NOT NULL
+		FROM player_goals pg JOIN goals g ON g.id = pg.goal_id WHERE g.world_id = $1::uuid ORDER BY pg.assigned_at`,
+		[]any{id}, func(rows pgx.Rows) error {
+			var playerID, goalID string
+			var done bool
+			if err := rows.Scan(&playerID, &goalID, &done); err != nil {
+				return err
+			}
+			p := world.Player(playerID)
+			if p == nil {
+				return nil
+			}
+			if done {
+				p.CompletedGoals[goalID] = true
+			} else {
+				p.GoalID = goalID
+			}
 			return nil
 		})
 	if err != nil {
@@ -363,6 +404,30 @@ func (s *Store) DeleteInventoryItems(ctx context.Context, ids []string) error {
 func (s *Store) AddPoints(ctx context.Context, worldID, playerID string, delta int) error {
 	_, err := s.pool.Exec(ctx, `UPDATE memberships SET points = points + $3
 		WHERE world_id = $1::uuid AND player_id = $2::uuid`, worldID, playerID, delta)
+	return err
+}
+
+func (s *Store) SaveStats(ctx context.Context, worldID, playerID string, stats game.Stats) error {
+	_, err := s.pool.Exec(ctx, `UPDATE memberships SET stats = $3 WHERE world_id = $1::uuid AND player_id = $2::uuid`,
+		worldID, playerID, stats)
+	return err
+}
+
+func (s *Store) AssignGoal(ctx context.Context, playerID, goalID string) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO player_goals (player_id, goal_id) VALUES ($1::uuid, $2::uuid) ON CONFLICT DO NOTHING`,
+		playerID, goalID)
+	return err
+}
+
+func (s *Store) CompleteGoal(ctx context.Context, playerID, goalID string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE player_goals SET completed_at = now()
+		WHERE player_id = $1::uuid AND goal_id = $2::uuid AND completed_at IS NULL`, playerID, goalID)
+	return err
+}
+
+func (s *Store) SetGoalAchieved(ctx context.Context, goalID, playerID string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE goals SET achieved_by = $2::uuid, achieved_at = now()
+		WHERE id = $1::uuid AND achieved_by IS NULL`, goalID, playerID)
 	return err
 }
 

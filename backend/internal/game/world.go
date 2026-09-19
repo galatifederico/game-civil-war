@@ -162,11 +162,14 @@ type Item struct {
 
 // Player is the roster owner: one player is exactly one team (see design.md).
 type Player struct {
-	ID        string
-	Username  string
-	RaceID    string // the race of the team (empty when the world has no races)
-	Points    int
-	Inventory []Item // shared by the whole team
+	ID             string
+	Username       string
+	RaceID         string // the race of the team (empty when the world has no races)
+	Stats          Stats  // counters goals are measured with
+	GoalID         string // the individual goal the player is working on ("" = none)
+	CompletedGoals map[string]bool
+	Points         int
+	Inventory      []Item // shared by the whole team
 }
 
 type Score struct {
@@ -202,15 +205,17 @@ type World struct {
 	Name  string
 	Rules Rules // the world's parameters, see rules.go
 
-	boards   map[string]*Board
-	order    []string // board ids; the first one is where new teams start
-	entities map[string]*Entity
-	cells    map[Cell]string
-	links    map[Cell]Cell
-	players  map[string]*Player
-	races    map[string]*Race
-	raceIDs  []string             // in the order the admin defined them
-	compat   map[[2]string]string // sorted pair of race ids -> race of the offspring
+	boards    map[string]*Board
+	order     []string // board ids; the first one is where new teams start
+	entities  map[string]*Entity
+	cells     map[Cell]string
+	links     map[Cell]Cell
+	players   map[string]*Player
+	races     map[string]*Race
+	raceIDs   []string             // in the order the admin defined them
+	compat    map[[2]string]string // sorted pair of race ids -> race of the offspring
+	goals     map[string]*Goal
+	goalOrder []string
 }
 
 func NewWorld(id, name string) *World {
@@ -223,6 +228,7 @@ func NewWorld(id, name string) *World {
 		players:  map[string]*Player{},
 		races:    map[string]*Race{},
 		compat:   map[[2]string]string{},
+		goals:    map[string]*Goal{},
 	}
 }
 
@@ -340,7 +346,7 @@ func (w *World) All() []*Entity {
 func (w *World) EnsurePlayer(id, username string, points int) *Player {
 	p, ok := w.players[id]
 	if !ok {
-		p = &Player{ID: id, Username: username, Points: points}
+		p = &Player{ID: id, Username: username, Points: points, CompletedGoals: map[string]bool{}}
 		w.players[id] = p
 	}
 	return p

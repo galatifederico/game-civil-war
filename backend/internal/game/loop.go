@@ -21,6 +21,10 @@ type Persister interface {
 	DeleteItem(ctx context.Context, id string) error
 	AddInventory(ctx context.Context, worldID, playerID string, item Item) error
 	DeleteInventoryItems(ctx context.Context, ids []string) error
+	SaveStats(ctx context.Context, worldID, playerID string, stats Stats) error
+	AssignGoal(ctx context.Context, playerID, goalID string) error
+	CompleteGoal(ctx context.Context, playerID, goalID string) error
+	SetGoalAchieved(ctx context.Context, goalID, playerID string) error
 	AddPoints(ctx context.Context, worldID, playerID string, delta int) error
 }
 
@@ -90,6 +94,9 @@ func (l *Loop) tick() {
 	for _, u := range res.Spawned {
 		l.insertUnit(u)
 		l.sendToPlayer(u.OwnerID, protocol.ServerMessage{Type: protocol.TypeEvent, Title: "Nuova pedina", Message: u.Name + " è stata generata da un tuo avamposto."})
+		if ev := l.world.Evaluate(u.OwnerID); ev != nil {
+			l.publish(u.OwnerID, ev)
+		}
 	}
 	l.sync(append(res.Revived, res.Spawned...), false)
 }
@@ -179,6 +186,9 @@ func (l *Loop) EnsureTeam(ctx context.Context, playerID, username, raceID string
 func (l *Loop) Register(c *Client) {
 	l.do(func() {
 		l.clients[c] = struct{}{}
+		if ref := l.world.EnsureGoal(c.PlayerID); ref != nil {
+			l.persist(func(ctx context.Context) error { return l.store.AssignGoal(ctx, ref.PlayerID, ref.GoalID) })
+		}
 		visible := l.world.VisibleTo(c.PlayerID)
 		l.seen[c.PlayerID] = visible
 		entities := make([]*Entity, 0, len(visible))
@@ -192,6 +202,7 @@ func (l *Loop) Register(c *Client) {
 			Entities:     l.dtos(entities),
 			Scores:       l.scores(),
 			Inventory:    l.inventory(c.PlayerID),
+			Goals:        l.goalDTOs(c.PlayerID),
 		})
 	})
 }
@@ -262,6 +273,21 @@ func (l *Loop) publish(playerID string, out *Outcome) {
 		points := out.Points
 		l.persist(func(ctx context.Context) error { return l.store.AddPoints(ctx, worldID, playerID, points) })
 	}
+	if out.StatsChanged {
+		l.saveStats(playerID)
+	}
+	for _, ref := range out.AssignedGoals {
+		ref := ref
+		l.persist(func(ctx context.Context) error { return l.store.AssignGoal(ctx, ref.PlayerID, ref.GoalID) })
+	}
+	for _, ref := range out.CompletedGoals {
+		ref := ref
+		l.persist(func(ctx context.Context) error { return l.store.CompleteGoal(ctx, ref.PlayerID, ref.GoalID) })
+	}
+	for _, ref := range out.Victories {
+		ref := ref
+		l.persist(func(ctx context.Context) error { return l.store.SetGoalAchieved(ctx, ref.GoalID, ref.PlayerID) })
+	}
 
 	if len(out.Changed) > 0 || len(out.Removed) > 0 || out.Points != 0 {
 		l.sync(out.Changed, out.Points != 0)
@@ -272,6 +298,50 @@ func (l *Loop) publish(playerID string, out *Outcome) {
 	for _, n := range out.Notices {
 		l.sendToPlayer(n.PlayerID, protocol.ServerMessage{Type: protocol.TypeEvent, Title: n.Title, Message: n.Text})
 	}
+	for _, n := range out.Broadcast {
+		for _, id := range l.connectedPlayers() {
+			l.sendToPlayer(id, protocol.ServerMessage{Type: protocol.TypeEvent, Title: n.Title, Message: n.Text})
+		}
+	}
+	// A world goal won by someone changes the goals of everyone; otherwise only the actor's move.
+	switch {
+	case len(out.Victories) > 0:
+		for _, id := range l.connectedPlayers() {
+			l.sendGoals(id)
+		}
+	case out.GoalsChanged || out.StatsChanged || out.Points != 0:
+		l.sendGoals(playerID)
+	}
+}
+
+func (l *Loop) saveStats(playerID string) {
+	worldID := l.world.ID
+	p := l.world.Player(playerID)
+	if p == nil {
+		return
+	}
+	stats := p.Stats
+	stats.Talked = make(map[string]bool, len(p.Stats.Talked))
+	for id := range p.Stats.Talked {
+		stats.Talked[id] = true
+	}
+	l.persist(func(ctx context.Context) error { return l.store.SaveStats(ctx, worldID, playerID, stats) })
+}
+
+func (l *Loop) sendGoals(playerID string) {
+	l.sendToPlayer(playerID, protocol.ServerMessage{Type: protocol.TypeGoals, Goals: l.goalDTOs(playerID)})
+}
+
+func (l *Loop) goalDTOs(playerID string) []protocol.Goal {
+	views := l.world.GoalViews(playerID)
+	out := make([]protocol.Goal, 0, len(views))
+	for _, v := range views {
+		out = append(out, protocol.Goal{
+			ID: v.ID, Scope: string(v.Scope), Kind: string(v.Kind), Title: v.Title, Description: v.Description,
+			Target: v.Target, Progress: v.Progress, Reward: v.Reward, Completed: v.Completed, AchievedBy: v.AchievedBy,
+		})
+	}
+	return out
 }
 
 // sync tells every connected player what changed, as far as they can see (fog of war): entities

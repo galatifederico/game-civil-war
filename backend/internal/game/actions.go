@@ -55,6 +55,14 @@ type Outcome struct {
 	InventoryChanged bool
 	Points           int // awarded to the actor's team
 	Notices          []Notice
+
+	// Goals and counters (see goals.go).
+	StatsChanged   bool      // the actor's counters changed and must be saved
+	GoalsChanged   bool      // someone's goals changed: goals are sent again
+	AssignedGoals  []GoalRef // new individual goals to save
+	CompletedGoals []GoalRef // completed individual goals to save
+	Victories      []GoalRef // world goals won for the first time
+	Broadcast      []Notice  // announcements for every connected player
 }
 
 // Do applies an action if the rules allow it. Every action needs a live unit of the player,
@@ -95,6 +103,7 @@ func (w *World) Do(playerID string, a Action, now time.Time) (*Outcome, error) {
 	if out.Points != 0 {
 		w.EnsurePlayer(actor.OwnerID, "", 0).Points += out.Points
 	}
+	out.merge(w.Evaluate(actor.OwnerID))
 	return out, nil
 }
 
@@ -141,6 +150,12 @@ func (w *World) attack(actor *Entity, targetID string, now time.Time) (*Outcome,
 		} else {
 			out.Points += w.Rules.Points.KillMinor
 		}
+		killer := w.EnsurePlayer(actor.OwnerID, "", 0)
+		killer.Stats.Kills++
+		if t.Kind == KindChampion {
+			killer.Stats.ChampionKills++
+		}
+		out.StatsChanged = true
 		out.Notices = []Notice{
 			{actor.OwnerID, "Nemico sconfitto", fmt.Sprintf("Hai sconfitto %s.", t.Name)},
 			{t.OwnerID, "Pedina sconfitta", fmt.Sprintf("%s è fuori gioco per %d secondi.", t.Name, int(w.Rules.RespawnDelay().Seconds()))},
@@ -164,7 +179,16 @@ func (w *World) talk(actor *Entity, targetID string) (*Outcome, error) {
 	if len(t.Dialogue) > 0 {
 		text = t.Dialogue[rand.IntN(len(t.Dialogue))]
 	}
-	return &Outcome{Notices: []Notice{{actor.OwnerID, t.Name, text}}}, nil
+	out := &Outcome{Notices: []Notice{{actor.OwnerID, t.Name, text}}}
+	talker := w.EnsurePlayer(actor.OwnerID, "", 0)
+	if talker.Stats.Talked == nil {
+		talker.Stats.Talked = map[string]bool{}
+	}
+	if !talker.Stats.Talked[t.ID] {
+		talker.Stats.Talked[t.ID] = true
+		out.StatsChanged = true
+	}
+	return out, nil
 }
 
 func (w *World) pickup(actor *Entity, targetID string, now time.Time) (*Outcome, error) {
@@ -183,6 +207,7 @@ func (w *World) pickup(actor *Entity, targetID string, now time.Time) (*Outcome,
 	item := Item{ID: newID(), Name: t.Name, Description: t.Description, Effect: t.Effect}
 	team := w.EnsurePlayer(actor.OwnerID, "", 0)
 	team.Inventory = append(team.Inventory, item)
+	team.Stats.Pickups++
 	w.remove(t)
 	actor.ActReadyAt = now.Add(w.Rules.PickupCooldown())
 	return &Outcome{
@@ -190,6 +215,7 @@ func (w *World) pickup(actor *Entity, targetID string, now time.Time) (*Outcome,
 		Removed:          []string{t.ID},
 		Picked:           &item,
 		InventoryChanged: true,
+		StatsChanged:     true,
 		Points:           w.Rules.Points.Pickup,
 		Notices:          []Notice{{actor.OwnerID, "Oggetto raccolto", fmt.Sprintf("%s è nell'inventario della squadra.", t.Name)}},
 	}, nil
