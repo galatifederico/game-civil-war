@@ -2,6 +2,34 @@
 
 Materiale che si può usare per migliorare la grafica. Raccolto il 2026-09-20 su indicazione dell'utente; ciò che è scritto qui **è stato verificato leggendo le pagine e, per Kenney, scaricando i pacchetti** (le voci non verificate sono dichiarate come tali). Oggi tutta la grafica del client è disegnata in codice (`PixelArt.cs`), senza asset importati.
 
+## Direzione grafica scelta dall'utente (2026-09-20)
+
+Riferimento: la grafica dei giochi **Pokémon (generazioni 3-5)**, vista in due schermate (un gioco amatoriale con la mappa e un riquadro di dialogo con il ritratto del personaggio; la schermata della Pokédex della versione GBA):
+
+- **Mappa dall'alto a 3/4**, a caselle quadrate piccole (16 px), non isometrica: alberi, erba, sentieri, staccionate e case disegnati con un lato frontale visibile; personaggi piccoli che camminano nelle 4 direzioni.
+- **Interfaccia con cornici in pixel art**: riquadro di dialogo in basso con bordo azzurro/blu, nome del parlante in una linguetta sopra, ritratto grande del personaggio che parla; elenchi con riga selezionata evidenziata e piccole icone; sfondo scuro a bande.
+- Colori saturi, contorni scuri, ombre morbide sotto alberi e personaggi.
+
+**Attenzione alla provenienza**: quelle immagini sono di Nintendo/Game Freak (una è di un gioco amatoriale che usa sprite ufficiali). Sono solo un **riferimento di stile**: gli sprite, i tileset e i ritratti di Pokémon o dei giochi amatoriali **non si copiano né si mettono nel repo**. Si usano risorse CC0 (Kenney), disegni originali o generati (con licenza controllata) e non si usano nomi o personaggi di Pokémon.
+
+**Cosa cambia rispetto a oggi** (il client è isometrico 2:1 a 32 px):
+
+- Il rendering passa da isometrico a **dall'alto ortogonale**: `GridMath` (cella ↔ scena) diventa una semplice griglia, la selezione delle caselle e l'ordinamento in profondità si semplificano (ordine per y, come oggi). Non cambia niente lato server.
+- **Board esagonali**: non hanno un equivalente dall'alto in pixel art nei pacchetti CC0 visti. Consiglio di **mantenere la logica esagonale** (6 vicini, distanza esagonale) e di **disegnarla con righe sfalsate** di caselle quadrate (a "mattoni"): si vede subito che è un'altra griglia e nessuna regola cambia. L'alternativa è togliere le board esagonali dal gioco.
+- Serve il dato **terreno per casella** (erba, sentiero, acqua, alberi, muri...) nel mondo e nell'app admin; senza, ogni board resterebbe una distesa uniforme.
+- Serve un **riquadro di dialogo** con nome e ritratto (oggi i dialoghi con gli NPC sono un messaggio nel menu) e **cornici di pannello** per il menu.
+- Le pedine possono restare tinte per squadra solo se lo sprite è in grigi o ha zone da colorare; con sprite già colorati si distingue la squadra con un anello/bandierina sotto la pedina.
+
+**Pacchetti Kenney più vicini a questo stile** (tutti CC0, 16x16, dall'alto a 3/4; ho visto le immagini di esempio dei pacchetti):
+
+- `tiny-town` — **il più vicino**: prati, sentieri, alberi (verdi e autunnali), case con tetti rossi e grigi, staccionate, alveari, cartelli, castello, fiori e personaggi. Base consigliata per l'esterno.
+- `tiny-dungeon` — interni e sotterranei, eroi, mostri, pozioni, forzieri, spade: oggetti e nemici.
+- `roguelike-rpg-pack` — interni di edifici (pavimenti, mobili, finestre, scale): case ed edifici visitabili.
+- `roguelike-characters` — personaggi componibili (corpo, vestiti, capelli) per avere tante pedine diverse.
+- `rpg-urban-pack` — città moderna (strade, auto, palazzi): fuori tema per un mondo fantasy, ma nello stesso stile.
+- `pixel-ui-pack`, `ui-pack-pixel-adventure` — pannelli, pulsanti e cornici da adattare al riquadro di dialogo e ai menu.
+- I ritratti grandi in stile anime come quello dell'immagine **non esistono** in questi pacchetti: si possono fare con Kitbitz (non è pixel art), con sprite-sheet-creator (originali, da controllare) o disegnarli.
+
 ## Regole d'uso
 
 - **Si possono usare senza chiedere** le risorse **CC0** (pubblico dominio): uso commerciale, modifiche e ridistribuzione consentiti, attribuzione non richiesta. Qui lo sono Kenney e Kitbitz.
@@ -37,7 +65,7 @@ Pacchetti visti, con il link diretto alla pagina (`https://kenney.nl/assets/<nom
 
 Note per l'uso:
 
-- **Non c'è un pacchetto isometrico in pixel art a 32 px** tra quelli visti: gli isometrici di Kenney sono in stile 3D/cartoon ad alta risoluzione (256 o 111 px per tile), quelli in pixel art sono dall'alto. Mescolarli con la grafica attuale (pixel art isometrica 32 px) darebbe due stili nella stessa scena.
+- **Non c'è un pacchetto isometrico in pixel art a 32 px** tra quelli visti: gli isometrici di Kenney sono in stile 3D/cartoon ad alta risoluzione (256 o 111 px per tile), quelli in pixel art sono dall'alto. Con la direzione scelta (vista dall'alto stile Pokémon, sezione sopra) i pacchetti isometrici non servono.
 - Non ho trovato in Kenney esagoni isometrici 2D (i pacchetti con "hex" che conosco sono 3D: da verificare prima di contarci).
 - I pacchetti si scaricano come ZIP dalla pagina del pacchetto (link "Download"); i pochi file che servono si copiano nella cartella del progetto.
 
@@ -70,11 +98,11 @@ Applicazione Next.js dell'utente (`npm run dev`, http://localhost:3000) che gene
 
 | Serve | Miglior candidato | Nota |
 |---|---|---|
-| Terreno delle caselle (erba, pietra, acqua...) | `isometric-blocks` o `isometric-miniature-*` di Kenney | serve il dato terreno per casella e ridimensionare/riprogettare le caselle (oggi 32 px) |
+| Terreno delle caselle (erba, sentiero, acqua, alberi...) | `tiny-town` (esterni) e `roguelike-rpg-pack` (interni) di Kenney | serve il dato terreno per casella e il rendering dall'alto (vedi la sezione sulla direzione) |
 | Icone degli oggetti | `board-game-icons` / `game-icons` / `tiny-dungeon` di Kenney, oppure Kitbitz (Medieval/Dungeon) | oggi sono 7 icone in pixel art in codice (`PixelArt.ItemIcon`); l'icona è un dato per oggetto (`board_items.icon`) |
-| Pedine, NPC | sprite-sheet-creator (originali) oppure i personaggi di `isometric-miniature-dungeon` | le pedine sono tinte per squadra: servono sprite in grigi |
-| Interfaccia (pannelli, pulsanti) | `pixel-ui-pack` / `ui-pack-pixel-adventure` di Kenney | oggi l'interfaccia è IMGUI con lo stile predefinito di Unity |
-| Illustrazioni per lobby e login | Kitbitz | vettoriali, CC0 |
+| Pedine, NPC | `roguelike-characters`, `tiny-town`/`tiny-dungeon` (personaggi 16x16) oppure sprite-sheet-creator (originali) | per la squadra: anello/bandierina colorata sotto la pedina |
+| Interfaccia (pannelli, riquadro di dialogo, pulsanti) | `pixel-ui-pack` / `ui-pack-pixel-adventure` di Kenney | oggi l'interfaccia è IMGUI con lo stile predefinito di Unity: servono uno `GUISkin` con cornici a 9 fette |
+| Illustrazioni per lobby e login, ritratti | Kitbitz (vettoriale, non pixel art) o originali | CC0 |
 | Disegnare mappe a mano | Tiled | dopo il dato terreno |
 
 ## Asset in uso

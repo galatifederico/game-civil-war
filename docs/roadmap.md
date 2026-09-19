@@ -124,4 +124,4 @@ the_game/
 3. Decidere cosa fanno le caratteristiche estese (soldi, alcol, alpha, thc, beatitudine, mana) e come si conquista il territorio: sono le due parti di design ancora aperte.
 4. Build mobile del client Unity (iOS/Android): il codice è pronto per i tocchi e la scala, ma non è mai stata fatta una build.
 5. Cancellazione di un mondo e azzeramento degli obiettivi di mondo dall'app admin.
-6. **Migliorare la grafica**: risorse e vincoli in [risorse-grafiche.md](risorse-grafiche.md) (Kenney e Kitbitz CC0, Tiled, il repo locale sprite-sheet-creator). Serve prima scegliere la direzione dello stile e, per un terreno vario, aggiungere un dato "terreno per casella".
+6. **Migliorare la grafica**, con **stile Pokémon (vista dall'alto a 3/4, caselle da 16 px, riquadro di dialogo con ritratto)** deciso dall'utente il 2026-09-20: risorse, pacchetti CC0 consigliati (Kenney `tiny-town` in testa), vincoli e cosa cambia (rendering ortogonale, board esagonali a righe sfalsate, dato "terreno per casella", dialoghi) sono in [risorse-grafiche.md](risorse-grafiche.md). Prima di toccare il client serve Unity MCP collegato per vedere il risultato.
