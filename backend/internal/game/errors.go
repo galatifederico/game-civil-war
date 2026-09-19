@@ -36,6 +36,7 @@ var (
 	ErrNoEffect       = &Error{"no_effect", "questo oggetto non serve a niente"}
 	ErrIncompatible   = &Error{"incompatible", "le due razze non possono avere figli insieme"}
 	ErrNotRested      = &Error{"not_rested", "una delle due pedine non è ancora pronta a riprodursi"}
+	ErrTargetAFK      = &Error{"target_afk", "la squadra avversaria è assente: non si può attaccare"}
 	ErrGoalDone       = &Error{"goal_done", "il giocatore ha già completato questo obiettivo"}
 	ErrStopped        = errors.New("simulation stopped")
 )

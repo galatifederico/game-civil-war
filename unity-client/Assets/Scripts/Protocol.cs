@@ -64,6 +64,7 @@ public class ScoreData
     public string player_id;
     public string username;
     public int points;
+    public bool afk;
 }
 
 [Serializable]

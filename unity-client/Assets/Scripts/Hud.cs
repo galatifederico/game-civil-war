@@ -132,7 +132,7 @@ public class Hud : MonoBehaviour
         {
             var s = scores[i];
             bool mine = s.player_id == myPlayerId;
-            GUI.Label(new Rect(12f, y, 420f, 20f), $"{i + 1}. {s.username}{(mine ? " (tu)" : "")}  {s.points} pt", mine ? mineScoreStyle : scoreStyle);
+            GUI.Label(new Rect(12f, y, 420f, 20f), $"{i + 1}. {s.username}{(mine ? " (tu)" : "")}{(s.afk ? " (assente)" : "")}  {s.points} pt", mine ? mineScoreStyle : scoreStyle);
             y += 20f;
         }
         if (!string.IsNullOrEmpty(inventoryText))

@@ -95,6 +95,7 @@ type Score struct {
 	PlayerID string `json:"player_id"`
 	Username string `json:"username"`
 	Points   int    `json:"points"`
+	AFK      bool   `json:"afk,omitempty"` // away: no activity for a while
 }
 
 type ClientMessage struct {

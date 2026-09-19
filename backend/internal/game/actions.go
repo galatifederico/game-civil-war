@@ -136,6 +136,9 @@ func (w *World) attack(actor *Entity, targetID string, now time.Time) (*Outcome,
 	if t.Health <= 0 {
 		return nil, ErrTargetDead
 	}
+	if owner := w.players[t.OwnerID]; owner != nil && owner.AFK && w.Rules.AFK.Shield {
+		return nil, ErrTargetAFK
+	}
 	if !w.inRange(actor, t) {
 		return nil, ErrOutOfRange
 	}

@@ -80,6 +80,7 @@ func (l *Loop) Run(ctx context.Context) {
 		close(l.done)
 	}()
 	l.world.ScheduleRespawns(l.now())
+	l.world.StartActivity(l.now())
 
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
@@ -110,7 +111,11 @@ func (l *Loop) guarded(f func()) {
 }
 
 func (l *Loop) tick() {
-	res := l.world.Tick(l.now())
+	now := l.now()
+	if l.world.UpdateAFK(now) {
+		l.sync(nil, true) // the scoreboard shows who is away
+	}
+	res := l.world.Tick(now)
 	if len(res.Revived) == 0 && len(res.Spawned) == 0 {
 		return
 	}
@@ -225,6 +230,13 @@ func (l *Loop) EnsureTeam(ctx context.Context, playerID, username, raceID string
 	})
 }
 
+// touch records that a player did something; if it brings them back from afk everybody's scoreboard changes.
+func (l *Loop) touch(playerID string) {
+	if l.world.Touch(playerID, l.now()) {
+		l.sync(nil, true)
+	}
+}
+
 // AssignGoal is the admin giving a player an individual goal: it replaces the one they had, and
 // the player sees it at once if they are connected.
 func (l *Loop) AssignGoal(playerID, goalID string) error {
@@ -241,6 +253,7 @@ func (l *Loop) AssignGoal(playerID, goalID string) error {
 func (l *Loop) Register(c *Client) {
 	l.do(func() {
 		l.clients[c] = struct{}{}
+		l.touch(c.PlayerID)
 		if ref := l.world.EnsureGoal(c.PlayerID); ref != nil {
 			l.persist(func(ctx context.Context) error { return l.store.AssignGoal(ctx, ref.PlayerID, ref.GoalID) })
 		}
@@ -267,11 +280,13 @@ func (l *Loop) Unregister(c *Client) {
 		if _, ok := l.clients[c]; ok {
 			l.drop(c)
 		}
+		l.touch(c.PlayerID) // being away is counted from the moment they left
 	})
 }
 
 func (l *Loop) Move(c *Client, unitID string, to Point) {
 	l.do(func() {
+		l.touch(c.PlayerID)
 		e, err := l.world.Move(c.PlayerID, unitID, to, l.now())
 		if err != nil {
 			l.sendError(c, err)
@@ -284,6 +299,7 @@ func (l *Loop) Move(c *Client, unitID string, to Point) {
 
 func (l *Loop) Act(c *Client, a Action) {
 	l.do(func() {
+		l.touch(c.PlayerID)
 		out, err := l.world.Do(c.PlayerID, a, l.now())
 		if err != nil {
 			l.sendError(c, err)
@@ -482,7 +498,7 @@ func (l *Loop) scores() []protocol.Score {
 	scores := l.world.Scores()
 	out := make([]protocol.Score, 0, len(scores))
 	for _, s := range scores {
-		out = append(out, protocol.Score{PlayerID: s.PlayerID, Username: s.Username, Points: s.Points})
+		out = append(out, protocol.Score{PlayerID: s.PlayerID, Username: s.Username, Points: s.Points, AFK: s.AFK})
 	}
 	return out
 }

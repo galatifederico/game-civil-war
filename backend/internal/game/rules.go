@@ -46,6 +46,14 @@ type Rules struct {
 	// after each completed one) or "manual" (only the admin assigns them).
 	GoalAssignment string `json:"goal_assignment"`
 
+	// Players who go away (design.md: the world is always on, so absent players must be handled).
+	// A team with no activity for AfterMs (no commands and no connection) is marked afk; with Shield
+	// its units cannot be attacked meanwhile, so nobody is farmed while they sleep. 0 = never afk.
+	AFK struct {
+		AfterMs int  `json:"after_ms"`
+		Shield  bool `json:"shield"`
+	} `json:"afk"`
+
 	CooldownsMs struct {
 		Attack   int `json:"attack"`
 		Pickup   int `json:"pickup"`
@@ -85,6 +93,8 @@ func DefaultRules() Rules {
 	r.Creation.ResourceItems = 2
 	r.Creation.BreedingEnabled = true
 	r.Creation.BreedRange = 1
+	r.AFK.AfterMs = 10 * 60 * 1000
+	r.AFK.Shield = true
 	r.TraitNames = []string{"soldi", "alcol", "alpha", "thc", "beatitudine", "mana"}
 	r.GoalAssignment = "random"
 	r.Points.Hit = 5
@@ -137,6 +147,9 @@ func (r Rules) Validate() error {
 		if v < 0 {
 			problems = append(problems, fmt.Errorf("cooldowns_ms.%s cannot be negative", name))
 		}
+	}
+	if r.AFK.AfterMs < 0 {
+		problems = append(problems, errors.New("afk.after_ms cannot be negative"))
 	}
 	if r.Creation.ResourceItems < 0 || r.Creation.BuildingIntervalMs < 0 {
 		problems = append(problems, errors.New("creation.resource_items and creation.building_interval_ms cannot be negative"))

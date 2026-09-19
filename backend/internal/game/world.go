@@ -170,12 +170,16 @@ type Player struct {
 	CompletedGoals map[string]bool
 	Points         int
 	Inventory      []Item // shared by the whole team
+
+	LastActive time.Time // last command, connection or disconnection (afk.go)
+	AFK        bool      // no activity for Rules.AFK.AfterMs
 }
 
 type Score struct {
 	PlayerID string
 	Username string
 	Points   int
+	AFK      bool
 }
 
 // Board is one zone of the world: a grid of cells. The world is made of several boards that
@@ -358,7 +362,7 @@ func (w *World) Player(id string) *Player { return w.players[id] }
 func (w *World) Scores() []Score {
 	out := make([]Score, 0, len(w.players))
 	for _, p := range w.players {
-		out = append(out, Score{PlayerID: p.ID, Username: p.Username, Points: p.Points})
+		out = append(out, Score{PlayerID: p.ID, Username: p.Username, Points: p.Points, AFK: p.AFK})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Points != out[j].Points {
