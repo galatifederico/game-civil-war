@@ -23,6 +23,7 @@ const (
 
 type Entity struct {
 	ID           string `json:"id"`
+	BoardID      string `json:"board_id"`
 	Kind         string `json:"kind"`
 	OwnerID      string `json:"owner_id"`
 	Name         string `json:"name"`
@@ -39,12 +40,22 @@ type Entity struct {
 	RespawnInMs  int    `json:"respawn_in_ms"`   // for defeated units
 }
 
+// Gateway is a cell of a board that carries whoever steps on it to another board.
+type Gateway struct {
+	X       int    `json:"x"`
+	Y       int    `json:"y"`
+	ToBoard string `json:"to_board"`
+	ToX     int    `json:"to_x"`
+	ToY     int    `json:"to_y"`
+}
+
 type Board struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Width  int    `json:"width"`
-	Height int    `json:"height"`
-	Grid   string `json:"grid"`
+	ID       string    `json:"id"`
+	Name     string    `json:"name"`
+	Width    int       `json:"width"`
+	Height   int       `json:"height"`
+	Grid     string    `json:"grid"` // "square" or "hex"
+	Gateways []Gateway `json:"gateways,omitempty"`
 }
 
 type Item struct {
@@ -72,7 +83,7 @@ type ClientMessage struct {
 // or change as a whole, so "absent" means "unchanged").
 type ServerMessage struct {
 	Type         string   `json:"type"`
-	Board        *Board   `json:"board,omitempty"`
+	Boards       []Board  `json:"boards,omitempty"`
 	YourPlayerID string   `json:"your_player_id,omitempty"`
 	Entities     []Entity `json:"entities,omitempty"`
 	Removed      []string `json:"removed,omitempty"`

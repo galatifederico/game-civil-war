@@ -12,18 +12,18 @@ import (
 
 type noStore struct{}
 
-func (noStore) InsertUnits(context.Context, string, []*Entity) error     { return nil }
-func (noStore) SaveUnit(context.Context, string, int, int, int) error    { return nil }
-func (noStore) InsertStructure(context.Context, string, *Entity) error   { return nil }
-func (noStore) SaveItemPosition(context.Context, string, int, int) error { return nil }
-func (noStore) DeleteItem(context.Context, string) error                 { return nil }
-func (noStore) AddInventory(context.Context, string, Item) error         { return nil }
-func (noStore) AddPoints(context.Context, string, int) error             { return nil }
+func (noStore) InsertUnits(context.Context, []*Entity) error                  { return nil }
+func (noStore) SaveUnit(context.Context, string, string, int, int, int) error { return nil }
+func (noStore) InsertStructure(context.Context, *Entity) error                { return nil }
+func (noStore) SaveItemPosition(context.Context, string, int, int) error      { return nil }
+func (noStore) DeleteItem(context.Context, string) error                      { return nil }
+func (noStore) AddInventory(context.Context, string, Item) error              { return nil }
+func (noStore) AddPoints(context.Context, string, int) error                  { return nil }
 
 // fogWorld: player p1 has a champion at (2,2) (vision 5); p2 has a minor unit at (8,2) (vision 3).
 // An NPC and an item sit near p1, another NPC is far from everyone.
 func fogWorld(t *testing.T) (loop *Loop, advance func(time.Duration), p1, p2 *Client) {
-	board := NewBoard("b", "fog", 30, 30, []*Entity{
+	board := newTestWorld("b", "fog", 30, 30, []*Entity{
 		{ID: "champ", OwnerID: "p1", Kind: KindChampion, Name: "Champion", X: 2, Y: 2, Speed: 3, Health: 200, MaxHealth: 200, Vision: 5, Strength: 30},
 		{ID: "minor", OwnerID: "p2", Kind: KindMinor, Name: "Pedina", X: 8, Y: 2, Speed: 2, Health: 100, MaxHealth: 100, Vision: 3, Strength: 15},
 		{ID: "near", Kind: KindNPC, Name: "Vicino", X: 4, Y: 4, Health: 100, MaxHealth: 100},
@@ -180,7 +180,7 @@ func TestPickingUpAnItemRemovesItOnlyForThoseWhoSawIt(t *testing.T) {
 }
 
 func TestVisibleToRules(t *testing.T) {
-	b := NewBoard("b", "fog", 30, 30, []*Entity{
+	b := newTestWorld("b", "fog", 30, 30, []*Entity{
 		{ID: "champ", OwnerID: "p1", Kind: KindChampion, X: 2, Y: 2, Health: 10, Vision: 5},
 		{ID: "dead", OwnerID: "p1", Kind: KindMinor, X: 20, Y: 20, Health: 0, Vision: 9},
 		{ID: "structure", OwnerID: "p1", Kind: KindStructure, X: 28, Y: 28},

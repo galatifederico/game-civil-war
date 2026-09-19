@@ -11,8 +11,8 @@ var (
 	rules = DefaultRules() // boards built by NewBoard use these unless a test changes them
 )
 
-func testBoard() *Board {
-	return NewBoard("b", "test", 10, 10, []*Entity{
+func testBoard() *World {
+	return newTestWorld("b", "test", 10, 10, []*Entity{
 		{ID: "u1", OwnerID: "p1", Kind: KindMinor, X: 1, Y: 1, Speed: 3, Health: 10, MaxHealth: 10},
 		{ID: "u2", OwnerID: "p2", Kind: KindMinor, X: 5, Y: 5, Speed: 2, Health: 10, MaxHealth: 10},
 		{ID: "u3", OwnerID: "p2", Kind: KindMinor, X: 1, Y: 2, Speed: 2, Health: 10, MaxHealth: 10},
@@ -92,7 +92,7 @@ func TestCooldownScalesWithDistanceOverSpeed(t *testing.T) {
 }
 
 func TestPlanTeam(t *testing.T) {
-	b := NewBoard("b", "test", 24, 24, []*Entity{
+	b := newTestWorld("b", "test", 24, 24, []*Entity{
 		{ID: "npc", Kind: KindNPC, X: 3, Y: 2},
 	})
 	team, err := b.PlanTeam("p1", "Anna")
@@ -122,7 +122,7 @@ func TestPlanTeam(t *testing.T) {
 }
 
 func TestFirstTeamsSpawnOutOfEachOthersSight(t *testing.T) {
-	b := NewBoard("b", "test", 24, 24, nil)
+	b := newTestWorld("b", "test", 24, 24, nil)
 	players := []string{"p0", "p1", "p2", "p3", "p4", "p5"}
 	for _, id := range players {
 		team, err := b.PlanTeam(id, id)
@@ -145,7 +145,7 @@ func TestFirstTeamsSpawnOutOfEachOthersSight(t *testing.T) {
 }
 
 func TestPlanTeamBoardFull(t *testing.T) {
-	b := NewBoard("b", "tiny", 3, 3, nil)
+	b := newTestWorld("b", "tiny", 3, 3, nil)
 	if _, err := b.PlanTeam("p1", "Anna"); err != ErrBoardFull {
 		t.Fatalf("got %v, want ErrBoardFull", err)
 	}

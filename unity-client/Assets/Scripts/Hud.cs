@@ -27,12 +27,34 @@ public class Hud : MonoBehaviour
 
     public event System.Action LogoutClicked;
 
+    string[] boardNames = new string[0];
+    int currentBoard, pendingBoard = -1;
+    System.Action<int> onBoardSelected;
+    Rect tabsRect;
+
     bool logoutVisible;
     Rect logoutRect;
 
     public void SetStatus(string text) => status = text;
 
     public void SetLogoutVisible(bool visible) => logoutVisible = visible;
+
+    // Schede per passare da una board all'altra (solo la vista: le pedine non si spostano).
+    public void SetBoards(string[] names, int current, System.Action<int> onSelect)
+    {
+        boardNames = names;
+        currentBoard = current;
+        onBoardSelected = onSelect;
+    }
+
+    // Si esegue fuori da OnGUI: cambiare board ricostruisce la scena e rifa' le schede.
+    void Update()
+    {
+        if (pendingBoard < 0) return;
+        int i = pendingBoard;
+        pendingBoard = -1;
+        onBoardSelected?.Invoke(i);
+    }
 
     public void SetHint(string text) => hint = text;
 
@@ -72,6 +94,7 @@ public class Hud : MonoBehaviour
     {
         status = hint = eventTitle = eventText = inventoryText = "";
         logoutVisible = false;
+        boardNames = new string[0];
         scores = new ScoreData[0];
         eventUntil = 0f;
         toasts.Clear();
@@ -85,6 +108,7 @@ public class Hud : MonoBehaviour
             var m = Input.mousePosition;
             var p = new Vector2(m.x, Screen.height - m.y);
             if (logoutVisible && logoutRect.Contains(p)) return true;
+            if (boardNames.Length > 1 && tabsRect.Contains(p)) return true;
             return Time.time < eventUntil && eventRect.Contains(p);
         }
     }
@@ -126,8 +150,23 @@ public class Hud : MonoBehaviour
             if (GUI.Button(logoutRect, "Esci", buttonStyle)) LogoutClicked?.Invoke();
         }
 
+        if (boardNames.Length > 1)
+        {
+            const float tabWidth = 110f, tabHeight = 28f;
+            float total = boardNames.Length * tabWidth;
+            tabsRect = new Rect(Screen.width / 2f - total / 2f, 8f, total, tabHeight);
+            for (int i = 0; i < boardNames.Length; i++)
+            {
+                var previous = GUI.backgroundColor;
+                GUI.backgroundColor = i == currentBoard ? new Color(1f, 0.85f, 0.4f) : Color.white;
+                if (GUI.Button(new Rect(tabsRect.x + i * tabWidth, tabsRect.y, tabWidth - 4f, tabHeight), boardNames[i], buttonStyle) && i != currentBoard)
+                    pendingBoard = i;
+                GUI.backgroundColor = previous;
+            }
+        }
+
         if (!string.IsNullOrEmpty(hint))
-            GUI.Label(new Rect(Screen.width / 2f - 220f, 8f, 440f, 26f), hint, hintStyle);
+            GUI.Label(new Rect(Screen.width / 2f - 220f, boardNames.Length > 1 ? 42f : 8f, 440f, 26f), hint, hintStyle);
 
         if (Time.time < eventUntil)
         {

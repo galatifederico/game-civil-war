@@ -73,7 +73,7 @@ func TestPointsMayBeNegative(t *testing.T) {
 
 func TestRulesChangeTheBehaviorOfTheBoard(t *testing.T) {
 	t.Run("team size and stats", func(t *testing.T) {
-		b := NewBoard("b", "test", 24, 24, nil)
+		b := newTestWorld("b", "test", 24, 24, nil)
 		b.Rules.MinorsPerTeam = 3
 		b.Rules.Minor = UnitStats{Speed: 6, Health: 40, Vision: 2, Strength: 9}
 		b.Rules.Champion.Vision = 8

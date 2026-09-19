@@ -20,6 +20,7 @@ const (
 
 // Action is a command a player gives to one of their units. The target is an entity id
 // (attack, talk, pickup), a cell (build) or both (move_item: which object, to which cell).
+// Cells are always on the acting unit's board.
 type Action struct {
 	Kind     ActionKind
 	UnitID   string
@@ -35,13 +36,13 @@ type Notice struct {
 }
 
 // Outcome is everything that changed because of an action, so the caller can persist and
-// broadcast it. The board has already been updated when an Outcome is returned.
+// broadcast it. The world has already been updated when an Outcome is returned.
 type Outcome struct {
 	Changed    []*Entity // to send to clients
 	Dirty      []*Entity // units whose persisted state (position, health) changed
 	DirtyItems []*Entity // items whose persisted position changed
 	Created    []*Entity // new structures and units to insert
-	Removed    []string  // entity ids that left the board
+	Removed    []string  // entity ids that left the world
 	Picked     *Item     // added to the actor's team inventory
 	Points     int       // awarded to the actor's team
 	Notices    []Notice
@@ -49,8 +50,8 @@ type Outcome struct {
 
 // Do applies an action if the rules allow it. Every action needs a live unit of the player,
 // off cooldown, and (except building on a chosen cell) a target inside the unit's vision.
-func (b *Board) Do(playerID string, a Action, now time.Time) (*Outcome, error) {
-	actor, err := b.ownedUnit(playerID, a.UnitID)
+func (w *World) Do(playerID string, a Action, now time.Time) (*Outcome, error) {
+	actor, err := w.ownedUnit(playerID, a.UnitID)
 	if err != nil {
 		return nil, err
 	}
@@ -61,17 +62,17 @@ func (b *Board) Do(playerID string, a Action, now time.Time) (*Outcome, error) {
 	var out *Outcome
 	switch a.Kind {
 	case ActionAttack:
-		out, err = b.attack(actor, a.TargetID, now)
+		out, err = w.attack(actor, a.TargetID, now)
 	case ActionTalk:
-		out, err = b.talk(actor, a.TargetID)
+		out, err = w.talk(actor, a.TargetID)
 	case ActionPickup:
-		out, err = b.pickup(actor, a.TargetID, now)
+		out, err = w.pickup(actor, a.TargetID, now)
 	case ActionBuild:
-		out, err = b.build(actor, a.At, now)
+		out, err = w.build(actor, a.At, now)
 	case ActionCreate:
-		out, err = b.create(actor, now)
+		out, err = w.create(actor, now)
 	case ActionMoveItem:
-		out, err = b.moveItem(actor, a.TargetID, a.At, now)
+		out, err = w.moveItem(actor, a.TargetID, a.At, now)
 	default:
 		return nil, ErrUnknownAction
 	}
@@ -79,25 +80,31 @@ func (b *Board) Do(playerID string, a Action, now time.Time) (*Outcome, error) {
 		return nil, err
 	}
 	if out.Points != 0 {
-		b.EnsurePlayer(actor.OwnerID, "", 0).Points += out.Points
+		w.EnsurePlayer(actor.OwnerID, "", 0).Points += out.Points
 	}
 	return out, nil
 }
 
-func (b *Board) target(id string) (*Entity, error) {
-	t, ok := b.entities[id]
+func (w *World) target(id string) (*Entity, error) {
+	t, ok := w.entities[id]
 	if !ok {
 		return nil, ErrNoTarget
 	}
 	return t, nil
 }
 
-func inRange(actor, t *Entity) bool {
-	return distance(Point{actor.X, actor.Y}, Point{t.X, t.Y}) <= actor.Vision
+// inRange: the target is on the actor's board and within the actor's vision.
+func (w *World) inRange(actor, t *Entity) bool {
+	return actor.BoardID == t.BoardID && w.boards[actor.BoardID].Grid.Distance(actor.Point(), t.Point()) <= actor.Vision
 }
 
-func (b *Board) attack(actor *Entity, targetID string, now time.Time) (*Outcome, error) {
-	t, err := b.target(targetID)
+// cellInRange is inRange for a cell of the actor's board.
+func (w *World) cellInRange(actor *Entity, p Point) bool {
+	return w.boards[actor.BoardID].Grid.Distance(actor.Point(), p) <= actor.Vision
+}
+
+func (w *World) attack(actor *Entity, targetID string, now time.Time) (*Outcome, error) {
+	t, err := w.target(targetID)
 	if err != nil {
 		return nil, err
 	}
@@ -107,37 +114,37 @@ func (b *Board) attack(actor *Entity, targetID string, now time.Time) (*Outcome,
 	if t.Health <= 0 {
 		return nil, ErrTargetDead
 	}
-	if !inRange(actor, t) {
+	if !w.inRange(actor, t) {
 		return nil, ErrOutOfRange
 	}
 
 	t.Health = max(0, t.Health-max(actor.Strength, 1))
-	actor.ActReadyAt = now.Add(b.Rules.AttackCooldown())
-	out := &Outcome{Changed: []*Entity{t, actor}, Dirty: []*Entity{t}, Points: b.Rules.Points.Hit}
+	actor.ActReadyAt = now.Add(w.Rules.AttackCooldown())
+	out := &Outcome{Changed: []*Entity{t, actor}, Dirty: []*Entity{t}, Points: w.Rules.Points.Hit}
 	if t.Health == 0 {
-		t.RespawnAt = now.Add(b.Rules.RespawnDelay())
+		t.RespawnAt = now.Add(w.Rules.RespawnDelay())
 		if t.Kind == KindChampion {
-			out.Points += b.Rules.Points.KillChampion
+			out.Points += w.Rules.Points.KillChampion
 		} else {
-			out.Points += b.Rules.Points.KillMinor
+			out.Points += w.Rules.Points.KillMinor
 		}
 		out.Notices = []Notice{
 			{actor.OwnerID, "Nemico sconfitto", fmt.Sprintf("Hai sconfitto %s.", t.Name)},
-			{t.OwnerID, "Pedina sconfitta", fmt.Sprintf("%s è fuori gioco per %d secondi.", t.Name, int(b.Rules.RespawnDelay().Seconds()))},
+			{t.OwnerID, "Pedina sconfitta", fmt.Sprintf("%s è fuori gioco per %d secondi.", t.Name, int(w.Rules.RespawnDelay().Seconds()))},
 		}
 	}
 	return out, nil
 }
 
-func (b *Board) talk(actor *Entity, targetID string) (*Outcome, error) {
-	t, err := b.target(targetID)
+func (w *World) talk(actor *Entity, targetID string) (*Outcome, error) {
+	t, err := w.target(targetID)
 	if err != nil {
 		return nil, err
 	}
 	if t.Kind != KindNPC {
 		return nil, ErrInvalidTarget
 	}
-	if !inRange(actor, t) {
+	if !w.inRange(actor, t) {
 		return nil, ErrOutOfRange
 	}
 	text := "Ti guarda in silenzio."
@@ -147,145 +154,131 @@ func (b *Board) talk(actor *Entity, targetID string) (*Outcome, error) {
 	return &Outcome{Notices: []Notice{{actor.OwnerID, t.Name, text}}}, nil
 }
 
-func (b *Board) pickup(actor *Entity, targetID string, now time.Time) (*Outcome, error) {
-	t, err := b.target(targetID)
+func (w *World) pickup(actor *Entity, targetID string, now time.Time) (*Outcome, error) {
+	t, err := w.target(targetID)
 	if err != nil {
 		return nil, err
 	}
 	if t.Kind != KindItem {
 		return nil, ErrInvalidTarget
 	}
-	if !inRange(actor, t) {
+	if !w.inRange(actor, t) {
 		return nil, ErrOutOfRange
 	}
 
 	// The item goes straight into the shared team inventory, however far the champion is.
 	item := Item{Name: t.Name, Description: t.Description}
-	team := b.EnsurePlayer(actor.OwnerID, "", 0)
+	team := w.EnsurePlayer(actor.OwnerID, "", 0)
 	team.Inventory = append(team.Inventory, item)
-	b.remove(t)
-	actor.ActReadyAt = now.Add(b.Rules.PickupCooldown())
+	w.remove(t)
+	actor.ActReadyAt = now.Add(w.Rules.PickupCooldown())
 	return &Outcome{
 		Changed: []*Entity{actor},
 		Removed: []string{t.ID},
 		Picked:  &item,
-		Points:  b.Rules.Points.Pickup,
+		Points:  w.Rules.Points.Pickup,
 		Notices: []Notice{{actor.OwnerID, "Oggetto raccolto", fmt.Sprintf("%s è nell'inventario della squadra.", t.Name)}},
 	}, nil
 }
 
 // build puts a structure on a free cell within the actor's vision: that cell becomes the
 // team's territory (design.md: territory is conquered by building, not by standing there).
-func (b *Board) build(actor *Entity, at Point, now time.Time) (*Outcome, error) {
-	if !b.inBounds(at) {
+func (w *World) build(actor *Entity, at Point, now time.Time) (*Outcome, error) {
+	board := w.boards[actor.BoardID]
+	if !board.InBounds(at) {
 		return nil, ErrOutOfBounds
 	}
-	if _, taken := b.cells[at]; taken {
+	if w.blocked(Cell{actor.BoardID, at.X, at.Y}) {
 		return nil, ErrOccupied
 	}
-	if distance(Point{actor.X, actor.Y}, at) > actor.Vision {
+	if !w.cellInRange(actor, at) {
 		return nil, ErrOutOfRange
 	}
 
-	owner := b.EnsurePlayer(actor.OwnerID, "", 0)
+	owner := w.EnsurePlayer(actor.OwnerID, "", 0)
 	s := &Entity{
-		ID: newID(), OwnerID: actor.OwnerID, Kind: KindStructure, Name: "Avamposto",
+		ID: newID(), BoardID: actor.BoardID, OwnerID: actor.OwnerID, Kind: KindStructure, Name: "Avamposto",
 		Description: fmt.Sprintf("Un avamposto di %s: questa casella è territorio della sua squadra.", owner.Username),
 		X:           at.X, Y: at.Y,
 	}
-	b.Add(s)
-	actor.ActReadyAt = now.Add(b.Rules.BuildCooldown())
+	w.Add(s)
+	actor.ActReadyAt = now.Add(w.Rules.BuildCooldown())
 	return &Outcome{
 		Changed: []*Entity{s, actor},
 		Created: []*Entity{s},
-		Points:  b.Rules.Points.Build,
+		Points:  w.Rules.Points.Build,
 	}, nil
 }
 
 // create makes a new minor unit on a free cell next to the champion, paid with the champion's health.
-func (b *Board) create(actor *Entity, now time.Time) (*Outcome, error) {
+func (w *World) create(actor *Entity, now time.Time) (*Outcome, error) {
 	if actor.Kind != KindChampion {
 		return nil, ErrChampionOnly
 	}
-	if actor.Health <= b.Rules.CreateHealthCost {
+	if actor.Health <= w.Rules.CreateHealthCost {
 		return nil, ErrTooWeak
 	}
-	spot, ok := b.freeNeighbor(Point{actor.X, actor.Y})
+	spot, ok := w.freeNeighbor(actor.Cell())
 	if !ok {
 		return nil, ErrNoSpace
 	}
 
 	minors := 0
-	for _, e := range b.entities {
+	for _, e := range w.entities {
 		if e.OwnerID == actor.OwnerID && e.Kind == KindMinor {
 			minors++
 		}
 	}
-	owner := b.EnsurePlayer(actor.OwnerID, "", 0)
+	owner := w.EnsurePlayer(actor.OwnerID, "", 0)
 	u := &Entity{
-		ID: newID(), OwnerID: actor.OwnerID, Kind: KindMinor, Name: fmt.Sprintf("Pedina %d", minors+1),
+		ID: newID(), BoardID: spot.Board, OwnerID: actor.OwnerID, Kind: KindMinor, Name: fmt.Sprintf("Pedina %d", minors+1),
 		Description: fmt.Sprintf("Una fedele pedina della squadra di %s.", owner.Username),
 		X:           spot.X, Y: spot.Y,
-		Speed: b.Rules.Minor.Speed, Health: b.Rules.Minor.Health, MaxHealth: b.Rules.Minor.Health,
-		Vision: b.Rules.Minor.Vision, Strength: b.Rules.Minor.Strength,
+		Speed: w.Rules.Minor.Speed, Health: w.Rules.Minor.Health, MaxHealth: w.Rules.Minor.Health,
+		Vision: w.Rules.Minor.Vision, Strength: w.Rules.Minor.Strength,
 	}
-	b.Add(u)
-	actor.Health -= b.Rules.CreateHealthCost
-	actor.ActReadyAt = now.Add(b.Rules.CreateCooldown())
+	w.Add(u)
+	actor.Health -= w.Rules.CreateHealthCost
+	actor.ActReadyAt = now.Add(w.Rules.CreateCooldown())
 	return &Outcome{
 		Changed: []*Entity{u, actor},
 		Dirty:   []*Entity{actor},
 		Created: []*Entity{u},
-		Points:  b.Rules.Points.Create,
-		Notices: []Notice{{actor.OwnerID, "Nuova pedina", fmt.Sprintf("%s si è unita alla squadra (il campione perde %d vita).", u.Name, b.Rules.CreateHealthCost)}},
+		Points:  w.Rules.Points.Create,
+		Notices: []Notice{{actor.OwnerID, "Nuova pedina", fmt.Sprintf("%s si è unita alla squadra (il campione perde %d vita).", u.Name, w.Rules.CreateHealthCost)}},
 	}, nil
-}
-
-func (b *Board) freeNeighbor(p Point) (Point, bool) {
-	for dy := -1; dy <= 1; dy++ {
-		for dx := -1; dx <= 1; dx++ {
-			c := Point{p.X + dx, p.Y + dy}
-			if c == p || !b.inBounds(c) {
-				continue
-			}
-			if _, taken := b.cells[c]; !taken {
-				return c, true
-			}
-		}
-	}
-	return Point{}, false
 }
 
 // moveItem pushes an object to a free cell. Both the object and the destination must be
 // within the unit's vision.
-func (b *Board) moveItem(actor *Entity, targetID string, to Point, now time.Time) (*Outcome, error) {
-	t, err := b.target(targetID)
+func (w *World) moveItem(actor *Entity, targetID string, to Point, now time.Time) (*Outcome, error) {
+	t, err := w.target(targetID)
 	if err != nil {
 		return nil, err
 	}
 	if t.Kind != KindItem {
 		return nil, ErrInvalidTarget
 	}
-	if !inRange(actor, t) {
+	if !w.inRange(actor, t) {
 		return nil, ErrOutOfRange
 	}
-	if !b.inBounds(to) {
+	if !w.boards[t.BoardID].InBounds(to) {
 		return nil, ErrOutOfBounds
 	}
-	from := Point{t.X, t.Y}
-	if to == from {
+	if to == t.Point() {
 		return nil, ErrSameCell
 	}
-	if _, taken := b.cells[to]; taken {
+	dest := Cell{t.BoardID, to.X, to.Y}
+	if w.blocked(dest) {
 		return nil, ErrOccupied
 	}
-	if distance(Point{actor.X, actor.Y}, to) > actor.Vision {
+	if !w.cellInRange(actor, to) {
 		return nil, ErrOutOfRange
 	}
 
-	delete(b.cells, from)
-	b.cells[to] = t.ID
+	delete(w.cells, t.Cell())
+	w.cells[dest] = t.ID
 	t.X, t.Y = to.X, to.Y
-	actor.ActReadyAt = now.Add(b.Rules.MoveItemCooldown())
+	actor.ActReadyAt = now.Add(w.Rules.MoveItemCooldown())
 	return &Outcome{Changed: []*Entity{t, actor}, DirtyItems: []*Entity{t}}, nil
 }

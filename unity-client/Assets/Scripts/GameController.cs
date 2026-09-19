@@ -22,7 +22,6 @@ public class GameController : MonoBehaviour
     void Awake()
     {
         var cam = SetupCamera();
-        SetupLight();
 
         net = gameObject.AddComponent<NetworkClient>();
         hud = gameObject.AddComponent<Hud>();
@@ -47,7 +46,7 @@ public class GameController : MonoBehaviour
                 board.LoadSnapshot(message);
                 login.Hide();
                 hud.SetLogoutVisible(true);
-                hud.SetStatus($"{net.Username} - {message.board.name} {message.board.width}x{message.board.height}");
+                hud.SetStatus(net.Username);
                 hud.SetScores(message.scores, message.your_player_id);
                 hud.SetInventory(message.inventory);
                 break;
@@ -103,6 +102,7 @@ public class GameController : MonoBehaviour
         login.Show("");
     }
 
+    // Vista 2D: la camera guarda la scena da davanti; e' BoardManager a inquadrare la board.
     static Camera SetupCamera()
     {
         var camGO = Camera.main != null ? Camera.main.gameObject : new GameObject("Main Camera");
@@ -119,16 +119,8 @@ public class GameController : MonoBehaviour
         cam.orthographicSize = 6f;
         cam.clearFlags = CameraClearFlags.SolidColor;
         cam.backgroundColor = new Color(0.1f, 0.1f, 0.12f);
-        camGO.transform.position = new Vector3(0f, 10f, 0f);
-        camGO.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+        camGO.transform.position = new Vector3(0f, 0f, -10f);
+        camGO.transform.rotation = Quaternion.identity;
         return cam;
-    }
-
-    void SetupLight()
-    {
-        var lightGO = new GameObject("Directional Light");
-        lightGO.transform.SetParent(transform);
-        lightGO.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-        lightGO.AddComponent<Light>().type = LightType.Directional;
     }
 }

@@ -17,13 +17,24 @@ the_game/
 - **M0 — Scaffold**: backend Go che parte, migrazioni, `/healthz`, docker-compose.
 - **M1 — Slice verticale** ✅: register/login (bcrypt + JWT), una board seedata con NPC e oggetti, alla registrazione ogni giocatore riceve la sua squadra (1 campione + 12 pedine), movimento autoritativo via WebSocket con limite di distanza e cooldown (velocità), posizioni persistite su Postgres. Client Unity: login, snapshot, click per muovere le proprie pedine, menu info di ogni pedina.
 - **M2 — Tick loop, azioni a raggio** ✅ (Redis escluso, vedi sotto): attack / pickup / talk / build / create entro la "vista" della pedina; morte e respawn (solo cooldown); punti e classifica; inventario condiviso; nebbia di guerra (anticipata da M4). Manca ancora lo stato caldo su Redis.
-- **M3 — Multi-board e griglie miste**: board contigue di un'unica mappa, esagonale di prova, astrazione `Grid`.
+- **M3 — Multi-board e griglie miste** ✅: board contigue di un'unica mappa collegate da passaggi, board esagonale di prova, astrazione `Grid`.
 - **M4 — Motore regole**: ✅ fondamenta fatte (parametri del mondo come dati, vedi "Stato attuale"); da fare razze, compatibilità, altre regole di creazione pedine, riproduzione, inventario condiviso (solo campione).
 - **M5 — Obiettivi, punteggio, condizioni di vittoria.**
 - **M6 — Admin web app** (`admin-web/`) e lobby mondi lato giocatore.
 - **M7 — Hardening**: riconnessione/afk (riconnessione automatica del client ✅), grafica 2D isometrica pixel art vera, Cloudflare Tunnel.
 
 ## Stato attuale
+
+**M3 (multi-board e griglie miste), fatta dopo M2:**
+
+- `game.World` è il mondo intero (regole, board, entità, giocatori); `game.Board` è una zona (id, dimensioni, `Grid`). Il vecchio `game.Board` si chiamava così ma era l'intero stato: rinominato `World` come nel concept ("la board è composta da diverse board").
+- `game.Grid` (`grid.go`): `SquareGrid` (8 vicini, distanza di Chebyshev) ed `HexGrid` (coordinate offset "odd-r", 6 vicini, distanza esagonale). Movimento, portata, vista e "casella accanto" passano tutti dalla griglia della board dell'unità, quindi le regole valgono uguali su qualunque forma.
+- **Passaggi (gateway)**: una casella `board_links(from → to)` porta chi ci mette piede alla casella di destinazione, di solito su un'altra board (un passaggio a due sensi sono due righe). Nessuno resta sul passaggio; se la casella di arrivo è occupata il passaggio è bloccato (`gateway_blocked`); su un passaggio non si costruisce, non si spinge un oggetto e non nascono squadre o nuove pedine. La distanza percorsa conta per il cooldown come una mossa normale.
+- Portata, attacchi, parlare, raccogliere e vista **non attraversano** le board: un bersaglio su un'altra board è fuori portata anche alle stesse coordinate.
+- Le squadre nascono sulla prima board (`boards.position = 0`). Un solo `Loop` (una goroutine) possiede tutte le board del mondo: niente trasferimenti tra goroutine, che si potranno introdurre per board se il carico lo richiederà.
+- Mondo di prova: Piazza (quadrata 24x24) ↔ Bosco (quadrata 20x16) ↔ Alveare (esagonale 12x12), 16 collegamenti (migrazione `0004`), con NPC e oggetti nelle board nuove.
+- Protocollo: lo snapshot ha `boards` (con `grid` e `gateways`) al posto di `board`; ogni entità ha `board_id`.
+- **Client Unity, nuovo rendering (anticipa la grafica di M7)**: vista **2D isometrica in pixel art** disegnata in codice (`PixelArt.cs`, nessun asset da importare): blocchi di terreno rombici o esagonali "schiacciati", pedine come bitmap ASCII colorate per squadra, ombre, anello di selezione, portali viola. `GridMath.cs` converte cella↔scena per entrambe le griglie ed è ciò che decide dove cade un clic (niente collider). Schede in alto per cambiare board; la vista segue la pedina selezionata quando attraversa un passaggio; portata evidenziata sulle caselle (funziona anche sull'esagonale); nebbia come scurimento delle caselle. Sui display larghi la fascia destra è riservata al menu.
 
 **M0, M1 e M2 completati e verificati end-to-end** (client Unity vero contro backend e Postgres veri; test Go di regole, loop e integrazione con due giocatori):
 

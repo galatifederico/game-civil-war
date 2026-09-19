@@ -39,13 +39,13 @@ func run() error {
 	if err := st.Migrate(ctx); err != nil {
 		return err
 	}
-	board, err := st.LoadDefaultBoard(ctx)
+	world, err := st.LoadWorld(ctx)
 	if err != nil {
 		return err
 	}
-	log.Printf("board %q %dx%d loaded", board.Name, board.Width, board.Height)
+	log.Printf("world %q loaded with %d boards", world.Name, len(world.Boards()))
 
-	loop := game.NewLoop(board, st)
+	loop := game.NewLoop(world, st)
 	go loop.Run(ctx)
 
 	srv := &http.Server{

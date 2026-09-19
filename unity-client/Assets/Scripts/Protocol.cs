@@ -7,6 +7,7 @@ using System;
 public class EntityData
 {
     public string id;
+    public string board_id;
     public string kind;
     public string owner_id;
     public string name;
@@ -39,6 +40,16 @@ public class ScoreData
 }
 
 [Serializable]
+public class GatewayData
+{
+    public int x;
+    public int y;
+    public string to_board;
+    public int to_x;
+    public int to_y;
+}
+
+[Serializable]
 public class BoardData
 {
     public string id;
@@ -46,6 +57,7 @@ public class BoardData
     public string grid;
     public int width;
     public int height;
+    public GatewayData[] gateways;
 }
 
 [Serializable]
@@ -56,7 +68,7 @@ public class ServerMessage
     public string code;
     public string title;
     public string message;
-    public BoardData board;
+    public BoardData[] boards;
     public EntityData[] entities;
     public string[] removed;
     public ScoreData[] scores;

@@ -13,9 +13,9 @@ const tickInterval = 250 * time.Millisecond
 
 // Persister is what the simulation needs from the database.
 type Persister interface {
-	InsertUnits(ctx context.Context, boardID string, units []*Entity) error
-	SaveUnit(ctx context.Context, id string, x, y, health int) error
-	InsertStructure(ctx context.Context, boardID string, s *Entity) error
+	InsertUnits(ctx context.Context, units []*Entity) error
+	SaveUnit(ctx context.Context, id, boardID string, x, y, health int) error
+	InsertStructure(ctx context.Context, s *Entity) error
 	SaveItemPosition(ctx context.Context, id string, x, y int) error
 	DeleteItem(ctx context.Context, id string) error
 	AddInventory(ctx context.Context, playerID string, item Item) error
@@ -28,11 +28,11 @@ type Client struct {
 	Send     chan []byte
 }
 
-// Loop owns the board: every read and write of its state happens in the Run goroutine,
+// Loop owns the world: every read and write of its state happens in the Run goroutine,
 // so the rules need no locking. Other goroutines talk to it through do/call. Database writes
 // are queued and executed in order by a separate worker, so they never block the simulation.
 type Loop struct {
-	board   *Board
+	world   *World
 	store   Persister
 	cmds    chan func()
 	clients map[*Client]struct{}
@@ -42,9 +42,9 @@ type Loop struct {
 	done    chan struct{}
 }
 
-func NewLoop(board *Board, store Persister) *Loop {
+func NewLoop(world *World, store Persister) *Loop {
 	return &Loop{
-		board:   board,
+		world:   world,
 		store:   store,
 		cmds:    make(chan func(), 256),
 		clients: map[*Client]struct{}{},
@@ -58,7 +58,7 @@ func NewLoop(board *Board, store Persister) *Loop {
 func (l *Loop) Run(ctx context.Context) {
 	defer close(l.done)
 	go l.writeWorker(ctx)
-	l.board.ScheduleRespawns(l.now())
+	l.world.ScheduleRespawns(l.now())
 
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
@@ -78,7 +78,7 @@ func (l *Loop) Run(ctx context.Context) {
 }
 
 func (l *Loop) tick() {
-	revived := l.board.Tick(l.now())
+	revived := l.world.Tick(l.now())
 	if len(revived) == 0 {
 		return
 	}
@@ -111,8 +111,8 @@ func (l *Loop) persist(write func(context.Context) error) {
 }
 
 func (l *Loop) saveUnit(e *Entity) {
-	id, x, y, health := e.ID, e.X, e.Y, e.Health
-	l.persist(func(ctx context.Context) error { return l.store.SaveUnit(ctx, id, x, y, health) })
+	id, boardID, x, y, health := e.ID, e.BoardID, e.X, e.Y, e.Health
+	l.persist(func(ctx context.Context) error { return l.store.SaveUnit(ctx, id, boardID, x, y, health) })
 }
 
 func (l *Loop) do(f func()) bool {
@@ -140,19 +140,19 @@ func (l *Loop) call(f func() error) error {
 // EnsureTeam creates the player's team the first time it is needed; later calls do nothing.
 func (l *Loop) EnsureTeam(ctx context.Context, playerID, username string) error {
 	return l.call(func() error {
-		if l.board.HasUnitsOf(playerID) {
+		if l.world.HasUnitsOf(playerID) {
 			return nil
 		}
-		team, err := l.board.PlanTeam(playerID, username)
+		team, err := l.world.PlanTeam(playerID, username)
 		if err != nil {
 			return err
 		}
-		if err := l.store.InsertUnits(ctx, l.board.ID, team); err != nil {
+		if err := l.store.InsertUnits(ctx, team); err != nil {
 			return err
 		}
-		l.board.EnsurePlayer(playerID, username, 0)
+		l.world.EnsurePlayer(playerID, username, 0)
 		for _, e := range team {
-			l.board.Add(e)
+			l.world.Add(e)
 		}
 		l.sync(team, true)
 		return nil
@@ -162,17 +162,15 @@ func (l *Loop) EnsureTeam(ctx context.Context, playerID, username string) error 
 func (l *Loop) Register(c *Client) {
 	l.do(func() {
 		l.clients[c] = struct{}{}
-		visible := l.board.VisibleTo(c.PlayerID)
+		visible := l.world.VisibleTo(c.PlayerID)
 		l.seen[c.PlayerID] = visible
 		entities := make([]*Entity, 0, len(visible))
 		for id := range visible {
-			entities = append(entities, l.board.entities[id])
+			entities = append(entities, l.world.entities[id])
 		}
 		l.send(c, protocol.ServerMessage{
-			Type: protocol.TypeSnapshot,
-			Board: &protocol.Board{
-				ID: l.board.ID, Name: l.board.Name, Width: l.board.Width, Height: l.board.Height, Grid: "square",
-			},
+			Type:         protocol.TypeSnapshot,
+			Boards:       l.boardDTOs(),
 			YourPlayerID: c.PlayerID,
 			Entities:     l.dtos(entities),
 			Scores:       l.scores(),
@@ -191,7 +189,7 @@ func (l *Loop) Unregister(c *Client) {
 
 func (l *Loop) Move(c *Client, unitID string, to Point) {
 	l.do(func() {
-		e, err := l.board.Move(c.PlayerID, unitID, to, l.now())
+		e, err := l.world.Move(c.PlayerID, unitID, to, l.now())
 		if err != nil {
 			l.sendError(c, err)
 			return
@@ -203,7 +201,7 @@ func (l *Loop) Move(c *Client, unitID string, to Point) {
 
 func (l *Loop) Act(c *Client, a Action) {
 	l.do(func() {
-		out, err := l.board.Do(c.PlayerID, a, l.now())
+		out, err := l.world.Do(c.PlayerID, a, l.now())
 		if err != nil {
 			l.sendError(c, err)
 			return
@@ -225,9 +223,9 @@ func (l *Loop) publish(playerID string, out *Outcome) {
 		// The worker runs concurrently: give it a copy, never the live entity.
 		e := *created
 		if e.Kind == KindStructure {
-			l.persist(func(ctx context.Context) error { return l.store.InsertStructure(ctx, l.board.ID, &e) })
+			l.persist(func(ctx context.Context) error { return l.store.InsertStructure(ctx, &e) })
 		} else {
-			l.persist(func(ctx context.Context) error { return l.store.InsertUnits(ctx, l.board.ID, []*Entity{&e}) })
+			l.persist(func(ctx context.Context) error { return l.store.InsertUnits(ctx, []*Entity{&e}) })
 		}
 	}
 	for _, id := range out.Removed {
@@ -263,13 +261,13 @@ func (l *Loop) sync(changed []*Entity, withScores bool) {
 		changedByID[e.ID] = e
 	}
 	for _, playerID := range l.connectedPlayers() {
-		visible := l.board.VisibleTo(playerID)
+		visible := l.world.VisibleTo(playerID)
 		before := l.seen[playerID]
 
 		var send []*Entity
 		for id := range visible {
 			if _, had := before[id]; !had {
-				send = append(send, l.board.entities[id])
+				send = append(send, l.world.entities[id])
 			} else if e, ok := changedByID[id]; ok {
 				send = append(send, e)
 			}
@@ -305,13 +303,26 @@ func (l *Loop) connectedPlayers() []string {
 	return out
 }
 
+func (l *Loop) boardDTOs() []protocol.Board {
+	boards := l.world.Boards()
+	out := make([]protocol.Board, 0, len(boards))
+	for _, b := range boards {
+		dto := protocol.Board{ID: b.ID, Name: b.Name, Width: b.Width, Height: b.Height, Grid: b.Grid.Kind()}
+		for _, g := range l.world.Gateways(b.ID) {
+			dto.Gateways = append(dto.Gateways, protocol.Gateway{X: g.At.X, Y: g.At.Y, ToBoard: g.To.Board, ToX: g.To.X, ToY: g.To.Y})
+		}
+		out = append(out, dto)
+	}
+	return out
+}
+
 func (l *Loop) dtos(entities []*Entity) []protocol.Entity {
 	now := l.now()
 	untilMs := func(t time.Time) int { return max(0, int(t.Sub(now).Milliseconds())) }
 	out := make([]protocol.Entity, 0, len(entities))
 	for _, e := range entities {
 		out = append(out, protocol.Entity{
-			ID: e.ID, Kind: string(e.Kind), OwnerID: e.OwnerID, Name: e.Name, Description: e.Description,
+			ID: e.ID, BoardID: e.BoardID, Kind: string(e.Kind), OwnerID: e.OwnerID, Name: e.Name, Description: e.Description,
 			X: e.X, Y: e.Y, Speed: e.Speed, Health: e.Health, MaxHealth: e.MaxHealth,
 			Vision: e.Vision, Strength: e.Strength,
 			ReadyInMs: untilMs(e.ReadyAt), ActReadyInMs: untilMs(e.ActReadyAt), RespawnInMs: untilMs(e.RespawnAt),
@@ -321,7 +332,7 @@ func (l *Loop) dtos(entities []*Entity) []protocol.Entity {
 }
 
 func (l *Loop) scores() []protocol.Score {
-	scores := l.board.Scores()
+	scores := l.world.Scores()
 	out := make([]protocol.Score, 0, len(scores))
 	for _, s := range scores {
 		out = append(out, protocol.Score{PlayerID: s.PlayerID, Username: s.Username, Points: s.Points})
@@ -330,7 +341,7 @@ func (l *Loop) scores() []protocol.Score {
 }
 
 func (l *Loop) inventory(playerID string) []protocol.Item {
-	p := l.board.Player(playerID)
+	p := l.world.Player(playerID)
 	if p == nil {
 		return nil
 	}

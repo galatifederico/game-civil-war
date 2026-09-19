@@ -91,8 +91,8 @@ func newDB(t *testing.T, setup ...string) *env {
 	}
 	t.Cleanup(func() { e.db.Close(context.Background()) })
 	queries := append([]string{
-		`INSERT INTO units (board_id, kind, name, x, y, speed, dialogue) SELECT id, 'npc', 'Test NPC', 3, 6, 0, 'ciao' FROM boards`,
-		`INSERT INTO board_items (board_id, name, x, y) SELECT id, 'Test Item', 4, 6 FROM boards`,
+		`INSERT INTO units (board_id, kind, name, x, y, speed, dialogue) SELECT id, 'npc', 'Test NPC', 3, 6, 0, 'ciao' FROM boards WHERE name = 'Piazza'`,
+		`INSERT INTO board_items (board_id, name, x, y) SELECT id, 'Test Item', 4, 6 FROM boards WHERE name = 'Piazza'`,
 	}, setup...)
 	for _, q := range queries {
 		if _, err := e.db.Exec(ctx, q); err != nil {
@@ -103,7 +103,7 @@ func newDB(t *testing.T, setup ...string) *env {
 }
 
 func (e *env) startServer() {
-	board, err := e.store.LoadDefaultBoard(e.ctx)
+	board, err := e.store.LoadWorld(e.ctx)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -285,7 +285,7 @@ func TestGameplayAndPersistence(t *testing.T) {
 	tokA, idA := e.register("a@test.io", "Alice")
 	a := e.dial(tokA)
 	snap := a.expect("snapshot", ofType(protocol.TypeSnapshot))
-	if snap.YourPlayerID != idA || snap.Board == nil || snap.Board.Width == 0 {
+	if snap.YourPlayerID != idA || len(snap.Boards) != 3 || snap.Boards[0].Width == 0 {
 		t.Fatalf("bad snapshot: %+v", snap)
 	}
 
@@ -410,7 +410,7 @@ func TestGameplayAndPersistence(t *testing.T) {
 	}
 
 	// A "restarted" server loads the same world back.
-	board, err := e.store.LoadDefaultBoard(e.ctx)
+	board, err := e.store.LoadWorld(e.ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,9 +465,69 @@ func TestInvalidWorldRulesAreRefusedWhenLoading(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newDB(t, fmt.Sprintf(`UPDATE worlds SET rules = '%s'`, rules))
-			if _, err := e.store.LoadDefaultBoard(e.ctx); err == nil || !strings.Contains(err.Error(), "world rules") {
+			if _, err := e.store.LoadWorld(e.ctx); err == nil || !strings.Contains(err.Error(), "world rules") {
 				t.Fatalf("expected a world rules error, got %v", err)
 			}
 		})
+	}
+}
+
+func TestMultiBoardWorldFromTheDatabase(t *testing.T) {
+	e := newEnv(t)
+	world, err := e.store.LoadWorld(e.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	boards := world.Boards()
+	var names []string
+	kinds := map[string]string{}
+	for _, b := range boards {
+		names = append(names, b.Name)
+		kinds[b.Name] = b.Grid.Kind()
+	}
+	if strings.Join(names, ",") != "Piazza,Bosco,Alveare" {
+		t.Fatalf("boards = %v, want Piazza first (the spawn board), then Bosco and Alveare", names)
+	}
+	if kinds["Piazza"] != "square" || kinds["Bosco"] != "square" || kinds["Alveare"] != "hex" {
+		t.Fatalf("grids = %v", kinds)
+	}
+	for _, b := range boards {
+		if len(world.Gateways(b.ID)) != 4 && b.Name != "Bosco" {
+			t.Fatalf("%s has %d gateways, want 4", b.Name, len(world.Gateways(b.ID)))
+		}
+	}
+
+	// The gateways reach the client in the snapshot.
+	token, _ := e.register("a@test.io", "Alice")
+	snap := e.dial(token).expect("snapshot", ofType(protocol.TypeSnapshot))
+	if len(snap.Boards) != 3 || len(snap.Boards[0].Gateways) != 4 || snap.Boards[2].Grid != "hex" {
+		t.Fatalf("snapshot boards = %+v", snap.Boards)
+	}
+	if g := snap.Boards[0].Gateways[0]; g.X != 23 || g.ToBoard != snap.Boards[1].ID || g.ToX != 1 {
+		t.Fatalf("first gateway of the Piazza = %+v, want a gateway on the east edge leading to the Bosco", g)
+	}
+
+	// A unit that changes board keeps it after the world is reloaded.
+	var npcID, hexID string
+	if err := e.db.QueryRow(e.ctx, `SELECT id::text FROM units WHERE name = 'Boscaiolo'`).Scan(&npcID); err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range boards {
+		if b.Name == "Alveare" {
+			hexID = b.ID
+		}
+	}
+	if err := e.store.SaveUnit(e.ctx, npcID, hexID, 5, 5, 100); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := e.store.LoadWorld(e.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, en := range reloaded.All() {
+		if en.ID == npcID && (en.BoardID != hexID || en.X != 5) {
+			t.Fatalf("unit reloaded on board %s at %d, want the Alveare", en.BoardID, en.X)
+		}
 	}
 }

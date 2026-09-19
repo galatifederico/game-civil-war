@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-func actionBoard() *Board {
-	b := NewBoard("b", "test", 20, 20, []*Entity{
+func actionBoard() *World {
+	b := newTestWorld("b", "test", 20, 20, []*Entity{
 		{ID: "champ", OwnerID: "p1", Kind: KindChampion, Name: "Champion", X: 5, Y: 5, Speed: 3, Health: 200, MaxHealth: 200, Vision: 5, Strength: 30},
 		{ID: "minor", OwnerID: "p1", Kind: KindMinor, Name: "Pedina 1", X: 6, Y: 5, Speed: 2, Health: 100, MaxHealth: 100, Vision: 3, Strength: 15},
 		{ID: "enemy", OwnerID: "p2", Kind: KindMinor, Name: "Pedina nemica", X: 8, Y: 5, Speed: 2, Health: 100, MaxHealth: 100, Vision: 3, Strength: 15},
@@ -94,7 +94,7 @@ func TestKillingAChampionIsWorthMore(t *testing.T) {
 func TestAttackRules(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*Board)
+		mutate func(*World)
 		player string
 		action Action
 		want   *Error
@@ -105,8 +105,8 @@ func TestAttackRules(t *testing.T) {
 		{"unknown target", nil, "p1", attack("champ", "nope"), ErrNoTarget},
 		{"out of vision", nil, "p1", attack("minor", "far"), ErrOutOfRange},
 		{"not the owner of the attacker", nil, "p2", attack("champ", "enemy"), ErrNotYours},
-		{"target already defeated", func(b *Board) { b.entities["enemy"].Health = 0 }, "p1", attack("champ", "enemy"), ErrTargetDead},
-		{"attacker defeated", func(b *Board) { b.entities["champ"].Health = 0 }, "p1", attack("champ", "enemy"), ErrDead},
+		{"target already defeated", func(b *World) { b.entities["enemy"].Health = 0 }, "p1", attack("champ", "enemy"), ErrTargetDead},
+		{"attacker defeated", func(b *World) { b.entities["champ"].Health = 0 }, "p1", attack("champ", "enemy"), ErrDead},
 		{"unknown action", nil, "p1", Action{Kind: "dance", UnitID: "champ"}, ErrUnknownAction},
 	}
 	for _, tc := range tests {
@@ -247,7 +247,7 @@ func TestCreateUnitCostsTheChampionsHealth(t *testing.T) {
 		t.Fatalf("created = %+v", out.Created)
 	}
 	u := out.Created[0]
-	if distance(Point{u.X, u.Y}, Point{5, 5}) != 1 {
+	if (squareGrid{}).Distance(Point{u.X, u.Y}, Point{5, 5}) != 1 {
 		t.Fatalf("new unit at %d,%d is not next to the champion", u.X, u.Y)
 	}
 	if _, ok := b.entities[u.ID]; !ok {
@@ -290,8 +290,8 @@ func TestCreateUnitRules(t *testing.T) {
 		for dy := -1; dy <= 1; dy++ {
 			for dx := -1; dx <= 1; dx++ {
 				p := Point{5 + dx, 5 + dy}
-				if _, taken := b.cells[p]; !taken {
-					b.Add(&Entity{ID: fmt.Sprintf("wall%d%d", dx, dy), Kind: KindItem, X: p.X, Y: p.Y})
+				if _, taken := b.cells[mainCell(p.X, p.Y)]; !taken {
+					b.Add(&Entity{ID: fmt.Sprintf("wall%d%d", dx, dy), BoardID: "main", Kind: KindItem, X: p.X, Y: p.Y})
 				}
 			}
 		}
@@ -341,7 +341,7 @@ func TestMoveItem(t *testing.T) {
 
 	t.Run("item beyond the unit's vision", func(t *testing.T) {
 		b := actionBoard()
-		b.Add(&Entity{ID: "distant", Kind: KindItem, X: 15, Y: 15})
+		b.Add(&Entity{ID: "distant", BoardID: "main", Kind: KindItem, X: 15, Y: 15})
 		if _, err := b.Do("p1", move("champ", "distant", 15, 16), t0); err != ErrOutOfRange {
 			t.Fatalf("got %v", err)
 		}

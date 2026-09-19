@@ -116,17 +116,15 @@ func (s *Store) player(ctx context.Context, query string, arg any) (Player, erro
 	return p, err
 }
 
-// LoadDefaultBoard loads the first board with its world's rules and everything on it, plus the
-// players and their points and inventories.
-func (s *Store) LoadDefaultBoard(ctx context.Context) (*game.Board, error) {
+// LoadWorld loads the first world with its rules, boards, gateways and everything on the boards,
+// plus the players and their points and inventories.
+func (s *Store) LoadWorld(ctx context.Context) (*game.World, error) {
 	var id, name string
-	var width, height int
 	var rulesJSON []byte
-	err := s.pool.QueryRow(ctx, `SELECT b.id::text, b.name, b.width, b.height, w.rules
-		FROM boards b JOIN worlds w ON w.id = b.world_id ORDER BY b.created_at LIMIT 1`).
-		Scan(&id, &name, &width, &height, &rulesJSON)
+	err := s.pool.QueryRow(ctx, `SELECT id::text, name, rules FROM worlds ORDER BY created_at LIMIT 1`).
+		Scan(&id, &name, &rulesJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, errors.New("no board in the database")
+		return nil, errors.New("no world in the database")
 	}
 	if err != nil {
 		return nil, err
@@ -135,15 +133,53 @@ func (s *Store) LoadDefaultBoard(ctx context.Context) (*game.Board, error) {
 	if err != nil {
 		return nil, fmt.Errorf("world rules: %w", err)
 	}
+	world := game.NewWorld(id, name)
+	world.Rules = rules
 
-	var entities []*game.Entity
+	err = s.each(ctx, `SELECT id::text, name, width, height, grid_kind FROM boards
+		WHERE world_id = $1::uuid ORDER BY position, created_at, name`,
+		[]any{id}, func(rows pgx.Rows) error {
+			b := &game.Board{}
+			var kind string
+			if err := rows.Scan(&b.ID, &b.Name, &b.Width, &b.Height, &kind); err != nil {
+				return err
+			}
+			grid, err := game.NewGrid(kind)
+			if err != nil {
+				return fmt.Errorf("board %q: %w", b.Name, err)
+			}
+			b.Grid = grid
+			world.AddBoard(b)
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	if len(world.Boards()) == 0 {
+		return nil, errors.New("the world has no boards")
+	}
 
-	err = s.each(ctx, `SELECT id::text, COALESCE(player_id::text, ''), kind, name, description,
-		x, y, speed, health, max_health, vision, strength, dialogue FROM units WHERE board_id = $1`,
+	err = s.each(ctx, `SELECT l.from_board_id::text, l.from_x, l.from_y, l.to_board_id::text, l.to_x, l.to_y
+		FROM board_links l JOIN boards b ON b.id = l.from_board_id WHERE b.world_id = $1::uuid`,
+		[]any{id}, func(rows pgx.Rows) error {
+			var from, to game.Cell
+			if err := rows.Scan(&from.Board, &from.X, &from.Y, &to.Board, &to.X, &to.Y); err != nil {
+				return err
+			}
+			world.AddLink(from, to)
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.each(ctx, `SELECT u.id::text, u.board_id::text, COALESCE(u.player_id::text, ''), u.kind, u.name, u.description,
+		u.x, u.y, u.speed, u.health, u.max_health, u.vision, u.strength, u.dialogue
+		FROM units u JOIN boards b ON b.id = u.board_id WHERE b.world_id = $1::uuid`,
 		[]any{id}, func(rows pgx.Rows) error {
 			e := &game.Entity{}
 			var kind, dialogue string
-			if err := rows.Scan(&e.ID, &e.OwnerID, &kind, &e.Name, &e.Description,
+			if err := rows.Scan(&e.ID, &e.BoardID, &e.OwnerID, &kind, &e.Name, &e.Description,
 				&e.X, &e.Y, &e.Speed, &e.Health, &e.MaxHealth, &e.Vision, &e.Strength, &dialogue); err != nil {
 				return err
 			}
@@ -151,41 +187,40 @@ func (s *Store) LoadDefaultBoard(ctx context.Context) (*game.Board, error) {
 			if dialogue != "" {
 				e.Dialogue = strings.Split(dialogue, "\n")
 			}
-			entities = append(entities, e)
+			world.Add(e)
 			return nil
 		})
 	if err != nil {
 		return nil, err
 	}
 
-	err = s.each(ctx, `SELECT id::text, name, description, x, y FROM board_items WHERE board_id = $1`,
+	err = s.each(ctx, `SELECT i.id::text, i.board_id::text, i.name, i.description, i.x, i.y
+		FROM board_items i JOIN boards b ON b.id = i.board_id WHERE b.world_id = $1::uuid`,
 		[]any{id}, func(rows pgx.Rows) error {
 			e := &game.Entity{Kind: game.KindItem}
-			if err := rows.Scan(&e.ID, &e.Name, &e.Description, &e.X, &e.Y); err != nil {
+			if err := rows.Scan(&e.ID, &e.BoardID, &e.Name, &e.Description, &e.X, &e.Y); err != nil {
 				return err
 			}
-			entities = append(entities, e)
+			world.Add(e)
 			return nil
 		})
 	if err != nil {
 		return nil, err
 	}
 
-	err = s.each(ctx, `SELECT id::text, player_id::text, name, description, x, y FROM structures WHERE board_id = $1`,
+	err = s.each(ctx, `SELECT st.id::text, st.board_id::text, st.player_id::text, st.name, st.description, st.x, st.y
+		FROM structures st JOIN boards b ON b.id = st.board_id WHERE b.world_id = $1::uuid`,
 		[]any{id}, func(rows pgx.Rows) error {
 			e := &game.Entity{Kind: game.KindStructure}
-			if err := rows.Scan(&e.ID, &e.OwnerID, &e.Name, &e.Description, &e.X, &e.Y); err != nil {
+			if err := rows.Scan(&e.ID, &e.BoardID, &e.OwnerID, &e.Name, &e.Description, &e.X, &e.Y); err != nil {
 				return err
 			}
-			entities = append(entities, e)
+			world.Add(e)
 			return nil
 		})
 	if err != nil {
 		return nil, err
 	}
-
-	board := game.NewBoard(id, name, width, height, entities)
-	board.Rules = rules
 
 	err = s.each(ctx, `SELECT id::text, username, points FROM players`, nil, func(rows pgx.Rows) error {
 		var pid, username string
@@ -193,7 +228,7 @@ func (s *Store) LoadDefaultBoard(ctx context.Context) (*game.Board, error) {
 		if err := rows.Scan(&pid, &username, &points); err != nil {
 			return err
 		}
-		board.EnsurePlayer(pid, username, points)
+		world.EnsurePlayer(pid, username, points)
 		return nil
 	})
 	if err != nil {
@@ -207,14 +242,14 @@ func (s *Store) LoadDefaultBoard(ctx context.Context) (*game.Board, error) {
 			if err := rows.Scan(&pid, &item.Name, &item.Description); err != nil {
 				return err
 			}
-			p := board.Player(pid)
+			p := world.Player(pid)
 			p.Inventory = append(p.Inventory, item)
 			return nil
 		})
 	if err != nil {
 		return nil, err
 	}
-	return board, nil
+	return world, nil
 }
 
 // each runs a query and calls fn for every row.
@@ -234,14 +269,14 @@ func (s *Store) each(ctx context.Context, query string, args []any, fn func(pgx.
 
 // InsertUnits stores new units atomically. Units that already have an ID keep it; the others
 // get one from the database, which is filled in.
-func (s *Store) InsertUnits(ctx context.Context, boardID string, units []*game.Entity) error {
+func (s *Store) InsertUnits(ctx context.Context, units []*game.Entity) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		for _, u := range units {
 			err := tx.QueryRow(ctx, `INSERT INTO units
 				(id, board_id, player_id, kind, name, description, x, y, speed, health, max_health, vision, strength)
-				VALUES (COALESCE(NULLIF($1, '')::uuid, gen_random_uuid()), $2, NULLIF($3, '')::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+				VALUES (COALESCE(NULLIF($1, '')::uuid, gen_random_uuid()), $2::uuid, NULLIF($3, '')::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 				RETURNING id::text`,
-				u.ID, boardID, u.OwnerID, string(u.Kind), u.Name, u.Description, u.X, u.Y,
+				u.ID, u.BoardID, u.OwnerID, string(u.Kind), u.Name, u.Description, u.X, u.Y,
 				u.Speed, u.Health, u.MaxHealth, u.Vision, u.Strength).Scan(&u.ID)
 			if err != nil {
 				return err
@@ -251,15 +286,16 @@ func (s *Store) InsertUnits(ctx context.Context, boardID string, units []*game.E
 	})
 }
 
-func (s *Store) SaveUnit(ctx context.Context, id string, x, y, health int) error {
-	_, err := s.pool.Exec(ctx, `UPDATE units SET x = $2, y = $3, health = $4 WHERE id::text = $1`, id, x, y, health)
+func (s *Store) SaveUnit(ctx context.Context, id, boardID string, x, y, health int) error {
+	_, err := s.pool.Exec(ctx, `UPDATE units SET board_id = $2::uuid, x = $3, y = $4, health = $5 WHERE id::text = $1`,
+		id, boardID, x, y, health)
 	return err
 }
 
-func (s *Store) InsertStructure(ctx context.Context, boardID string, st *game.Entity) error {
+func (s *Store) InsertStructure(ctx context.Context, st *game.Entity) error {
 	_, err := s.pool.Exec(ctx, `INSERT INTO structures (id, board_id, player_id, name, description, x, y)
 		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7)`,
-		st.ID, boardID, st.OwnerID, st.Name, st.Description, st.X, st.Y)
+		st.ID, st.BoardID, st.OwnerID, st.Name, st.Description, st.X, st.Y)
 	return err
 }
 
