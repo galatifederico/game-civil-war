@@ -7,7 +7,7 @@ DOCKER_GO = docker run --rm --user $(shell id -u):$(shell id -g) \
 
 COMPOSE = docker compose -f ../deploy/docker-compose.yml
 
-.PHONY: up db build vet test tidy run
+.PHONY: up db build vet test test-integration tidy run
 
 # Avvia Postgres e Redis (idempotente).
 up:
@@ -29,6 +29,14 @@ vet:
 test:
 	@mkdir -p .cache
 	$(DOCKER_GO) $(GO_IMAGE) go test ./...
+
+# Test di integrazione su un Postgres vero (ogni esecuzione usa un database temporaneo). Serve `make up`.
+test-integration:
+	@mkdir -p .cache
+	docker run --rm --network host --user $(shell id -u):$(shell id -g) \
+		-e HOME=/tmp -e GOCACHE=/cache/build -e GOMODCACHE=/cache/mod -e GOTOOLCHAIN=auto \
+		-e TEST_DB_ADMIN_URL='postgres://thegame:thegame@localhost:5433/postgres?sslmode=disable' \
+		-v $(CURDIR):/src -v $(CURDIR)/.cache:/cache -w /src $(GO_IMAGE) go test ./internal/transport/ -count=1 -v
 
 tidy:
 	@mkdir -p .cache
