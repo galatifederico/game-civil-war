@@ -27,10 +27,11 @@ public class Piece : MonoBehaviour
         get
         {
             var team = Mine ? "la tua squadra" : "squadra avversaria";
+            var race = string.IsNullOrEmpty(Data.race) ? "" : " · " + Data.race;
             switch (Data.kind)
             {
-                case Kinds.Champion: return "Champion - " + team;
-                case Kinds.Minor: return "Pedina - " + team;
+                case Kinds.Champion: return "Champion - " + team + race;
+                case Kinds.Minor: return "Pedina - " + team + race;
                 case Kinds.Structure: return "Struttura - " + team;
                 case Kinds.Npc: return "NPC - non controllabile";
                 default: return "Oggetto - non controllabile";

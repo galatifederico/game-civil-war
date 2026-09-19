@@ -24,7 +24,7 @@ public class InfoPanel : MonoBehaviour
     List<PanelAction> actions = new List<PanelAction>();
     PanelAction pending;
     Rect rect;
-    GUIStyle boxStyle, titleStyle, kindStyle, bodyStyle, statsStyle, buttonStyle;
+    GUIStyle boxStyle, titleStyle, kindStyle, bodyStyle, statsStyle, traitStyle, buttonStyle;
 
     public Piece Current => piece;
 
@@ -64,7 +64,8 @@ public class InfoPanel : MonoBehaviour
         EnsureStyles();
 
         var data = piece.Data;
-        float height = BaseHeight + actions.Count * ButtonHeight;
+        string traits = TraitsText(data);
+        float height = BaseHeight + actions.Count * ButtonHeight + (traits.Length > 0 ? 40f : 0f);
         rect = new Rect(Screen.width - Width - Margin, Margin, Width, height);
         GUI.Box(rect, GUIContent.none, boxStyle);
 
@@ -78,6 +79,7 @@ public class InfoPanel : MonoBehaviour
         {
             GUILayout.Label($"Velocità {data.speed}  ·  Vita {data.health}/{data.max_health}  ·  Vista {data.vision}", statsStyle);
         }
+        if (traits.Length > 0) GUILayout.Label(traits, traitStyle);
         GUILayout.Label($"Posizione: {data.x}, {data.y}{StatusSuffix()}", kindStyle);
 
         foreach (var action in actions)
@@ -95,6 +97,15 @@ public class InfoPanel : MonoBehaviour
             Closed?.Invoke();
         }
         GUILayout.EndArea();
+    }
+
+    // Le caratteristiche estese della pedina (soldi, alcol...): il server le manda gia' nell'ordine del mondo.
+    static string TraitsText(EntityData data)
+    {
+        if (data.traits == null || data.traits.Length == 0) return "";
+        var parts = new string[data.traits.Length];
+        for (int i = 0; i < parts.Length; i++) parts[i] = $"{data.traits[i].name} {data.traits[i].value}";
+        return string.Join("  ·  ", parts);
     }
 
     string StatusSuffix()
@@ -126,6 +137,9 @@ public class InfoPanel : MonoBehaviour
 
         statsStyle = new GUIStyle(GUI.skin.label) { fontSize = 13 };
         statsStyle.normal.textColor = new Color(0.95f, 0.85f, 0.5f);
+
+        traitStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, wordWrap = true };
+        traitStyle.normal.textColor = new Color(0.65f, 0.85f, 0.75f);
 
         buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = 14, fixedHeight = 30f };
     }

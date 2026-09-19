@@ -95,7 +95,7 @@ func TestPlanTeam(t *testing.T) {
 	b := newTestWorld("b", "test", 24, 24, []*Entity{
 		{ID: "npc", Kind: KindNPC, X: 3, Y: 2},
 	})
-	team, err := b.PlanTeam("p1", "Anna")
+	team, err := b.PlanTeam("p1", "Anna", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestFirstTeamsSpawnOutOfEachOthersSight(t *testing.T) {
 	b := newTestWorld("b", "test", 24, 24, nil)
 	players := []string{"p0", "p1", "p2", "p3", "p4", "p5"}
 	for _, id := range players {
-		team, err := b.PlanTeam(id, id)
+		team, err := b.PlanTeam(id, id, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -146,7 +146,7 @@ func TestFirstTeamsSpawnOutOfEachOthersSight(t *testing.T) {
 
 func TestPlanTeamBoardFull(t *testing.T) {
 	b := newTestWorld("b", "tiny", 3, 3, nil)
-	if _, err := b.PlanTeam("p1", "Anna"); err != ErrBoardFull {
+	if _, err := b.PlanTeam("p1", "Anna", ""); err != ErrBoardFull {
 		t.Fatalf("got %v, want ErrBoardFull", err)
 	}
 }

@@ -491,7 +491,9 @@ func TestGameplayAndPersistence(t *testing.T) {
 }
 
 func TestWorldRulesComeFromTheDatabase(t *testing.T) {
-	e := newEnv(t, `UPDATE worlds SET rules = '{"minors_per_team": 3, "minor": {"speed": 6}, "champion": {"vision": 9}}'`)
+	// A world without races, so units use the stats in the rules.
+	e := newEnv(t, `DELETE FROM race_compatibility`, `DELETE FROM races`,
+		`UPDATE worlds SET rules = '{"minors_per_team": 3, "minor": {"speed": 6}, "champion": {"vision": 9}}'`)
 	token, id := e.player("a@test.io", "Alice")
 	snap := e.dial(token).expect("snapshot", ofType(protocol.TypeSnapshot))
 
@@ -579,7 +581,7 @@ func TestMultiBoardWorldFromTheDatabase(t *testing.T) {
 			hexID = b.ID
 		}
 	}
-	if err := e.store.SaveUnit(e.ctx, npcID, hexID, 5, 5, 100); err != nil {
+	if err := e.store.SaveUnit(e.ctx, game.Entity{ID: npcID, BoardID: hexID, X: 5, Y: 5, Health: 100, Strength: 10}); err != nil {
 		t.Fatal(err)
 	}
 	reloaded, err := e.store.LoadWorld(e.ctx, e.worldID)

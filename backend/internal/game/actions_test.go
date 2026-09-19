@@ -70,10 +70,10 @@ func TestAttackCooldownThenKillAndRespawn(t *testing.T) {
 		t.Fatalf("notices = %+v", out.Notices)
 	}
 
-	if revived := b.Tick(now.Add(rules.RespawnDelay() - time.Second)); len(revived) != 0 {
+	if revived := b.Tick(now.Add(rules.RespawnDelay() - time.Second)).Revived; len(revived) != 0 {
 		t.Fatal("respawned too early")
 	}
-	revived := b.Tick(now.Add(rules.RespawnDelay()))
+	revived := b.Tick(now.Add(rules.RespawnDelay())).Revived
 	if len(revived) != 1 || revived[0].Health != 100 || !revived[0].RespawnAt.IsZero() {
 		t.Fatalf("respawn failed: %+v", revived)
 	}

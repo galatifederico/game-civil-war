@@ -5,7 +5,9 @@ package game
 import (
 	crand "crypto/rand"
 	"fmt"
+	"math/rand/v2"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -43,11 +45,101 @@ type Entity struct {
 	Vision      int // sight and action range, in cells
 	Strength    int // damage dealt by an attack
 	Dialogue    []string
+	RaceID      string         // units only; empty when the world has no races
+	Traits      map[string]int // the extended characteristics (soldi, alcol...)
+	Effect      Effect         // items only: what using one does
 
 	// Ephemeral real-time state, not persisted.
 	ReadyAt    time.Time // next moment the unit can move
 	ActReadyAt time.Time // next moment the unit can act
 	RespawnAt  time.Time // set while the unit is defeated
+
+	BreedReadyAt time.Time // next moment the unit can have offspring
+	NextSpawnAt  time.Time // structures: when they next make a unit (if the world allows it)
+}
+
+// snapshot copies an entity so another goroutine (the database writer) can read it safely.
+func (e *Entity) snapshot() Entity {
+	c := *e
+	if e.Traits != nil {
+		c.Traits = make(map[string]int, len(e.Traits))
+		for k, v := range e.Traits {
+			c.Traits[k] = v
+		}
+	}
+	return c
+}
+
+// Effect is what using an item does. Only the champion uses items (design.md: the shared
+// inventory is managed by the champion alone), and the effect falls on the champion.
+type Effect struct {
+	Heal     int            `json:"heal,omitempty"`     // health restored, up to the maximum
+	Points   int            `json:"points,omitempty"`   // points for the team
+	Strength int            `json:"strength,omitempty"` // permanent bonus to the champion's strength
+	Traits   map[string]int `json:"traits,omitempty"`   // changes to the champion's extended characteristics
+}
+
+func (e Effect) IsZero() bool {
+	return e.Heal == 0 && e.Points == 0 && e.Strength == 0 && len(e.Traits) == 0
+}
+
+// Summary is a short description of the effect for the interface.
+func (e Effect) Summary() string {
+	var parts []string
+	if e.Heal != 0 {
+		parts = append(parts, fmt.Sprintf("cura %d", e.Heal))
+	}
+	if e.Points != 0 {
+		parts = append(parts, fmt.Sprintf("%+d punti", e.Points))
+	}
+	if e.Strength != 0 {
+		parts = append(parts, fmt.Sprintf("%+d forza", e.Strength))
+	}
+	names := make([]string, 0, len(e.Traits))
+	for name := range e.Traits {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		parts = append(parts, fmt.Sprintf("%+d %s", e.Traits[name], name))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// Race is a kind of unit defined by the world's admin: minimum characteristics plus a random
+// bonus added on top for each new unit (design.md: inheritance is minimums per race + chance).
+type Race struct {
+	ID          string
+	Name        string
+	Description string
+	Min         UnitStats
+	Bonus       UnitStats // the most that can be added on top of Min, per characteristic
+	TraitsMin   map[string]int
+	TraitsBonus map[string]int
+}
+
+// roll gives a new unit's characteristics: the race's minimums plus a random part.
+func (r *Race) roll() (UnitStats, map[string]int) {
+	bonus := func(most int) int {
+		if most <= 0 {
+			return 0
+		}
+		return rand.IntN(most + 1)
+	}
+	stats := UnitStats{
+		Speed: r.Min.Speed + bonus(r.Bonus.Speed), Health: r.Min.Health + bonus(r.Bonus.Health),
+		Vision: r.Min.Vision + bonus(r.Bonus.Vision), Strength: r.Min.Strength + bonus(r.Bonus.Strength),
+	}
+	traits := map[string]int{}
+	for name, min := range r.TraitsMin {
+		traits[name] = min + bonus(r.TraitsBonus[name])
+	}
+	for name, most := range r.TraitsBonus {
+		if _, ok := traits[name]; !ok {
+			traits[name] = bonus(most)
+		}
+	}
+	return stats, traits
 }
 
 func (e *Entity) Cell() Cell   { return Cell{e.BoardID, e.X, e.Y} }
@@ -62,14 +154,17 @@ func (e *Entity) IsUnit() bool {
 func (e *Entity) Controllable() bool { return e.Kind == KindChampion || e.Kind == KindMinor }
 
 type Item struct {
+	ID          string
 	Name        string
 	Description string
+	Effect      Effect
 }
 
 // Player is the roster owner: one player is exactly one team (see design.md).
 type Player struct {
 	ID        string
 	Username  string
+	RaceID    string // the race of the team (empty when the world has no races)
 	Points    int
 	Inventory []Item // shared by the whole team
 }
@@ -113,6 +208,9 @@ type World struct {
 	cells    map[Cell]string
 	links    map[Cell]Cell
 	players  map[string]*Player
+	races    map[string]*Race
+	raceIDs  []string             // in the order the admin defined them
+	compat   map[[2]string]string // sorted pair of race ids -> race of the offspring
 }
 
 func NewWorld(id, name string) *World {
@@ -123,6 +221,55 @@ func NewWorld(id, name string) *World {
 		cells:    map[Cell]string{},
 		links:    map[Cell]Cell{},
 		players:  map[string]*Player{},
+		races:    map[string]*Race{},
+		compat:   map[[2]string]string{},
+	}
+}
+
+func (w *World) AddRace(r *Race) {
+	w.races[r.ID] = r
+	w.raceIDs = append(w.raceIDs, r.ID)
+}
+
+func (w *World) Race(id string) *Race { return w.races[id] }
+
+// Races lists the world's races in the order they were defined.
+func (w *World) Races() []*Race {
+	out := make([]*Race, 0, len(w.raceIDs))
+	for _, id := range w.raceIDs {
+		out = append(out, w.races[id])
+	}
+	return out
+}
+
+func pairKey(a, b string) [2]string {
+	if a > b {
+		a, b = b, a
+	}
+	return [2]string{a, b}
+}
+
+// AddCompat says that units of races a and b (in either order) can have offspring of race child.
+func (w *World) AddCompat(a, b, child string) { w.compat[pairKey(a, b)] = child }
+
+func (w *World) offspringRace(a, b string) (string, bool) {
+	child, ok := w.compat[pairKey(a, b)]
+	return child, ok
+}
+
+// newMinor makes a minor unit of the given race (the world's default stats when it has none).
+func (w *World) newMinor(ownerID, username, raceID string, at Cell, name string) *Entity {
+	stats, traits := w.Rules.Minor, map[string]int(nil)
+	if r := w.races[raceID]; r != nil {
+		stats, traits = r.roll()
+	} else {
+		raceID = ""
+	}
+	return &Entity{
+		OwnerID: ownerID, BoardID: at.Board, Kind: KindMinor, Name: name, RaceID: raceID,
+		Description: fmt.Sprintf("Una fedele pedina della squadra di %s.", username),
+		X:           at.X, Y: at.Y, Traits: traits,
+		Speed: stats.Speed, Health: stats.Health, MaxHealth: stats.Health, Vision: stats.Vision, Strength: stats.Strength,
 	}
 }
 
@@ -311,17 +458,41 @@ func (w *World) Move(playerID, unitID string, to Point, now time.Time) (*Entity,
 	return e, nil
 }
 
-// Tick advances real-time state and returns the units that came back from defeat.
-func (w *World) Tick(now time.Time) []*Entity {
-	var revived []*Entity
+// TickResult is what changed over time: units back from defeat, and units made by structures.
+type TickResult struct {
+	Revived []*Entity
+	Spawned []*Entity
+}
+
+// Tick advances real-time state: defeated units come back after their respawn delay, and (if the
+// world allows it) each structure makes a minor unit for its team every building interval.
+func (w *World) Tick(now time.Time) TickResult {
+	var res TickResult
+	interval := w.Rules.BuildingInterval()
 	for _, e := range w.entities {
-		if e.IsUnit() && e.Health <= 0 && !e.RespawnAt.IsZero() && !now.Before(e.RespawnAt) {
+		switch {
+		case e.IsUnit() && e.Health <= 0 && !e.RespawnAt.IsZero() && !now.Before(e.RespawnAt):
 			e.Health = e.MaxHealth
 			e.RespawnAt = time.Time{}
-			revived = append(revived, e)
+			res.Revived = append(res.Revived, e)
+		case e.Kind == KindStructure && interval > 0:
+			if e.NextSpawnAt.IsZero() {
+				e.NextSpawnAt = now.Add(interval)
+			} else if !now.Before(e.NextSpawnAt) {
+				e.NextSpawnAt = now.Add(interval)
+				owner := w.players[e.OwnerID]
+				spot, ok := w.freeNeighbor(e.Cell())
+				if owner == nil || !ok {
+					continue
+				}
+				u := w.newMinor(e.OwnerID, owner.Username, owner.RaceID, spot, w.nextMinorName(e.OwnerID))
+				u.ID = newID()
+				w.Add(u)
+				res.Spawned = append(res.Spawned, u)
+			}
 		}
 	}
-	return revived
+	return res
 }
 
 // ScheduleRespawns gives a respawn time to units that were already defeated when the server
@@ -337,7 +508,7 @@ func (w *World) ScheduleRespawns(now time.Time) {
 // PlanTeam builds a new player's team (1 champion + Rules.MinorsPerTeam minor units) on the spawn
 // board, on the free cells nearest to a per-player anchor, so teams start in separate areas.
 // The entities have no ID yet: the persistence layer assigns it.
-func (w *World) PlanTeam(playerID, username string) ([]*Entity, error) {
+func (w *World) PlanTeam(playerID, username, raceID string) ([]*Entity, error) {
 	if len(w.order) == 0 {
 		return nil, ErrNoBoard
 	}
@@ -373,22 +544,26 @@ func (w *World) PlanTeam(playerID, username string) ([]*Entity, error) {
 		return a.p.X < c.p.X
 	})
 
+	if w.races[raceID] == nil {
+		raceID = ""
+	}
+	var championTraits map[string]int
+	if r := w.races[raceID]; r != nil && len(r.TraitsMin) > 0 {
+		championTraits = make(map[string]int, len(r.TraitsMin))
+		for name, v := range r.TraitsMin {
+			championTraits[name] = v
+		}
+	}
 	team := make([]*Entity, 0, need)
 	team = append(team, &Entity{
-		OwnerID: playerID, BoardID: spawn.ID, Kind: KindChampion, Name: "Champion",
+		OwnerID: playerID, BoardID: spawn.ID, Kind: KindChampion, Name: "Champion", RaceID: raceID,
 		Description: fmt.Sprintf("Il campione della squadra di %s: forte, carismatico e convinto di essere indispensabile.", username),
-		X:           free[0].p.X, Y: free[0].p.Y,
+		X:           free[0].p.X, Y: free[0].p.Y, Traits: championTraits,
 		Speed: w.Rules.Champion.Speed, Health: w.Rules.Champion.Health, MaxHealth: w.Rules.Champion.Health,
 		Vision: w.Rules.Champion.Vision, Strength: w.Rules.Champion.Strength,
 	})
 	for i := 1; i < need; i++ {
-		team = append(team, &Entity{
-			OwnerID: playerID, BoardID: spawn.ID, Kind: KindMinor, Name: fmt.Sprintf("Pedina %d", i),
-			Description: fmt.Sprintf("Una fedele pedina della squadra di %s.", username),
-			X:           free[i].p.X, Y: free[i].p.Y,
-			Speed: w.Rules.Minor.Speed, Health: w.Rules.Minor.Health, MaxHealth: w.Rules.Minor.Health,
-			Vision: w.Rules.Minor.Vision, Strength: w.Rules.Minor.Strength,
-		})
+		team = append(team, w.newMinor(playerID, username, raceID, Cell{spawn.ID, free[i].p.X, free[i].p.Y}, fmt.Sprintf("Pedina %d", i)))
 	}
 	return team, nil
 }

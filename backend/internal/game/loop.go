@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"sort"
 	"time"
 
 	"thegame/backend/internal/protocol"
@@ -14,11 +15,12 @@ const tickInterval = 250 * time.Millisecond
 // Persister is what the simulation needs from the database.
 type Persister interface {
 	InsertUnits(ctx context.Context, units []*Entity) error
-	SaveUnit(ctx context.Context, id, boardID string, x, y, health int) error
+	SaveUnit(ctx context.Context, e Entity) error
 	InsertStructure(ctx context.Context, s *Entity) error
 	SaveItemPosition(ctx context.Context, id string, x, y int) error
 	DeleteItem(ctx context.Context, id string) error
 	AddInventory(ctx context.Context, worldID, playerID string, item Item) error
+	DeleteInventoryItems(ctx context.Context, ids []string) error
 	AddPoints(ctx context.Context, worldID, playerID string, delta int) error
 }
 
@@ -78,14 +80,18 @@ func (l *Loop) Run(ctx context.Context) {
 }
 
 func (l *Loop) tick() {
-	revived := l.world.Tick(l.now())
-	if len(revived) == 0 {
+	res := l.world.Tick(l.now())
+	if len(res.Revived) == 0 && len(res.Spawned) == 0 {
 		return
 	}
-	for _, e := range revived {
+	for _, e := range res.Revived {
 		l.saveUnit(e)
 	}
-	l.sync(revived, false)
+	for _, u := range res.Spawned {
+		l.insertUnit(u)
+		l.sendToPlayer(u.OwnerID, protocol.ServerMessage{Type: protocol.TypeEvent, Title: "Nuova pedina", Message: u.Name + " è stata generata da un tuo avamposto."})
+	}
+	l.sync(append(res.Revived, res.Spawned...), false)
 }
 
 func (l *Loop) writeWorker(ctx context.Context) {
@@ -111,8 +117,13 @@ func (l *Loop) persist(write func(context.Context) error) {
 }
 
 func (l *Loop) saveUnit(e *Entity) {
-	id, boardID, x, y, health := e.ID, e.BoardID, e.X, e.Y, e.Health
-	l.persist(func(ctx context.Context) error { return l.store.SaveUnit(ctx, id, boardID, x, y, health) })
+	saved := e.snapshot()
+	l.persist(func(ctx context.Context) error { return l.store.SaveUnit(ctx, saved) })
+}
+
+func (l *Loop) insertUnit(e *Entity) {
+	saved := e.snapshot()
+	l.persist(func(ctx context.Context) error { return l.store.InsertUnits(ctx, []*Entity{&saved}) })
 }
 
 func (l *Loop) do(f func()) bool {
@@ -138,19 +149,25 @@ func (l *Loop) call(f func() error) error {
 }
 
 // EnsureTeam creates the player's team the first time it is needed; later calls do nothing.
-func (l *Loop) EnsureTeam(ctx context.Context, playerID, username string) error {
+func (l *Loop) EnsureTeam(ctx context.Context, playerID, username, raceID string) error {
 	return l.call(func() error {
 		if l.world.HasUnitsOf(playerID) {
 			return nil
 		}
-		team, err := l.world.PlanTeam(playerID, username)
+		if p := l.world.Player(playerID); p != nil && p.RaceID != "" {
+			raceID = p.RaceID // the race chosen when joining sticks
+		}
+		team, err := l.world.PlanTeam(playerID, username, raceID)
 		if err != nil {
 			return err
 		}
 		if err := l.store.InsertUnits(ctx, team); err != nil {
 			return err
 		}
-		l.world.EnsurePlayer(playerID, username, 0)
+		player := l.world.EnsurePlayer(playerID, username, 0)
+		if player.RaceID == "" && l.world.Race(raceID) != nil {
+			player.RaceID = raceID
+		}
 		for _, e := range team {
 			l.world.Add(e)
 		}
@@ -237,6 +254,10 @@ func (l *Loop) publish(playerID string, out *Outcome) {
 		item := *out.Picked
 		l.persist(func(ctx context.Context) error { return l.store.AddInventory(ctx, worldID, playerID, item) })
 	}
+	if len(out.RemovedItems) > 0 {
+		ids := append([]string(nil), out.RemovedItems...)
+		l.persist(func(ctx context.Context) error { return l.store.DeleteInventoryItems(ctx, ids) })
+	}
 	if out.Points != 0 {
 		points := out.Points
 		l.persist(func(ctx context.Context) error { return l.store.AddPoints(ctx, worldID, playerID, points) })
@@ -245,7 +266,7 @@ func (l *Loop) publish(playerID string, out *Outcome) {
 	if len(out.Changed) > 0 || len(out.Removed) > 0 || out.Points != 0 {
 		l.sync(out.Changed, out.Points != 0)
 	}
-	if out.Picked != nil {
+	if out.InventoryChanged {
 		l.sendToPlayer(playerID, protocol.ServerMessage{Type: protocol.TypeInventory, Inventory: l.inventory(playerID)})
 	}
 	for _, n := range out.Notices {
@@ -323,7 +344,7 @@ func (l *Loop) dtos(entities []*Entity) []protocol.Entity {
 	out := make([]protocol.Entity, 0, len(entities))
 	for _, e := range entities {
 		out = append(out, protocol.Entity{
-			ID: e.ID, BoardID: e.BoardID, Kind: string(e.Kind), OwnerID: e.OwnerID, Name: e.Name, Description: e.Description,
+			ID: e.ID, BoardID: e.BoardID, RaceID: e.RaceID, Race: l.raceName(e.RaceID), Traits: l.traitDTOs(e.Traits), Kind: string(e.Kind), OwnerID: e.OwnerID, Name: e.Name, Description: e.Description,
 			X: e.X, Y: e.Y, Speed: e.Speed, Health: e.Health, MaxHealth: e.MaxHealth,
 			Vision: e.Vision, Strength: e.Strength,
 			ReadyInMs: untilMs(e.ReadyAt), ActReadyInMs: untilMs(e.ActReadyAt), RespawnInMs: untilMs(e.RespawnAt),
@@ -341,6 +362,39 @@ func (l *Loop) scores() []protocol.Score {
 	return out
 }
 
+func (l *Loop) raceName(id string) string {
+	if r := l.world.Race(id); r != nil {
+		return r.Name
+	}
+	return ""
+}
+
+// traitDTOs lists a unit's extended characteristics: the world's named ones first, in its order.
+func (l *Loop) traitDTOs(traits map[string]int) []protocol.Trait {
+	if len(traits) == 0 {
+		return nil
+	}
+	var out []protocol.Trait
+	seen := map[string]bool{}
+	for _, name := range l.world.Rules.TraitNames {
+		if v, ok := traits[name]; ok {
+			out = append(out, protocol.Trait{Name: name, Value: v})
+			seen[name] = true
+		}
+	}
+	var rest []string
+	for name := range traits {
+		if !seen[name] {
+			rest = append(rest, name)
+		}
+	}
+	sort.Strings(rest)
+	for _, name := range rest {
+		out = append(out, protocol.Trait{Name: name, Value: traits[name]})
+	}
+	return out
+}
+
 func (l *Loop) inventory(playerID string) []protocol.Item {
 	p := l.world.Player(playerID)
 	if p == nil {
@@ -348,7 +402,7 @@ func (l *Loop) inventory(playerID string) []protocol.Item {
 	}
 	out := make([]protocol.Item, 0, len(p.Inventory))
 	for _, it := range p.Inventory {
-		out = append(out, protocol.Item{Name: it.Name, Description: it.Description})
+		out = append(out, protocol.Item{ID: it.ID, Name: it.Name, Description: it.Description, Effect: it.Effect.Summary()})
 	}
 	return out
 }

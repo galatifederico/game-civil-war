@@ -110,7 +110,7 @@ func TestTeamsNeverStartOnAGateway(t *testing.T) {
 			w.AddLink(Cell{"A", x, y}, Cell{"B", 1, 1})
 		}
 	}
-	team, err := w.PlanTeam("p1", "Anna")
+	team, err := w.PlanTeam("p1", "Anna", "")
 	if err != nil {
 		t.Fatal(err)
 	}

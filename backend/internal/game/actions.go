@@ -16,16 +16,21 @@ const (
 	ActionCreate ActionKind = "create"
 	// ActionMoveItem pushes an object to another cell within the unit's reach.
 	ActionMoveItem ActionKind = "move_item"
+	// ActionBreed: two of the player's units, side by side, have offspring (explicit command).
+	ActionBreed ActionKind = "breed"
+	// ActionUseItem: the champion uses an object from the shared inventory.
+	ActionUseItem ActionKind = "use_item"
 )
 
 // Action is a command a player gives to one of their units. The target is an entity id
-// (attack, talk, pickup), a cell (build) or both (move_item: which object, to which cell).
-// Cells are always on the acting unit's board.
+// (attack, talk, pickup, breed: the partner), an inventory item id (use_item), a cell (build) or
+// both (move_item: which object, to which cell). Cells are always on the acting unit's board.
 type Action struct {
 	Kind     ActionKind
 	UnitID   string
 	TargetID string
 	At       Point
+	Method   string // create: "health" (default) or "resources"
 }
 
 // Notice is a message for one player (a line of NPC dialogue, a defeat, a pickup...).
@@ -44,8 +49,12 @@ type Outcome struct {
 	Created    []*Entity // new structures and units to insert
 	Removed    []string  // entity ids that left the world
 	Picked     *Item     // added to the actor's team inventory
-	Points     int       // awarded to the actor's team
-	Notices    []Notice
+	// RemovedItems are inventory items that were used up; InventoryChanged asks for the player's
+	// inventory to be sent again.
+	RemovedItems     []string
+	InventoryChanged bool
+	Points           int // awarded to the actor's team
+	Notices          []Notice
 }
 
 // Do applies an action if the rules allow it. Every action needs a live unit of the player,
@@ -70,7 +79,11 @@ func (w *World) Do(playerID string, a Action, now time.Time) (*Outcome, error) {
 	case ActionBuild:
 		out, err = w.build(actor, a.At, now)
 	case ActionCreate:
-		out, err = w.create(actor, now)
+		out, err = w.create(actor, a.Method, now)
+	case ActionBreed:
+		out, err = w.breed(actor, a.TargetID, now)
+	case ActionUseItem:
+		out, err = w.useItem(actor, a.TargetID, now)
 	case ActionMoveItem:
 		out, err = w.moveItem(actor, a.TargetID, a.At, now)
 	default:
@@ -167,17 +180,18 @@ func (w *World) pickup(actor *Entity, targetID string, now time.Time) (*Outcome,
 	}
 
 	// The item goes straight into the shared team inventory, however far the champion is.
-	item := Item{Name: t.Name, Description: t.Description}
+	item := Item{ID: newID(), Name: t.Name, Description: t.Description, Effect: t.Effect}
 	team := w.EnsurePlayer(actor.OwnerID, "", 0)
 	team.Inventory = append(team.Inventory, item)
 	w.remove(t)
 	actor.ActReadyAt = now.Add(w.Rules.PickupCooldown())
 	return &Outcome{
-		Changed: []*Entity{actor},
-		Removed: []string{t.ID},
-		Picked:  &item,
-		Points:  w.Rules.Points.Pickup,
-		Notices: []Notice{{actor.OwnerID, "Oggetto raccolto", fmt.Sprintf("%s è nell'inventario della squadra.", t.Name)}},
+		Changed:          []*Entity{actor},
+		Removed:          []string{t.ID},
+		Picked:           &item,
+		InventoryChanged: true,
+		Points:           w.Rules.Points.Pickup,
+		Notices:          []Notice{{actor.OwnerID, "Oggetto raccolto", fmt.Sprintf("%s è nell'inventario della squadra.", t.Name)}},
 	}, nil
 }
 
@@ -210,42 +224,175 @@ func (w *World) build(actor *Entity, at Point, now time.Time) (*Outcome, error) 
 	}, nil
 }
 
-// create makes a new minor unit on a free cell next to the champion, paid with the champion's health.
-func (w *World) create(actor *Entity, now time.Time) (*Outcome, error) {
+// create makes a new minor unit on a free cell next to the champion, and only the champion can do
+// it. The method says what it costs, and the world decides which methods are open: "health" (the
+// champion pays hit points) or "resources" (it consumes items from the shared inventory).
+func (w *World) create(actor *Entity, method string, now time.Time) (*Outcome, error) {
 	if actor.Kind != KindChampion {
 		return nil, ErrChampionOnly
 	}
-	if actor.Health <= w.Rules.CreateHealthCost {
-		return nil, ErrTooWeak
+	owner := w.EnsurePlayer(actor.OwnerID, "", 0)
+	var cost string
+	var consumed []Item
+	switch method {
+	case "", "health":
+		if !w.Rules.Creation.HealthEnabled {
+			return nil, ErrDisabled
+		}
+		if actor.Health <= w.Rules.CreateHealthCost {
+			return nil, ErrTooWeak
+		}
+		cost = fmt.Sprintf("il campione perde %d vita", w.Rules.CreateHealthCost)
+	case "resources":
+		n := w.Rules.Creation.ResourceItems
+		if n <= 0 {
+			return nil, ErrDisabled
+		}
+		if len(owner.Inventory) < n {
+			return nil, ErrNoItems
+		}
+		consumed = owner.Inventory[:n]
+		cost = fmt.Sprintf("consumati %d oggetti dell'inventario", n)
+	default:
+		return nil, ErrUnknownAction
 	}
 	spot, ok := w.freeNeighbor(actor.Cell())
 	if !ok {
 		return nil, ErrNoSpace
 	}
 
+	u := w.newMinor(actor.OwnerID, owner.Username, w.teamRace(actor), spot, w.nextMinorName(actor.OwnerID))
+	u.ID = newID()
+	w.Add(u)
+	actor.ActReadyAt = now.Add(w.Rules.CreateCooldown())
+	out := &Outcome{
+		Changed: []*Entity{u, actor},
+		Created: []*Entity{u},
+		Points:  w.Rules.Points.Create,
+		Notices: []Notice{{actor.OwnerID, "Nuova pedina", fmt.Sprintf("%s si è unita alla squadra (%s).", u.Name, cost)}},
+	}
+	if consumed != nil {
+		for _, it := range consumed {
+			out.RemovedItems = append(out.RemovedItems, it.ID)
+		}
+		owner.Inventory = append([]Item(nil), owner.Inventory[len(consumed):]...)
+		out.InventoryChanged = true
+	} else {
+		actor.Health -= w.Rules.CreateHealthCost
+		out.Dirty = []*Entity{actor}
+	}
+	return out, nil
+}
+
+func (w *World) teamRace(actor *Entity) string {
+	if p := w.players[actor.OwnerID]; p != nil && p.RaceID != "" {
+		return p.RaceID
+	}
+	return actor.RaceID
+}
+
+func (w *World) nextMinorName(ownerID string) string {
 	minors := 0
 	for _, e := range w.entities {
-		if e.OwnerID == actor.OwnerID && e.Kind == KindMinor {
+		if e.OwnerID == ownerID && e.Kind == KindMinor {
 			minors++
 		}
 	}
-	owner := w.EnsurePlayer(actor.OwnerID, "", 0)
-	u := &Entity{
-		ID: newID(), BoardID: spot.Board, OwnerID: actor.OwnerID, Kind: KindMinor, Name: fmt.Sprintf("Pedina %d", minors+1),
-		Description: fmt.Sprintf("Una fedele pedina della squadra di %s.", owner.Username),
-		X:           spot.X, Y: spot.Y,
-		Speed: w.Rules.Minor.Speed, Health: w.Rules.Minor.Health, MaxHealth: w.Rules.Minor.Health,
-		Vision: w.Rules.Minor.Vision, Strength: w.Rules.Minor.Strength,
+	return fmt.Sprintf("Pedina %d", minors+1)
+}
+
+// breed: two of the player's units next to each other have offspring, if their races are
+// compatible in this world. The offspring is a new minor unit of the race the compatibility says,
+// with that race's minimum characteristics plus a random bonus. Both parents then need to rest.
+func (w *World) breed(actor *Entity, partnerID string, now time.Time) (*Outcome, error) {
+	if !w.Rules.Creation.BreedingEnabled {
+		return nil, ErrDisabled
 	}
-	w.Add(u)
-	actor.Health -= w.Rules.CreateHealthCost
-	actor.ActReadyAt = now.Add(w.Rules.CreateCooldown())
+	partner, ok := w.entities[partnerID]
+	if !ok {
+		return nil, ErrNoTarget
+	}
+	if partner == actor || !partner.Controllable() || partner.OwnerID != actor.OwnerID {
+		return nil, ErrInvalidTarget
+	}
+	if partner.Health <= 0 {
+		return nil, ErrTargetDead
+	}
+	if actor.BoardID != partner.BoardID ||
+		w.boards[actor.BoardID].Grid.Distance(actor.Point(), partner.Point()) > w.Rules.Creation.BreedRange {
+		return nil, ErrOutOfRange
+	}
+	if now.Before(actor.BreedReadyAt) || now.Before(partner.BreedReadyAt) {
+		return nil, ErrNotRested
+	}
+	childRace, ok := w.offspringRace(actor.RaceID, partner.RaceID)
+	if !ok {
+		return nil, ErrIncompatible
+	}
+	spot, ok := w.freeNeighbor(actor.Cell())
+	if !ok {
+		if spot, ok = w.freeNeighbor(partner.Cell()); !ok {
+			return nil, ErrNoSpace
+		}
+	}
+
+	owner := w.EnsurePlayer(actor.OwnerID, "", 0)
+	child := w.newMinor(actor.OwnerID, owner.Username, childRace, spot, w.nextMinorName(actor.OwnerID))
+	child.ID = newID()
+	w.Add(child)
+	actor.BreedReadyAt = now.Add(w.Rules.BreedCooldown())
+	partner.BreedReadyAt = actor.BreedReadyAt
+	raceName := childRace
+	if r := w.races[childRace]; r != nil {
+		raceName = r.Name
+	}
 	return &Outcome{
-		Changed: []*Entity{u, actor},
-		Dirty:   []*Entity{actor},
-		Created: []*Entity{u},
-		Points:  w.Rules.Points.Create,
-		Notices: []Notice{{actor.OwnerID, "Nuova pedina", fmt.Sprintf("%s si è unita alla squadra (il campione perde %d vita).", u.Name, w.Rules.CreateHealthCost)}},
+		Changed: []*Entity{child},
+		Created: []*Entity{child},
+		Points:  w.Rules.Points.Breed,
+		Notices: []Notice{{actor.OwnerID, "Nuova pedina", fmt.Sprintf("%s e %s hanno avuto un figlio: %s (%s).", actor.Name, partner.Name, child.Name, raceName)}},
+	}, nil
+}
+
+// useItem: the champion uses an object from the shared inventory; it is used up and its effect
+// falls on the champion (or on the team's points).
+func (w *World) useItem(actor *Entity, itemID string, now time.Time) (*Outcome, error) {
+	if actor.Kind != KindChampion {
+		return nil, ErrChampionOnly
+	}
+	owner := w.EnsurePlayer(actor.OwnerID, "", 0)
+	at := -1
+	for i, it := range owner.Inventory {
+		if it.ID == itemID {
+			at = i
+		}
+	}
+	if at < 0 {
+		return nil, ErrNoItem
+	}
+	item := owner.Inventory[at]
+	if item.Effect.IsZero() {
+		return nil, ErrNoEffect
+	}
+
+	fx := item.Effect
+	actor.Health = min(actor.MaxHealth, actor.Health+fx.Heal)
+	actor.Strength += fx.Strength
+	if len(fx.Traits) > 0 && actor.Traits == nil {
+		actor.Traits = map[string]int{}
+	}
+	for name, delta := range fx.Traits {
+		actor.Traits[name] += delta
+	}
+	owner.Inventory = append(append([]Item(nil), owner.Inventory[:at]...), owner.Inventory[at+1:]...)
+	actor.ActReadyAt = now.Add(w.Rules.PickupCooldown())
+	return &Outcome{
+		Changed:          []*Entity{actor},
+		Dirty:            []*Entity{actor},
+		RemovedItems:     []string{item.ID},
+		InventoryChanged: true,
+		Points:           fx.Points,
+		Notices:          []Notice{{actor.OwnerID, "Oggetto usato", fmt.Sprintf("%s: %s.", item.Name, fx.Summary())}},
 	}, nil
 }
 

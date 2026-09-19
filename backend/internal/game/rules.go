@@ -27,12 +27,31 @@ type Rules struct {
 	RespawnMs        int       `json:"respawn_ms"`      // how long a defeated unit stays out
 	CreateHealthCost int       `json:"create_health_cost"`
 
+	// Which ways of bringing new units into a team are open in this world (design.md: creation
+	// is configurable per world, not fixed in the code).
+	Creation struct {
+		HealthEnabled      bool `json:"health_enabled"`       // the champion pays health (create_health_cost)
+		ResourceItems      int  `json:"resource_items"`       // the champion consumes this many inventory items; 0 = closed
+		BreedingEnabled    bool `json:"breeding_enabled"`     // two compatible units can have offspring
+		BreedRange         int  `json:"breed_range"`          // how close the two parents must be, in steps
+		BuildingIntervalMs int  `json:"building_interval_ms"` // structures make a unit this often; 0 = closed
+	} `json:"creation"`
+
+	// Names of the extended characteristics every unit has (soldi, alcol...). Their values come from
+	// the race and change with items; what they do in play is content still to be defined.
+	TraitNames []string `json:"trait_names"`
+
+	// How individual goals are handed out: "random" (the system picks one when a player joins and
+	// after each completed one) or "manual" (only the admin assigns them).
+	GoalAssignment string `json:"goal_assignment"`
+
 	CooldownsMs struct {
 		Attack   int `json:"attack"`
 		Pickup   int `json:"pickup"`
 		Build    int `json:"build"`
 		Create   int `json:"create"`
 		MoveItem int `json:"move_item"`
+		Breed    int `json:"breed"`
 	} `json:"cooldowns_ms"`
 
 	// Points awarded to the acting team; design.md allows them to be negative too.
@@ -43,6 +62,7 @@ type Rules struct {
 		Pickup       int `json:"pickup"`
 		Build        int `json:"build"`
 		Create       int `json:"create"`
+		Breed        int `json:"breed"`
 	} `json:"points"`
 }
 
@@ -59,12 +79,20 @@ func DefaultRules() Rules {
 	r.CooldownsMs.Build = 3000
 	r.CooldownsMs.Create = 5000
 	r.CooldownsMs.MoveItem = 500
+	r.CooldownsMs.Breed = 30000
+	r.Creation.HealthEnabled = true
+	r.Creation.ResourceItems = 2
+	r.Creation.BreedingEnabled = true
+	r.Creation.BreedRange = 1
+	r.TraitNames = []string{"soldi", "alcol", "alpha", "thc", "beatitudine", "mana"}
+	r.GoalAssignment = "random"
 	r.Points.Hit = 5
 	r.Points.KillMinor = 25
 	r.Points.KillChampion = 100
 	r.Points.Pickup = 5
 	r.Points.Build = 20
 	r.Points.Create = 10
+	r.Points.Breed = 15
 	return r
 }
 
@@ -76,6 +104,8 @@ func (r Rules) PickupCooldown() time.Duration   { return ms(r.CooldownsMs.Pickup
 func (r Rules) BuildCooldown() time.Duration    { return ms(r.CooldownsMs.Build) }
 func (r Rules) CreateCooldown() time.Duration   { return ms(r.CooldownsMs.Create) }
 func (r Rules) MoveItemCooldown() time.Duration { return ms(r.CooldownsMs.MoveItem) }
+func (r Rules) BreedCooldown() time.Duration    { return ms(r.CooldownsMs.Breed) }
+func (r Rules) BuildingInterval() time.Duration { return ms(r.Creation.BuildingIntervalMs) }
 
 // Validate rejects values that would break the simulation, so a bad world configuration is
 // reported when the server starts instead of showing up as odd behavior during play.
@@ -101,11 +131,20 @@ func (r Rules) Validate() error {
 	}
 	for name, v := range map[string]int{
 		"attack": r.CooldownsMs.Attack, "pickup": r.CooldownsMs.Pickup, "build": r.CooldownsMs.Build,
-		"create": r.CooldownsMs.Create, "move_item": r.CooldownsMs.MoveItem,
+		"create": r.CooldownsMs.Create, "move_item": r.CooldownsMs.MoveItem, "breed": r.CooldownsMs.Breed,
 	} {
 		if v < 0 {
 			problems = append(problems, fmt.Errorf("cooldowns_ms.%s cannot be negative", name))
 		}
+	}
+	if r.Creation.ResourceItems < 0 || r.Creation.BuildingIntervalMs < 0 {
+		problems = append(problems, errors.New("creation.resource_items and creation.building_interval_ms cannot be negative"))
+	}
+	if r.Creation.BreedingEnabled && r.Creation.BreedRange < 1 {
+		problems = append(problems, errors.New("creation.breed_range must be at least 1 when breeding is enabled"))
+	}
+	if r.GoalAssignment != "random" && r.GoalAssignment != "manual" {
+		problems = append(problems, fmt.Errorf("goal_assignment must be \"random\" or \"manual\", not %q", r.GoalAssignment))
 	}
 	return errors.Join(problems...)
 }

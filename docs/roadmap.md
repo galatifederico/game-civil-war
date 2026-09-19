@@ -18,12 +18,22 @@ the_game/
 - **M1 — Slice verticale** ✅: register/login (bcrypt + JWT), una board seedata con NPC e oggetti, alla registrazione ogni giocatore riceve la sua squadra (1 campione + 12 pedine), movimento autoritativo via WebSocket con limite di distanza e cooldown (velocità), posizioni persistite su Postgres. Client Unity: login, snapshot, click per muovere le proprie pedine, menu info di ogni pedina.
 - **M2 — Tick loop, azioni a raggio** ✅ (Redis escluso, vedi sotto): attack / pickup / talk / build / create entro la "vista" della pedina; morte e respawn (solo cooldown); punti e classifica; inventario condiviso; nebbia di guerra (anticipata da M4). Manca ancora lo stato caldo su Redis.
 - **M3 — Multi-board e griglie miste** ✅: board contigue di un'unica mappa collegate da passaggi, board esagonale di prova, astrazione `Grid`.
-- **M4 — Motore regole**: ✅ fondamenta fatte (parametri del mondo come dati, vedi "Stato attuale"); da fare razze, compatibilità, altre regole di creazione pedine, riproduzione, inventario condiviso (solo campione).
+- **M4 — Motore regole** ✅: razze, compatibilità e ereditarietà, tutte le vie di creazione pedine (vita del campione, oggetti dell'inventario, riproduzione, edifici), inventario gestito solo dal campione con effetti degli oggetti. Tutto è dato per mondo.
 - **M5 — Obiettivi, punteggio, condizioni di vittoria.**
 - **M6 — Admin web app** (`admin-web/`) e lobby mondi lato giocatore. Lobby e mondi multipli ✅; admin web app da fare.
 - **M7 — Hardening**: riconnessione/afk (riconnessione automatica del client ✅), grafica 2D isometrica pixel art vera, Cloudflare Tunnel.
 
 ## Stato attuale
+
+**M4 — motore regole (dati per mondo, migrazione `0006`):**
+
+- **Razze** (`races`): statistiche minime (velocità, vita, vista, forza) più un **bonus casuale** da 0 a `bonus_*` sopra ogni minimo, per ogni nuova pedina (design.md: ereditarietà = minimi di razza + caso). Lo stesso vale per le **caratteristiche estese** (`traits_min`/`traits_bonus`: soldi, alcol, alpha, thc, beatitudine, mana; l'elenco e l'ordine sono `Rules.TraitNames`). Le caratteristiche sono dati che razze e oggetti modificano e che si vedono nella scheda; **cosa facciano nel gioco lo lasciano aperto i docs e non è stato inventato**. Il campione usa `Rules.Champion` (con le caratteristiche minime della razza, senza caso); le pedine di una razza usano la razza, quelle senza razza `Rules.Minor`.
+- **Scelta della razza**: si sceglie una volta, entrando in un mondo che ne ha (`POST /worlds/{id}/join {"race_id"}`; senza scelta vale la prima). Tutta la squadra è di quella razza. Il mondo di prova ha Balordi, Fighetti e Sbandati.
+- **Compatibilità** (`race_compatibility`): una riga per coppia non ordinata di razze con la razza del figlio (Balordi×Fighetti = Sbandati; ognuno con i suoi; gli Sbandati con tutti).
+- **Vie di creazione** (`Rules.Creation`, ognuna attivabile o chiudibile per mondo): *vita del campione* (`health_enabled`, costo `create_health_cost`); *oggetti* (`resource_items`: il campione consuma i più vecchi N oggetti dell'inventario; 0 = chiusa); *riproduzione* (`breeding_enabled`, comando esplicito `breed` tra due pedine della stessa squadra a distanza ≤ `breed_range`, entrambe riposate: cooldown `cooldowns_ms.breed`, +`points.breed`; il figlio è una pedina minore della razza indicata dalla compatibilità); *edifici* (`building_interval_ms`: ogni avamposto genera una pedina per la sua squadra a ogni intervallo; 0 = chiusa, predefinito).
+- **Inventario gestito solo dal campione**: `use_item` (solo il campione) applica l'effetto dell'oggetto e lo consuma. Gli effetti sono dati (`board_items.effect`, `inventory_items.effect`, `game.Effect`): cura, punti, bonus permanente di forza, variazioni delle caratteristiche estese. Gli oggetti hanno un id.
+- Protocollo: entità con `race_id`, `race`, `traits`; oggetti dell'inventario con `id` e `effect` (testo); nuovi comandi `breed`, `use_item`, `create` con `method` ("health" o "resources").
+- Client Unity: scelta della razza nella lobby; scheda con razza e caratteristiche; per ogni pedina "Riproduci con..." (poi clic sull'altra); per il campione "Crea pedina (paga con vita / con oggetti)" e "Usa <oggetto> (<effetto>)" per ogni oggetto dell'inventario.
 
 **Mondi multipli e lobby (parte giocatore di M6):**
 

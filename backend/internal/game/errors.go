@@ -30,6 +30,12 @@ var (
 	ErrNoSpace        = &Error{"no_space", "non c'è spazio libero accanto al campione"}
 	ErrGatewayBlocked = &Error{"gateway_blocked", "il passaggio è bloccato"}
 	ErrNoBoard        = &Error{"no_board", "il mondo non ha nessuna board"}
+	ErrDisabled       = &Error{"disabled", "questa possibilità è chiusa in questo mondo"}
+	ErrNoItems        = &Error{"no_items", "non ci sono abbastanza oggetti nell'inventario"}
+	ErrNoItem         = &Error{"no_item", "oggetto non trovato nell'inventario"}
+	ErrNoEffect       = &Error{"no_effect", "questo oggetto non serve a niente"}
+	ErrIncompatible   = &Error{"incompatible", "le due razze non possono avere figli insieme"}
+	ErrNotRested      = &Error{"not_rested", "una delle due pedine non è ancora pronta a riprodursi"}
 	ErrStopped        = errors.New("simulation stopped")
 )
 

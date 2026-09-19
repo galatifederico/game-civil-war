@@ -12,6 +12,8 @@ const (
 	TypeBuild    = "build"
 	TypeCreate   = "create"
 	TypeMoveItem = "move_item"
+	TypeBreed    = "breed"
+	TypeUseItem  = "use_item"
 
 	// Server -> client.
 	TypeSnapshot  = "snapshot"
@@ -21,23 +23,32 @@ const (
 	TypeError     = "error"
 )
 
+// Trait is one of a unit's extended characteristics (soldi, alcol, ...).
+type Trait struct {
+	Name  string `json:"name"`
+	Value int    `json:"value"`
+}
+
 type Entity struct {
-	ID           string `json:"id"`
-	BoardID      string `json:"board_id"`
-	Kind         string `json:"kind"`
-	OwnerID      string `json:"owner_id"`
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	X            int    `json:"x"`
-	Y            int    `json:"y"`
-	Speed        int    `json:"speed"`
-	Health       int    `json:"health"`
-	MaxHealth    int    `json:"max_health"`
-	Vision       int    `json:"vision"`
-	Strength     int    `json:"strength"`
-	ReadyInMs    int    `json:"ready_in_ms"`     // until the unit can move again
-	ActReadyInMs int    `json:"act_ready_in_ms"` // until the unit can act again
-	RespawnInMs  int    `json:"respawn_in_ms"`   // for defeated units
+	ID           string  `json:"id"`
+	BoardID      string  `json:"board_id"`
+	RaceID       string  `json:"race_id"`
+	Race         string  `json:"race"` // the race's name, empty in worlds without races
+	Traits       []Trait `json:"traits,omitempty"`
+	Kind         string  `json:"kind"`
+	OwnerID      string  `json:"owner_id"`
+	Name         string  `json:"name"`
+	Description  string  `json:"description"`
+	X            int     `json:"x"`
+	Y            int     `json:"y"`
+	Speed        int     `json:"speed"`
+	Health       int     `json:"health"`
+	MaxHealth    int     `json:"max_health"`
+	Vision       int     `json:"vision"`
+	Strength     int     `json:"strength"`
+	ReadyInMs    int     `json:"ready_in_ms"`     // until the unit can move again
+	ActReadyInMs int     `json:"act_ready_in_ms"` // until the unit can act again
+	RespawnInMs  int     `json:"respawn_in_ms"`   // for defeated units
 }
 
 // Gateway is a cell of a board that carries whoever steps on it to another board.
@@ -59,8 +70,10 @@ type Board struct {
 }
 
 type Item struct {
+	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Effect      string `json:"effect"` // a short description of what using it does
 }
 
 type Score struct {
@@ -75,6 +88,7 @@ type ClientMessage struct {
 	WorldID  string `json:"world_id"` // with "auth": the world to play in
 	UnitID   string `json:"unit_id"`
 	TargetID string `json:"target_id"`
+	Method   string `json:"method"` // with "create": "health" or "resources"
 	X        int    `json:"x"`
 	Y        int    `json:"y"`
 }

@@ -146,13 +146,20 @@ func (s *Server) authed(next func(http.ResponseWriter, *http.Request, store.Play
 }
 
 type worldEntry struct {
+	ID          string      `json:"id"`
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	Boards      int         `json:"boards"`
+	Players     int         `json:"players"`
+	Joined      bool        `json:"joined"`
+	Admin       bool        `json:"admin"`
+	Races       []raceEntry `json:"races"`
+}
+
+type raceEntry struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	Boards      int    `json:"boards"`
-	Players     int    `json:"players"`
-	Joined      bool   `json:"joined"`
-	Admin       bool   `json:"admin"`
 }
 
 func (s *Server) listWorlds(w http.ResponseWriter, r *http.Request, p store.Player) {
@@ -168,9 +175,13 @@ func (s *Server) listWorlds(w http.ResponseWriter, r *http.Request, p store.Play
 	}
 	out := make([]worldEntry, 0, len(worlds))
 	for _, info := range worlds {
+		races := make([]raceEntry, 0, len(info.Races))
+		for _, r := range info.Races {
+			races = append(races, raceEntry{ID: r.ID, Name: r.Name, Description: r.Description})
+		}
 		out = append(out, worldEntry{
 			ID: info.ID, Name: info.Name, Description: info.Description, Boards: info.Boards, Players: info.Players,
-			Joined: joined[info.ID], Admin: info.OwnerID == p.ID,
+			Joined: joined[info.ID], Admin: info.OwnerID == p.ID, Races: races,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"worlds": out})
@@ -184,11 +195,26 @@ func (s *Server) joinWorld(w http.ResponseWriter, r *http.Request, p store.Playe
 		writeError(w, http.StatusNotFound, "mondo non trovato")
 		return
 	}
-	if err := s.Store.Join(r.Context(), id, p.ID); err != nil {
+	var in struct {
+		RaceID string `json:"race_id"`
+	}
+	if r.ContentLength != 0 && !decodeBody(w, r, &in) {
+		return
+	}
+	raceID, err := s.Store.ResolveRace(r.Context(), id, in.RaceID)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusBadRequest, "razza non valida per questo mondo")
+		return
+	}
+	if err != nil {
 		internalError(w, err)
 		return
 	}
-	if err := loop.EnsureTeam(r.Context(), p.ID, p.Username); err != nil {
+	if err := s.Store.Join(r.Context(), id, p.ID, raceID); err != nil {
+		internalError(w, err)
+		return
+	}
+	if err := loop.EnsureTeam(r.Context(), p.ID, p.Username, raceID); err != nil {
 		if _, isRule := err.(*game.Error); isRule {
 			writeError(w, http.StatusServiceUnavailable, err.Error())
 			return

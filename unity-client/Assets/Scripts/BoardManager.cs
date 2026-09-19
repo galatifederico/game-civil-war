@@ -33,11 +33,12 @@ public class BoardManager : MonoBehaviour
     bool[,] visibleCells, hasTint, inRange, isGateway;
     Color[,] tint;
 
-    enum ClickMode { Move, Build, PushItem }
+    enum ClickMode { Move, Build, PushItem, Breed }
     ClickMode mode = ClickMode.Move;
     Piece selected;
     Piece pushedItem;
     string rangeKey = "";
+    ItemData[] inventory = new ItemData[0];
     string myPlayerId;
     float fittedAspect;
 
@@ -57,6 +58,9 @@ public class BoardManager : MonoBehaviour
         this.hud = hud;
         cam = camera;
     }
+
+    // L'inventario di squadra: il campione ne usa gli oggetti dal proprio menu.
+    public void SetInventory(ItemData[] items) => inventory = items ?? new ItemData[0];
 
     bool PointerBlocked => panel.BlocksPointer || hud.BlocksPointer;
 
@@ -341,6 +345,14 @@ public class BoardManager : MonoBehaviour
 
     public void OnPieceClicked(Piece piece)
     {
+        if (mode == ClickMode.Breed && selected != null && piece != selected)
+        {
+            // Il partner della riproduzione e' un'altra pedina della squadra.
+            net.SendCommand("breed", selected.Data.id, piece.Data.id);
+            SetMode(ClickMode.Move);
+            panel.Show(selected, ActionsFor(selected));
+            return;
+        }
         if (piece == selected)
         {
             ClearSelection();
@@ -411,6 +423,7 @@ public class BoardManager : MonoBehaviour
         {
             case ClickMode.Build: hud.SetHint("Costruzione: clicca una casella libera"); break;
             case ClickMode.PushItem: hud.SetHint($"Sposta {item.Data.name}: clicca una casella libera"); break;
+            case ClickMode.Breed: hud.SetHint("Riproduzione: clicca l'altra pedina della squadra"); break;
             default: hud.SetHint(""); break;
         }
     }
@@ -435,14 +448,44 @@ public class BoardManager : MonoBehaviour
                 },
                 BlockedReason = () => BlockReason(actor, null, needsReady: true),
             });
+            if (!string.IsNullOrEmpty(actor.Data.race))
+            {
+                list.Add(new PanelAction
+                {
+                    Label = mode == ClickMode.Breed ? "Annulla riproduzione" : "Riproduci con...",
+                    Perform = () =>
+                    {
+                        SetMode(mode == ClickMode.Breed ? ClickMode.Move : ClickMode.Breed);
+                        panel.Show(actor, ActionsFor(actor));
+                    },
+                    BlockedReason = () => actor.Defeated ? "fuori gioco" : null,
+                });
+            }
             if (actor.Data.kind == Kinds.Champion)
             {
                 list.Add(new PanelAction
                 {
-                    Label = "Crea pedina (costa vita)",
-                    Perform = () => net.SendCommand("create", actor.Data.id, null),
+                    Label = "Crea pedina (paga con vita)",
+                    Perform = () => net.SendCommand("create", actor.Data.id, null, method: "health"),
                     BlockedReason = () => BlockReason(actor, null, needsReady: true),
                 });
+                list.Add(new PanelAction
+                {
+                    Label = "Crea pedina (paga con oggetti)",
+                    Perform = () => net.SendCommand("create", actor.Data.id, null, method: "resources"),
+                    BlockedReason = () => BlockReason(actor, null, needsReady: true),
+                });
+                // Solo il campione gestisce l'inventario condiviso.
+                for (int i = 0; i < inventory.Length && i < 6; i++)
+                {
+                    var item = inventory[i];
+                    list.Add(new PanelAction
+                    {
+                        Label = string.IsNullOrEmpty(item.effect) ? $"Usa {item.name}" : $"Usa {item.name} ({item.effect})",
+                        Perform = () => net.SendCommand("use_item", actor.Data.id, item.id),
+                        BlockedReason = () => BlockReason(actor, null, needsReady: true),
+                    });
+                }
             }
             return list;
         }

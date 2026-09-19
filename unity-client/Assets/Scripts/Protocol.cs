@@ -4,10 +4,20 @@ using System;
 // I nomi dei campi sono in snake_case perche' JsonUtility li mappa 1:1.
 
 [Serializable]
+public class TraitData
+{
+    public string name;
+    public int value;
+}
+
+[Serializable]
 public class EntityData
 {
     public string id;
     public string board_id;
+    public string race_id;
+    public string race;
+    public TraitData[] traits;
     public string kind;
     public string owner_id;
     public string name;
@@ -27,8 +37,10 @@ public class EntityData
 [Serializable]
 public class ItemData
 {
+    public string id;
     public string name;
     public string description;
+    public string effect;
 }
 
 [Serializable]
@@ -81,6 +93,7 @@ public class ClientMessage
     public string type;
     public string token;
     public string world_id;
+    public string method;
     public string unit_id;
     public string target_id;
     public int x;
@@ -111,6 +124,21 @@ public class WorldEntry
     public int players;
     public bool joined;
     public bool admin;
+    public RaceEntry[] races;
+}
+
+[Serializable]
+public class RaceEntry
+{
+    public string id;
+    public string name;
+    public string description;
+}
+
+[Serializable]
+public class JoinRequest
+{
+    public string race_id;
 }
 
 [Serializable]

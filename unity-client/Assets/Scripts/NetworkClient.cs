@@ -67,9 +67,10 @@ public class NetworkClient : MonoBehaviour
     }
 
     // Si iscrive al mondo (la prima volta il server crea la squadra) e poi ci entra.
-    public void JoinAndEnter(string worldId, Action<string> onError)
+    public void JoinAndEnter(string worldId, string raceId, Action<string> onError)
     {
-        StartCoroutine(Request<IdResponse>("POST", sessionUrl.TrimEnd('/') + "/worlds/" + worldId + "/join", "{}", sessionToken,
+        var body = JsonUtility.ToJson(new JoinRequest { race_id = raceId ?? "" });
+        StartCoroutine(Request<IdResponse>("POST", sessionUrl.TrimEnd('/') + "/worlds/" + worldId + "/join", body, sessionToken,
             _ => Enter(worldId), onError));
     }
 
@@ -214,9 +215,9 @@ public class NetworkClient : MonoBehaviour
     public void SendMove(string unitId, int x, int y) => SendCommand("move", unitId, null, x, y);
 
     // type: attack, talk, pickup (con targetId) oppure build (con la casella x, y).
-    public void SendCommand(string type, string unitId, string targetId, int x = 0, int y = 0)
+    public void SendCommand(string type, string unitId, string targetId, int x = 0, int y = 0, string method = null)
     {
-        var json = JsonUtility.ToJson(new ClientMessage { type = type, unit_id = unitId, target_id = targetId, x = x, y = y });
+        var json = JsonUtility.ToJson(new ClientMessage { type = type, unit_id = unitId, target_id = targetId, x = x, y = y, method = method });
         var ct = cts?.Token ?? CancellationToken.None;
         _ = SendRawSafe(json, ct);
     }

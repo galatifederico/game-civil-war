@@ -12,13 +12,14 @@ import (
 
 type noStore struct{}
 
-func (noStore) InsertUnits(context.Context, []*Entity) error                  { return nil }
-func (noStore) SaveUnit(context.Context, string, string, int, int, int) error { return nil }
-func (noStore) InsertStructure(context.Context, *Entity) error                { return nil }
-func (noStore) SaveItemPosition(context.Context, string, int, int) error      { return nil }
-func (noStore) DeleteItem(context.Context, string) error                      { return nil }
-func (noStore) AddInventory(context.Context, string, string, Item) error      { return nil }
-func (noStore) AddPoints(context.Context, string, string, int) error          { return nil }
+func (noStore) InsertUnits(context.Context, []*Entity) error             { return nil }
+func (noStore) SaveUnit(context.Context, Entity) error                   { return nil }
+func (noStore) DeleteInventoryItems(context.Context, []string) error     { return nil }
+func (noStore) InsertStructure(context.Context, *Entity) error           { return nil }
+func (noStore) SaveItemPosition(context.Context, string, int, int) error { return nil }
+func (noStore) DeleteItem(context.Context, string) error                 { return nil }
+func (noStore) AddInventory(context.Context, string, string, Item) error { return nil }
+func (noStore) AddPoints(context.Context, string, string, int) error     { return nil }
 
 // fogWorld: player p1 has a champion at (2,2) (vision 5); p2 has a minor unit at (8,2) (vision 3).
 // An NPC and an item sit near p1, another NPC is far from everyone.

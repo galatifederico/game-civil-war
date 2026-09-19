@@ -9,6 +9,7 @@ public class LobbyScreen : MonoBehaviour
     NetworkClient net;
     WorldEntry[] worlds = new WorldEntry[0];
     Vector2 scroll;
+    readonly System.Collections.Generic.Dictionary<string, int> chosenRace = new System.Collections.Generic.Dictionary<string, int>();
     bool busy;
     string message = "", newWorldName = "";
     GUIStyle boxStyle, titleStyle, nameStyle, infoStyle, bodyStyle, buttonStyle, fieldStyle, messageStyle;
@@ -68,11 +69,13 @@ public class LobbyScreen : MonoBehaviour
             GUILayout.Label(w.name + (w.admin ? "  (admin)" : ""), nameStyle);
             GUILayout.FlexibleSpace();
             GUI.enabled = !busy;
+            var races = w.races ?? new RaceEntry[0];
+            chosenRace.TryGetValue(w.id, out int pick);
             if (GUILayout.Button(w.joined ? "Gioca" : "Unisciti", buttonStyle, GUILayout.Width(110f)))
             {
                 busy = true;
                 message = "";
-                net.JoinAndEnter(w.id, error =>
+                net.JoinAndEnter(w.id, races.Length > 0 ? races[Mathf.Clamp(pick, 0, races.Length - 1)].id : "", error =>
                 {
                     message = error;
                     busy = false;
@@ -82,6 +85,15 @@ public class LobbyScreen : MonoBehaviour
             GUILayout.EndHorizontal();
             GUILayout.Label($"{w.players} giocatori  ·  {w.boards} board", infoStyle);
             if (!string.IsNullOrEmpty(w.description)) GUILayout.Label(w.description, bodyStyle);
+            // La razza si sceglie una volta sola, la prima volta che ci si unisce a un mondo che ne ha.
+            if (!w.joined && races.Length > 0)
+            {
+                var names = new string[races.Length];
+                for (int i = 0; i < names.Length; i++) names[i] = races[i].name;
+                pick = GUILayout.Toolbar(Mathf.Clamp(pick, 0, races.Length - 1), names, buttonStyle);
+                chosenRace[w.id] = pick;
+                GUILayout.Label(races[pick].description, infoStyle);
+            }
             GUILayout.EndVertical();
         }
         GUILayout.EndScrollView();

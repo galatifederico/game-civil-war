@@ -37,7 +37,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := loop.EnsureTeam(ctx, player.ID, player.Username); err != nil {
+	if err := loop.EnsureTeam(ctx, player.ID, player.Username, ""); err != nil {
 		conn.Close(websocket.StatusInternalError, "no team")
 		return
 	}
@@ -71,7 +71,11 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		case protocol.TypeMoveItem:
 			loop.Act(client, game.Action{Kind: game.ActionMoveItem, UnitID: msg.UnitID, TargetID: msg.TargetID, At: at})
 		case protocol.TypeCreate:
-			loop.Act(client, game.Action{Kind: game.ActionCreate, UnitID: msg.UnitID})
+			loop.Act(client, game.Action{Kind: game.ActionCreate, UnitID: msg.UnitID, Method: msg.Method})
+		case protocol.TypeBreed:
+			loop.Act(client, game.Action{Kind: game.ActionBreed, UnitID: msg.UnitID, TargetID: msg.TargetID})
+		case protocol.TypeUseItem:
+			loop.Act(client, game.Action{Kind: game.ActionUseItem, UnitID: msg.UnitID, TargetID: msg.TargetID})
 		case protocol.TypeBuild:
 			loop.Act(client, game.Action{Kind: game.ActionBuild, UnitID: msg.UnitID, At: at})
 		}

@@ -1,6 +1,7 @@
 package game
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -33,7 +34,7 @@ func TestParseRulesEmptyMeansDefaults(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%q: %v", raw, err)
 		}
-		if r != DefaultRules() {
+		if !reflect.DeepEqual(r, DefaultRules()) {
 			t.Fatalf("%q: not the defaults", raw)
 		}
 	}
@@ -77,7 +78,7 @@ func TestRulesChangeTheBehaviorOfTheBoard(t *testing.T) {
 		b.Rules.MinorsPerTeam = 3
 		b.Rules.Minor = UnitStats{Speed: 6, Health: 40, Vision: 2, Strength: 9}
 		b.Rules.Champion.Vision = 8
-		team, err := b.PlanTeam("p1", "Anna")
+		team, err := b.PlanTeam("p1", "Anna", "")
 		if err != nil {
 			t.Fatal(err)
 		}
