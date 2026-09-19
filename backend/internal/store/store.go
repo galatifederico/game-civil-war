@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -59,7 +60,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	}
 	for _, entry := range entries {
 		name := entry.Name()
-		if len(name) < 4 || name[len(name)-4:] != ".sql" {
+		if !strings.HasSuffix(name, ".sql") {
 			continue
 		}
 		var applied bool
@@ -115,7 +116,8 @@ func (s *Store) player(ctx context.Context, query string, arg any) (Player, erro
 	return p, err
 }
 
-// LoadDefaultBoard loads the first board with all its units and items.
+// LoadDefaultBoard loads the first board with everything on it, plus the players and their
+// points and inventories.
 func (s *Store) LoadDefaultBoard(ctx context.Context) (*game.Board, error) {
 	var id, name string
 	var width, height int
@@ -130,45 +132,97 @@ func (s *Store) LoadDefaultBoard(ctx context.Context) (*game.Board, error) {
 
 	var entities []*game.Entity
 
-	rows, err := s.pool.Query(ctx, `SELECT id::text, COALESCE(player_id::text, ''), kind, name, description,
-		x, y, speed, health, max_health, vision FROM units WHERE board_id = $1`, id)
+	err = s.each(ctx, `SELECT id::text, COALESCE(player_id::text, ''), kind, name, description,
+		x, y, speed, health, max_health, vision, strength, dialogue FROM units WHERE board_id = $1`,
+		[]any{id}, func(rows pgx.Rows) error {
+			e := &game.Entity{}
+			var kind, dialogue string
+			if err := rows.Scan(&e.ID, &e.OwnerID, &kind, &e.Name, &e.Description,
+				&e.X, &e.Y, &e.Speed, &e.Health, &e.MaxHealth, &e.Vision, &e.Strength, &dialogue); err != nil {
+				return err
+			}
+			e.Kind = game.Kind(kind)
+			if dialogue != "" {
+				e.Dialogue = strings.Split(dialogue, "\n")
+			}
+			entities = append(entities, e)
+			return nil
+		})
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		e := &game.Entity{}
-		var kind string
-		if err := rows.Scan(&e.ID, &e.OwnerID, &kind, &e.Name, &e.Description,
-			&e.X, &e.Y, &e.Speed, &e.Health, &e.MaxHealth, &e.Vision); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		e.Kind = game.Kind(kind)
-		entities = append(entities, e)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
 
-	rows, err = s.pool.Query(ctx, `SELECT id::text, name, description, x, y FROM board_items WHERE board_id = $1`, id)
+	err = s.each(ctx, `SELECT id::text, name, description, x, y FROM board_items WHERE board_id = $1`,
+		[]any{id}, func(rows pgx.Rows) error {
+			e := &game.Entity{Kind: game.KindItem}
+			if err := rows.Scan(&e.ID, &e.Name, &e.Description, &e.X, &e.Y); err != nil {
+				return err
+			}
+			entities = append(entities, e)
+			return nil
+		})
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		e := &game.Entity{Kind: game.KindItem}
-		if err := rows.Scan(&e.ID, &e.Name, &e.Description, &e.X, &e.Y); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		entities = append(entities, e)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
+
+	err = s.each(ctx, `SELECT id::text, player_id::text, name, description, x, y FROM structures WHERE board_id = $1`,
+		[]any{id}, func(rows pgx.Rows) error {
+			e := &game.Entity{Kind: game.KindStructure}
+			if err := rows.Scan(&e.ID, &e.OwnerID, &e.Name, &e.Description, &e.X, &e.Y); err != nil {
+				return err
+			}
+			entities = append(entities, e)
+			return nil
+		})
+	if err != nil {
 		return nil, err
 	}
 
-	return game.NewBoard(id, name, width, height, entities), nil
+	board := game.NewBoard(id, name, width, height, entities)
+
+	err = s.each(ctx, `SELECT id::text, username, points FROM players`, nil, func(rows pgx.Rows) error {
+		var pid, username string
+		var points int
+		if err := rows.Scan(&pid, &username, &points); err != nil {
+			return err
+		}
+		board.EnsurePlayer(pid, username, points)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.each(ctx, `SELECT player_id::text, name, description FROM inventory_items ORDER BY acquired_at`, nil,
+		func(rows pgx.Rows) error {
+			var pid string
+			var item game.Item
+			if err := rows.Scan(&pid, &item.Name, &item.Description); err != nil {
+				return err
+			}
+			p := board.Player(pid)
+			p.Inventory = append(p.Inventory, item)
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	return board, nil
+}
+
+// each runs a query and calls fn for every row.
+func (s *Store) each(ctx context.Context, query string, args []any, fn func(pgx.Rows) error) error {
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if err := fn(rows); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
 }
 
 // InsertUnits stores new units atomically and fills in their IDs.
@@ -176,10 +230,10 @@ func (s *Store) InsertUnits(ctx context.Context, boardID string, units []*game.E
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		for _, u := range units {
 			err := tx.QueryRow(ctx, `INSERT INTO units
-				(board_id, player_id, kind, name, description, x, y, speed, health, max_health, vision)
-				VALUES ($1, NULLIF($2, '')::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id::text`,
+				(board_id, player_id, kind, name, description, x, y, speed, health, max_health, vision, strength)
+				VALUES ($1, NULLIF($2, '')::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id::text`,
 				boardID, u.OwnerID, string(u.Kind), u.Name, u.Description, u.X, u.Y,
-				u.Speed, u.Health, u.MaxHealth, u.Vision).Scan(&u.ID)
+				u.Speed, u.Health, u.MaxHealth, u.Vision, u.Strength).Scan(&u.ID)
 			if err != nil {
 				return err
 			}
@@ -188,7 +242,30 @@ func (s *Store) InsertUnits(ctx context.Context, boardID string, units []*game.E
 	})
 }
 
-func (s *Store) SaveUnitPosition(ctx context.Context, id string, x, y int) error {
-	_, err := s.pool.Exec(ctx, `UPDATE units SET x = $2, y = $3 WHERE id::text = $1`, id, x, y)
+func (s *Store) SaveUnit(ctx context.Context, id string, x, y, health int) error {
+	_, err := s.pool.Exec(ctx, `UPDATE units SET x = $2, y = $3, health = $4 WHERE id::text = $1`, id, x, y, health)
+	return err
+}
+
+func (s *Store) InsertStructure(ctx context.Context, boardID string, st *game.Entity) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO structures (id, board_id, player_id, name, description, x, y)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7)`,
+		st.ID, boardID, st.OwnerID, st.Name, st.Description, st.X, st.Y)
+	return err
+}
+
+func (s *Store) DeleteItem(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM board_items WHERE id::text = $1`, id)
+	return err
+}
+
+func (s *Store) AddInventory(ctx context.Context, playerID string, item game.Item) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO inventory_items (player_id, name, description) VALUES ($1::uuid, $2, $3)`,
+		playerID, item.Name, item.Description)
+	return err
+}
+
+func (s *Store) AddPoints(ctx context.Context, playerID string, delta int) error {
+	_, err := s.pool.Exec(ctx, `UPDATE players SET points = points + $2 WHERE id::text = $1`, playerID, delta)
 	return err
 }

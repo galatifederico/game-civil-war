@@ -58,8 +58,18 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		if err := json.Unmarshal(data, &msg); err != nil {
 			continue
 		}
-		if msg.Type == protocol.TypeMove {
-			s.Loop.Move(client, msg.UnitID, game.Point{X: msg.X, Y: msg.Y})
+		at := game.Point{X: msg.X, Y: msg.Y}
+		switch msg.Type {
+		case protocol.TypeMove:
+			s.Loop.Move(client, msg.UnitID, at)
+		case protocol.TypeAttack:
+			s.Loop.Act(client, game.Action{Kind: game.ActionAttack, UnitID: msg.UnitID, TargetID: msg.TargetID})
+		case protocol.TypeTalk:
+			s.Loop.Act(client, game.Action{Kind: game.ActionTalk, UnitID: msg.UnitID, TargetID: msg.TargetID})
+		case protocol.TypePickup:
+			s.Loop.Act(client, game.Action{Kind: game.ActionPickup, UnitID: msg.UnitID, TargetID: msg.TargetID})
+		case protocol.TypeBuild:
+			s.Loop.Act(client, game.Action{Kind: game.ActionBuild, UnitID: msg.UnitID, At: at})
 		}
 	}
 }

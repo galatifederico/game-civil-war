@@ -11,16 +11,21 @@ type Error struct {
 func (e *Error) Error() string { return e.Message }
 
 var (
-	ErrNotFound    = &Error{"not_found", "pedina non trovata"}
-	ErrNotYours    = &Error{"not_yours", "questa pedina non è tua"}
-	ErrDead        = &Error{"dead", "la pedina è fuori gioco"}
-	ErrCooldown    = &Error{"cooldown", "la pedina non è ancora pronta a muoversi"}
-	ErrOutOfBounds = &Error{"out_of_bounds", "casella fuori dalla board"}
-	ErrSameCell    = &Error{"same_cell", "la pedina è già in questa casella"}
-	ErrOccupied    = &Error{"occupied", "la casella è occupata"}
-	ErrTooFar      = &Error{"too_far", "la casella è troppo lontana"}
-	ErrBoardFull   = &Error{"board_full", "non c'è spazio sulla board"}
-	ErrStopped     = errors.New("simulation stopped")
+	ErrNotFound      = &Error{"not_found", "pedina non trovata"}
+	ErrNotYours      = &Error{"not_yours", "questa pedina non è tua"}
+	ErrDead          = &Error{"dead", "la pedina è fuori gioco"}
+	ErrCooldown      = &Error{"cooldown", "la pedina non è ancora pronta"}
+	ErrOutOfBounds   = &Error{"out_of_bounds", "casella fuori dalla board"}
+	ErrSameCell      = &Error{"same_cell", "la pedina è già in questa casella"}
+	ErrOccupied      = &Error{"occupied", "la casella è occupata"}
+	ErrTooFar        = &Error{"too_far", "la casella è troppo lontana"}
+	ErrBoardFull     = &Error{"board_full", "non c'è spazio sulla board"}
+	ErrUnknownAction = &Error{"unknown_action", "azione sconosciuta"}
+	ErrNoTarget      = &Error{"no_target", "bersaglio non trovato"}
+	ErrInvalidTarget = &Error{"invalid_target", "bersaglio non valido per questa azione"}
+	ErrTargetDead    = &Error{"target_dead", "il bersaglio è già fuori gioco"}
+	ErrOutOfRange    = &Error{"out_of_range", "bersaglio fuori portata"}
+	ErrStopped       = errors.New("simulation stopped")
 )
 
 // Describe returns the code and message to send to a client for any error.
