@@ -1,38 +1,57 @@
 using UnityEngine;
 
-public enum PieceKind { Champion, Soldier, Npc, Object }
-
+// Rappresentazione di un'entita' del server (pedina, NPC, oggetto). Non decide nulla:
+// applica lo stato ricevuto e scorre visivamente verso la casella indicata.
 public class Piece : MonoBehaviour
 {
-    public int X;
-    public int Z;
-    public PieceKind Kind;
-    public string DisplayName;
-    public string Description;
+    const float SlideSpeed = 10f;
+
+    public EntityData Data { get; private set; }
+    public bool Mine { get; private set; }
 
     Renderer rend;
     Color baseColor;
+    Vector3 target;
+    float readyAt;
 
-    public bool Movable => Kind == PieceKind.Champion || Kind == PieceKind.Soldier;
+    public bool Movable => Mine && (Data.kind == Kinds.Champion || Data.kind == Kinds.Minor);
+    public bool IsUnit => Data.kind != Kinds.Item;
+    public float SecondsUntilReady => Mathf.Max(0f, readyAt - Time.time);
 
     public string KindLabel
     {
         get
         {
-            switch (Kind)
+            switch (Data.kind)
             {
-                case PieceKind.Champion: return "Champion - la tua squadra";
-                case PieceKind.Soldier: return "Pedina - la tua squadra";
-                case PieceKind.Npc: return "NPC - non controllabile";
+                case Kinds.Champion: return Mine ? "Champion - la tua squadra" : "Champion - squadra avversaria";
+                case Kinds.Minor: return Mine ? "Pedina - la tua squadra" : "Pedina - squadra avversaria";
+                case Kinds.Npc: return "NPC - non controllabile";
                 default: return "Oggetto - non controllabile";
             }
         }
     }
 
-    void Awake()
+    public void Init(EntityData data, bool mine, Color color)
     {
         rend = GetComponent<Renderer>();
-        baseColor = rend.material.color;
+        rend.material.color = color;
+        baseColor = color;
+        Mine = mine;
+        Apply(data);
+        transform.position = target;
+    }
+
+    public void Apply(EntityData data)
+    {
+        Data = data;
+        target = BoardManager.CellToWorld(data.x, data.y, transform.position.y);
+        readyAt = Time.time + data.ready_in_ms / 1000f;
+    }
+
+    void Update()
+    {
+        transform.position = Vector3.MoveTowards(transform.position, target, SlideSpeed * Time.deltaTime);
     }
 
     void OnMouseDown()
@@ -43,12 +62,5 @@ public class Piece : MonoBehaviour
     public void SetHighlight(bool on)
     {
         rend.material.color = on ? Color.Lerp(baseColor, Color.white, 0.5f) : baseColor;
-    }
-
-    public void MoveTo(int x, int z)
-    {
-        X = x;
-        Z = z;
-        transform.position = new Vector3(x * BoardManager.CellSize, transform.position.y, z * BoardManager.CellSize);
     }
 }

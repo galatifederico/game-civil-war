@@ -1,28 +1,33 @@
 # The Game
 
-Riavvio da zero come MVP, client in Unity: una scacchiera 10x10 con la tua squadra (1 Champion +
-12 pedine), 5 NPC e 3 oggetti. Le pedine della tua squadra si muovono: clicca una pedina, poi una
-casella vuota. NPC e oggetti non si muovono. Cliccando qualsiasi pedina si apre un menu con nome,
-tipo e descrizione. Nessuna regola di movimento, nessun backend: tutto e' locale nel client.
+Gioco multigiocatore online a griglia, mondo persistente. Concept e decisioni in
+[docs/main.md](docs/main.md), [docs/design.md](docs/design.md), [docs/tecnico.md](docs/tecnico.md);
+ordine di sviluppo e stato in [docs/roadmap.md](docs/roadmap.md).
 
-La visione a lungo termine (MMO realtime, mondo persistente) resta documentata in
-[docs/main.md](docs/main.md), [docs/design.md](docs/design.md), [docs/tecnico.md](docs/tecnico.md)
-e [docs/roadmap.md](docs/roadmap.md), ma il codice attuale riparte da questo MVP minimale — quei
-documenti descrivono uno stato futuro, non l'implementazione presente.
+Oggi funziona la slice verticale M1: registrazione/login, una board 24x24 condivisa con NPC e
+oggetti, ogni giocatore ha la sua squadra (1 Champion + 12 pedine) e la muove; il server valida
+ogni mossa (proprietà, distanza in base alla velocità, cooldown, caselle occupate) e la salva su
+Postgres. Cliccando qualsiasi pedina si apre un menu con la descrizione.
 
 ## Avvio rapido
 
-1. Apri Unity Hub, "Add" -> seleziona la cartella `unity-client/` (Unity 2022.3 LTS o successivo;
-   se non hai quella patch esatta, Unity Hub ti propone comunque di aprire il progetto con la
-   versione installata).
-2. Apri la scena `Assets/Scenes/Main.unity`.
-3. Premi Play: scacchiera e pedine vengono generate a runtime dallo script `BoardManager` — non
-   serve altro setup nella scena. Legenda: Champion = cilindro oro, pedine tue = capsule blu,
-   NPC = sfere viola, oggetti = cubi verdi.
+Servono Docker (per Postgres, Redis e per compilare il backend Go) e Unity 6.
+
+```bash
+cp deploy/.env.example deploy/.env    # solo la prima volta; cambia JWT_SECRET
+make -C backend up db                 # Postgres + Redis, crea il database the_game
+make -C backend run                   # backend su http://localhost:8090 (Ctrl+C per fermarlo)
+```
+
+Poi in Unity Hub: **Add** -> cartella `unity-client/`, apri `Assets/Scenes/Main.unity` e premi Play.
+Nella schermata di accesso usa "Crea un account", oppure "Accedi" se ne hai già uno. Per provare
+più giocatori insieme, apri più istanze dell'app (o una build) con account diversi.
+
+Test del backend: `make -C backend test`.
 
 ## Struttura
 
-- `unity-client/` — client Unity (scacchiera, squadra/NPC/oggetti, spostamento click-based, menu info)
-- `backend/` — vuoto per ora: nessun backend necessario per l'MVP locale; da reintrodurre in Go
-  quando servira' persistenza o multiplayer
-- `docs/` — visione di lungo periodo e note di design/roadmap (non ancora implementate)
+- `backend/` — server Go autoritativo (REST + WebSocket + simulazione della board)
+- `unity-client/` — client Unity 6, "dumb": mostra lo stato del server e invia comandi
+- `deploy/` — docker-compose per Postgres e Redis
+- `docs/` — concept, design, decisioni tecniche, roadmap

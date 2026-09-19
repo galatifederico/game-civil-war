@@ -4,13 +4,13 @@ using UnityEngine;
 // Menu con la descrizione della pedina cliccata (IMGUI: nessuna dipendenza da UGUI).
 public class InfoPanel : MonoBehaviour
 {
-    const float Width = 280f;
-    const float Height = 200f;
+    const float Width = 290f;
+    const float Height = 250f;
     const float Margin = 12f;
 
     Piece piece;
     Rect rect;
-    GUIStyle boxStyle, titleStyle, kindStyle, bodyStyle;
+    GUIStyle boxStyle, titleStyle, kindStyle, bodyStyle, statsStyle;
 
     public event Action Closed;
 
@@ -34,16 +34,23 @@ public class InfoPanel : MonoBehaviour
         if (piece == null) return;
         EnsureStyles();
 
+        var data = piece.Data;
         rect = new Rect(Screen.width - Width - Margin, Margin, Width, Height);
         GUI.Box(rect, GUIContent.none, boxStyle);
 
         GUILayout.BeginArea(new Rect(rect.x + 12f, rect.y + 10f, Width - 24f, Height - 20f));
-        GUILayout.Label(piece.DisplayName, titleStyle);
+        GUILayout.Label(data.name, titleStyle);
         GUILayout.Label(piece.KindLabel, kindStyle);
         GUILayout.Space(6f);
-        GUILayout.Label(piece.Description, bodyStyle);
+        GUILayout.Label(data.description, bodyStyle);
         GUILayout.FlexibleSpace();
-        GUILayout.Label($"Posizione: {piece.X}, {piece.Z}", kindStyle);
+        if (piece.IsUnit)
+        {
+            GUILayout.Label($"Velocità {data.speed}  ·  Vita {data.health}/{data.max_health}  ·  Vista {data.vision}", statsStyle);
+        }
+        var ready = piece.SecondsUntilReady;
+        var status = piece.Movable && ready > 0f ? $"  ·  pronta tra {ready:0.0}s" : "";
+        GUILayout.Label($"Posizione: {data.x}, {data.y}{status}", kindStyle);
         if (GUILayout.Button("Chiudi"))
         {
             Hide();
@@ -71,5 +78,8 @@ public class InfoPanel : MonoBehaviour
 
         bodyStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, wordWrap = true };
         bodyStyle.normal.textColor = new Color(0.9f, 0.9f, 0.9f);
+
+        statsStyle = new GUIStyle(GUI.skin.label) { fontSize = 13 };
+        statsStyle.normal.textColor = new Color(0.95f, 0.85f, 0.5f);
     }
 }

@@ -5,7 +5,18 @@ DOCKER_GO = docker run --rm --user $(shell id -u):$(shell id -g) \
 	-e HOME=/tmp -e GOCACHE=/cache/build -e GOMODCACHE=/cache/mod -e GOTOOLCHAIN=auto \
 	-v $(CURDIR):/src -v $(CURDIR)/.cache:/cache -w /src
 
-.PHONY: build vet test tidy run
+COMPOSE = docker compose -f ../deploy/docker-compose.yml
+
+.PHONY: up db build vet test tidy run
+
+# Avvia Postgres e Redis (idempotente).
+up:
+	$(COMPOSE) up -d
+
+# Crea il database `the_game` se non esiste (idempotente); le tabelle le crea il backend all'avvio.
+db:
+	@$(COMPOSE) exec -T postgres psql -U thegame -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'the_game'" | grep -q 1 \
+		|| $(COMPOSE) exec -T postgres psql -U thegame -d postgres -c "CREATE DATABASE the_game"
 
 build:
 	@mkdir -p .cache bin

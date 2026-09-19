@@ -1,172 +1,186 @@
+using System.Collections.Generic;
 using UnityEngine;
 
-// Costruisce scacchiera e pedine a runtime (nessun setup manuale nella scena) e gestisce i click:
-// ogni pedina apre il pannello con la descrizione, ma solo quelle della propria squadra si muovono.
+// Mostra la board e le pedine che il server descrive (snapshot + delta) e traduce i click
+// in comandi: la pedina si muove solo quando il server conferma.
 public class BoardManager : MonoBehaviour
 {
-    public const int Size = 10;
     public const float CellSize = 1f;
     const float BoardTop = 0.05f;
 
     public static BoardManager Instance { get; private set; }
 
-    readonly Square[,] squares = new Square[Size, Size];
-    Piece selectedPiece;
+    NetworkClient net;
     InfoPanel panel;
+    Camera cam;
 
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    static void Bootstrap()
+    readonly Dictionary<string, Piece> pieces = new Dictionary<string, Piece>();
+    readonly List<GameObject> squareObjects = new List<GameObject>();
+    Material lightMaterial, darkMaterial;
+    Piece selected;
+    string myPlayerId;
+    int width, height;
+    float fittedAspect;
+
+    public static Vector3 CellToWorld(int x, int y, float height) => new Vector3(x * CellSize, height, y * CellSize);
+
+    void Awake() => Instance = this;
+
+    public void Init(NetworkClient network, InfoPanel infoPanel, Camera camera)
     {
-        if (Instance != null) return;
-        new GameObject("BoardManager").AddComponent<BoardManager>();
+        net = network;
+        panel = infoPanel;
+        cam = camera;
     }
 
-    void Awake()
+    public void LoadSnapshot(ServerMessage snapshot)
     {
-        Instance = this;
-        SetupCamera();
-        BuildBoard();
-        SpawnPieces();
-        panel = gameObject.AddComponent<InfoPanel>();
-        panel.Closed += Deselect;
+        Clear();
+        myPlayerId = snapshot.your_player_id;
+        width = snapshot.board.width;
+        height = snapshot.board.height;
+        BuildSquares();
+        FitCamera();
+        foreach (var e in snapshot.entities) Spawn(e);
     }
 
-    void SetupCamera()
+    public void ApplyDelta(ServerMessage delta)
     {
-        var camGO = Camera.main != null ? Camera.main.gameObject : new GameObject("Main Camera");
-        if (camGO.GetComponent<Camera>() == null)
+        foreach (var e in delta.entities ?? new EntityData[0])
         {
-            camGO.AddComponent<Camera>();
-            camGO.tag = "MainCamera";
+            if (pieces.TryGetValue(e.id, out var piece)) piece.Apply(e);
+            else Spawn(e);
         }
-        if (camGO.GetComponent<AudioListener>() == null)
-            camGO.AddComponent<AudioListener>();
-
-        var cam = camGO.GetComponent<Camera>();
-        cam.orthographic = true;
-        cam.orthographicSize = Size * CellSize * 0.6f;
-        cam.clearFlags = CameraClearFlags.SolidColor;
-        cam.backgroundColor = new Color(0.1f, 0.1f, 0.12f);
-        camGO.transform.position = new Vector3((Size - 1) * CellSize / 2f, 10f, (Size - 1) * CellSize / 2f);
-        camGO.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-
-        var lightGO = new GameObject("Directional Light");
-        lightGO.transform.SetParent(transform);
-        lightGO.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-        lightGO.AddComponent<Light>().type = LightType.Directional;
+        foreach (var id in delta.removed ?? new string[0])
+        {
+            if (!pieces.TryGetValue(id, out var piece)) continue;
+            if (piece == selected) ClearSelection();
+            pieces.Remove(id);
+            Destroy(piece.gameObject);
+        }
     }
 
-    void BuildBoard()
+    public void Clear()
     {
-        for (int x = 0; x < Size; x++)
+        ClearSelection();
+        foreach (var p in pieces.Values) Destroy(p.gameObject);
+        pieces.Clear();
+        foreach (var s in squareObjects) Destroy(s);
+        squareObjects.Clear();
+    }
+
+    void BuildSquares()
+    {
+        if (lightMaterial == null)
         {
-            for (int z = 0; z < Size; z++)
+            lightMaterial = NewMaterial(new Color(0.85f, 0.85f, 0.75f));
+            darkMaterial = NewMaterial(new Color(0.35f, 0.25f, 0.2f));
+        }
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
             {
                 var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                cube.name = $"Square_{x}_{z}";
+                cube.name = $"Square_{x}_{y}";
                 cube.transform.SetParent(transform);
-                cube.transform.position = new Vector3(x * CellSize, 0f, z * CellSize);
+                cube.transform.position = CellToWorld(x, y, 0f);
                 cube.transform.localScale = new Vector3(CellSize * 0.95f, 0.1f, CellSize * 0.95f);
-
-                bool light = (x + z) % 2 == 0;
-                var mat = cube.GetComponent<Renderer>().material;
-                mat.color = light ? new Color(0.85f, 0.85f, 0.75f) : new Color(0.35f, 0.25f, 0.2f);
-                mat.SetFloat("_Glossiness", 0f);
-
+                cube.GetComponent<Renderer>().sharedMaterial = (x + y) % 2 == 0 ? lightMaterial : darkMaterial;
                 var square = cube.AddComponent<Square>();
                 square.X = x;
-                square.Z = z;
-                squares[x, z] = square;
+                square.Z = y;
+                squareObjects.Add(cube);
             }
         }
     }
 
-    void SpawnPieces()
+    // Stesso shader delle primitive: funziona con qualunque render pipeline del progetto.
+    static Material NewMaterial(Color color)
     {
-        // Squadra del giocatore: 1 champion + 12 pedine.
-        SpawnPiece(4, 1, PieceKind.Champion, "Champion",
-            "Il campione della tua squadra: forte, carismatico e convinto di essere indispensabile. Puoi muoverlo.");
-        int n = 0;
-        for (int x = 0; x < Size; x++) SpawnSoldier(x, 0, ++n);
-        SpawnSoldier(3, 1, ++n);
-        SpawnSoldier(5, 1, ++n);
-
-        // NPC: non controllabili.
-        SpawnPiece(1, 8, PieceKind.Npc, "Mercante",
-            "Vende merci di dubbia provenienza a prezzi ancora piu' dubbi. Non si allontana dal suo banco.");
-        SpawnPiece(4, 7, PieceKind.Npc, "Guardia",
-            "Sorveglia la piazza con aria annoiata. Non e' nella tua squadra e non prende ordini da te.");
-        SpawnPiece(8, 8, PieceKind.Npc, "Vecchio saggio",
-            "Ha una risposta per tutto, quasi mai a una domanda che gli hai fatto.");
-        SpawnPiece(7, 5, PieceKind.Npc, "Fabbro",
-            "Ripara armi e armature. Sostiene che il martello sia sempre 'quasi pronto'.");
-        SpawnPiece(2, 5, PieceKind.Npc, "Viandante",
-            "Di passaggio, come sempre. Nessuno sa da dove venga ne' dove stia andando.");
-
-        // Oggetti: non controllabili.
-        SpawnPiece(3, 4, PieceKind.Object, "Forziere",
-            "Chiuso a chiave. Nessuno ricorda dove sia finita la chiave.");
-        SpawnPiece(6, 4, PieceKind.Object, "Cristallo",
-            "Emette un debole bagliore. Meglio non toccarlo.");
-        SpawnPiece(9, 3, PieceKind.Object, "Cartello",
-            "Recita: 'Lavori in corso'. I lavori non sono mai iniziati.");
+        var probe = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        var material = new Material(probe.GetComponent<Renderer>().sharedMaterial) { color = color };
+        Destroy(probe);
+        material.SetFloat("_Glossiness", 0f);
+        return material;
     }
 
-    void SpawnSoldier(int x, int z, int number)
+    void FitCamera()
     {
-        SpawnPiece(x, z, PieceKind.Soldier, $"Pedina {number}",
-            "Una fedele pedina della tua squadra. Puoi muoverla.");
+        fittedAspect = cam.aspect;
+        cam.orthographicSize = Mathf.Max(height * CellSize * 0.5f + 1f, (width * CellSize * 0.5f + 1f) / cam.aspect);
+        cam.transform.position = new Vector3((width - 1) * CellSize / 2f, 10f, (height - 1) * CellSize / 2f);
     }
 
-    static (PrimitiveType shape, Vector3 scale, float halfHeight, Color color) Look(PieceKind kind)
+    void LateUpdate()
     {
-        switch (kind)
+        if (width > 0 && !Mathf.Approximately(fittedAspect, cam.aspect)) FitCamera();
+    }
+
+    void Spawn(EntityData e)
+    {
+        bool mine = !string.IsNullOrEmpty(e.owner_id) && e.owner_id == myPlayerId;
+        Look(e, mine, out var shape, out var scale, out var halfHeight, out var color);
+
+        var go = GameObject.CreatePrimitive(shape);
+        go.name = $"{e.kind}_{e.name}";
+        go.transform.SetParent(transform);
+        go.transform.localScale = scale;
+        go.transform.position = CellToWorld(e.x, e.y, BoardTop + scale.y * halfHeight);
+
+        var piece = go.AddComponent<Piece>();
+        piece.Init(e, mine, color);
+        pieces[e.id] = piece;
+    }
+
+    static void Look(EntityData e, bool mine, out PrimitiveType shape, out Vector3 scale, out float halfHeight, out Color color)
+    {
+        switch (e.kind)
         {
-            case PieceKind.Champion:
-                return (PrimitiveType.Cylinder, new Vector3(0.7f, 0.55f, 0.7f), 1f, new Color(1f, 0.8f, 0.15f));
-            case PieceKind.Soldier:
-                return (PrimitiveType.Capsule, new Vector3(0.55f, 0.45f, 0.55f), 1f, new Color(0.2f, 0.45f, 1f));
-            case PieceKind.Npc:
-                return (PrimitiveType.Sphere, new Vector3(0.6f, 0.6f, 0.6f), 0.5f, new Color(0.7f, 0.3f, 0.85f));
+            case Kinds.Champion:
+                shape = PrimitiveType.Cylinder; scale = new Vector3(0.7f, 0.55f, 0.7f); halfHeight = 1f;
+                color = mine ? new Color(1f, 0.8f, 0.15f) : OwnerColor(e.owner_id, 0.95f);
+                break;
+            case Kinds.Minor:
+                shape = PrimitiveType.Capsule; scale = new Vector3(0.55f, 0.45f, 0.55f); halfHeight = 1f;
+                color = mine ? new Color(0.2f, 0.45f, 1f) : OwnerColor(e.owner_id, 0.75f);
+                break;
+            case Kinds.Npc:
+                shape = PrimitiveType.Sphere; scale = new Vector3(0.6f, 0.6f, 0.6f); halfHeight = 0.5f;
+                color = new Color(0.7f, 0.3f, 0.85f);
+                break;
             default:
-                return (PrimitiveType.Cube, new Vector3(0.55f, 0.4f, 0.55f), 0.5f, new Color(0.45f, 0.75f, 0.5f));
+                shape = PrimitiveType.Cube; scale = new Vector3(0.55f, 0.4f, 0.55f); halfHeight = 0.5f;
+                color = new Color(0.45f, 0.75f, 0.5f);
+                break;
         }
     }
 
-    void SpawnPiece(int x, int z, PieceKind kind, string displayName, string description)
+    // Ogni squadra avversaria ha il proprio colore, stabile tra un avvio e l'altro.
+    static Color OwnerColor(string ownerId, float value)
     {
-        var look = Look(kind);
-        var go = GameObject.CreatePrimitive(look.shape);
-        go.name = $"Piece_{displayName}";
-        go.transform.SetParent(transform);
-        go.transform.localScale = look.scale;
-        go.transform.position = new Vector3(x * CellSize, BoardTop + look.scale.y * look.halfHeight, z * CellSize);
-        go.GetComponent<Renderer>().material.color = look.color;
-
-        var piece = go.AddComponent<Piece>();
-        piece.X = x;
-        piece.Z = z;
-        piece.Kind = kind;
-        piece.DisplayName = displayName;
-        piece.Description = description;
-        squares[x, z].OccupiedBy = piece;
+        int hash = 17;
+        foreach (char c in ownerId) hash = hash * 31 + c;
+        float hue = (hash & 0xFFFF) / 65535f;
+        // Il blu e' riservato alla tua squadra: salta la fascia di tinte vicine.
+        hue = (hue * 0.55f + 0.85f) % 1f;
+        return Color.HSVToRGB(hue, 0.7f, value);
     }
 
     public void OnPieceClicked(Piece piece)
     {
         if (panel.BlocksPointer) return;
 
-        if (piece == selectedPiece)
+        if (piece == selected)
         {
-            Deselect();
+            ClearSelection();
             panel.Hide();
             return;
         }
 
-        Deselect();
+        ClearSelection();
         if (piece.Movable)
         {
-            selectedPiece = piece;
+            selected = piece;
             piece.SetHighlight(true);
         }
         panel.Show(piece);
@@ -176,22 +190,17 @@ public class BoardManager : MonoBehaviour
     {
         if (panel.BlocksPointer) return;
 
-        if (selectedPiece == null)
+        if (selected == null)
         {
             panel.Hide();
             return;
         }
-        if (square.OccupiedBy != null) return;
-
-        squares[selectedPiece.X, selectedPiece.Z].OccupiedBy = null;
-        square.OccupiedBy = selectedPiece;
-        selectedPiece.MoveTo(square.X, square.Z);
-        Deselect();
+        net.SendMove(selected.Data.id, square.X, square.Z);
     }
 
-    void Deselect()
+    public void ClearSelection()
     {
-        if (selectedPiece != null) selectedPiece.SetHighlight(false);
-        selectedPiece = null;
+        if (selected != null) selected.SetHighlight(false);
+        selected = null;
     }
 }
