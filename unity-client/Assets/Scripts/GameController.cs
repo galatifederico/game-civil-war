@@ -4,6 +4,9 @@ using UnityEngine;
 // login -> snapshot del server -> aggiornamenti in tempo reale.
 public class GameController : MonoBehaviour
 {
+    const int MaxReconnectAttempts = 8;
+
+    int reconnectAttempts;
     NetworkClient net;
     BoardManager board;
     InfoPanel panel;
@@ -32,6 +35,7 @@ public class GameController : MonoBehaviour
         panel.Closed += board.ClearSelection;
         net.MessageReceived += OnMessage;
         net.Disconnected += OnDisconnected;
+        hud.LogoutClicked += Logout;
     }
 
     void OnMessage(ServerMessage message)
@@ -39,8 +43,10 @@ public class GameController : MonoBehaviour
         switch (message.type)
         {
             case "snapshot":
+                reconnectAttempts = 0;
                 board.LoadSnapshot(message);
                 login.Hide();
+                hud.SetLogoutVisible(true);
                 hud.SetStatus($"{net.Username} - {message.board.name} {message.board.width}x{message.board.height}");
                 hud.SetScores(message.scores, message.your_player_id);
                 hud.SetInventory(message.inventory);
@@ -61,12 +67,40 @@ public class GameController : MonoBehaviour
         }
     }
 
+    // Se il server cade o si riavvia si riprova da soli con il token gia' ottenuto, a intervalli
+    // crescenti; solo dopo troppi tentativi (o con un token non piu' valido) si torna al login.
     void OnDisconnected(string reason)
     {
         board.Clear();
         panel.Hide();
         hud.Clear();
+        if (net.HasSession && reconnectAttempts < MaxReconnectAttempts)
+        {
+            reconnectAttempts++;
+            hud.SetStatus($"Connessione persa, riprovo ({reconnectAttempts}/{MaxReconnectAttempts})...");
+            StartCoroutine(ReconnectAfter(Mathf.Min(2f * reconnectAttempts, 10f)));
+            return;
+        }
+        reconnectAttempts = 0;
+        net.Logout();
         login.Show(reason);
+    }
+
+    System.Collections.IEnumerator ReconnectAfter(float seconds)
+    {
+        yield return new WaitForSeconds(seconds);
+        net.Reconnect();
+    }
+
+    void Logout()
+    {
+        StopAllCoroutines();
+        reconnectAttempts = 0;
+        net.Logout();
+        board.Clear();
+        panel.Hide();
+        hud.Clear();
+        login.Show("");
     }
 
     static Camera SetupCamera()

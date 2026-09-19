@@ -19,6 +19,10 @@ public class NetworkClient : MonoBehaviour
     public string PlayerId { get; private set; }
     public string Username { get; private set; }
     public bool Connected => ws != null && ws.State == WebSocketState.Open;
+    public bool HasSession => !string.IsNullOrEmpty(sessionToken);
+
+    // Il token ottenuto col login: serve a riconnettersi senza chiedere di nuovo le credenziali.
+    string sessionUrl, sessionToken;
 
     readonly ConcurrentQueue<Action> mainThread = new ConcurrentQueue<Action>();
     readonly SemaphoreSlim sendLock = new SemaphoreSlim(1, 1);
@@ -40,6 +44,8 @@ public class NetworkClient : MonoBehaviour
         {
             PlayerId = response.player_id;
             Username = response.username;
+            sessionUrl = baseUrl;
+            sessionToken = response.token;
             Connect(baseUrl, response.token);
         }, onError));
     }
@@ -78,6 +84,17 @@ public class NetworkClient : MonoBehaviour
             Path = "/ws",
         }.Uri;
         _ = RunConnection(uri, token, cts.Token);
+    }
+
+    public void Reconnect()
+    {
+        if (HasSession) Connect(sessionUrl, sessionToken);
+    }
+
+    public void Logout()
+    {
+        sessionToken = null;
+        Close();
     }
 
     public void Close()

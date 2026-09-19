@@ -21,7 +21,7 @@ the_game/
 - **M4 — Motore regole**: ✅ fondamenta fatte (parametri del mondo come dati, vedi "Stato attuale"); da fare razze, compatibilità, altre regole di creazione pedine, riproduzione, inventario condiviso (solo campione).
 - **M5 — Obiettivi, punteggio, condizioni di vittoria.**
 - **M6 — Admin web app** (`admin-web/`) e lobby mondi lato giocatore.
-- **M7 — Hardening**: riconnessione/afk, grafica 2D isometrica pixel art vera, Cloudflare Tunnel.
+- **M7 — Hardening**: riconnessione/afk (riconnessione automatica del client ✅), grafica 2D isometrica pixel art vera, Cloudflare Tunnel.
 
 ## Stato attuale
 
@@ -36,6 +36,7 @@ the_game/
 - **Partenza delle squadre**: `spawnAnchor` le distribuisce (prime sei ai lati, poi al centro) così che all'inizio siano fuori vista l'una dall'altra (test dedicato su 24x24).
 - **Regole come dati** (tecnico.md: motore di regole configurabile per mondo): tutti i parametri di gioco (statistiche di campione e pedine, dimensione della squadra iniziale, respawn, cooldown, costo di creazione, punti per azione) stanno in `game.Rules`, con i valori predefiniti in `DefaultRules()`. Ogni mondo li sovrascrive nella colonna `worlds.rules` (JSON con solo le differenze, es. `{"minors_per_team": 8, "champion": {"speed": 4}}`). `ParseRules` rifiuta campi sconosciuti (refusi) e valori che romperebbero la simulazione, e il server non parte con regole sbagliate. Il client Unity non ha valori hardcoded: legge tutto dalle entità. È la base su cui l'editor admin (M6) scriverà.
 - **Persistenza**: posizioni, vita, oggetti raccolti, inventario, strutture, nuove pedine e punti su Postgres. Il cooldown è stato effimero.
+- **Riconnessione**: se il server cade o si riavvia il client riprova da solo con il token del login (8 tentativi a intervalli crescenti, stato "Connessione persa, riprovo (n/8)"); solo dopo, o con un token non valido, torna al login. Il pulsante "Esci" (in basso a destra) dimentica la sessione. L'AFK lato server non c'è ancora.
 - **Client Unity** (`unity-client/`): `GameController` crea tutto a runtime (nessun setup nella scena); `NetworkClient` (REST via UnityWebRequest + `ClientWebSocket`), `BoardManager` (snapshot/delta, click, azioni, territorio colorato), `Piece`, `InfoPanel` (scheda + pulsanti azione con motivo del blocco), `LoginScreen`, `Hud` (classifica, inventario, notifiche/dialoghi), tutti in IMGUI senza dipendenze da UGUI. Rendering con primitive 3D viste dall'alto: è un placeholder, la grafica vera arriva in M7.
 - **Come si gioca**: clic su una tua pedina la seleziona (poi una casella vuota la sposta). Con una pedina selezionata, clic su un NPC / oggetto / pedina nemica apre la sua scheda con "Parla" / "Raccogli" e "Sposta" / "Attacca" ("Sposta" e "Costruisci" chiedono poi di cliccare la casella di destinazione). Clic sulla pedina selezionata (scheda con "Costruisci avamposto") e poi su una casella libera costruisce.
 

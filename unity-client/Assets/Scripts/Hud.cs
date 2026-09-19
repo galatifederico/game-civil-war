@@ -23,9 +23,16 @@ public class Hud : MonoBehaviour
     string myPlayerId;
     float eventUntil;
     Rect eventRect;
-    GUIStyle statusStyle, toastStyle, scoreStyle, mineScoreStyle, hintStyle, boxStyle, eventTitleStyle, eventTextStyle;
+    GUIStyle buttonStyle, statusStyle, toastStyle, scoreStyle, mineScoreStyle, hintStyle, boxStyle, eventTitleStyle, eventTextStyle;
+
+    public event System.Action LogoutClicked;
+
+    bool logoutVisible;
+    Rect logoutRect;
 
     public void SetStatus(string text) => status = text;
+
+    public void SetLogoutVisible(bool visible) => logoutVisible = visible;
 
     public void SetHint(string text) => hint = text;
 
@@ -64,6 +71,7 @@ public class Hud : MonoBehaviour
     public void Clear()
     {
         status = hint = eventTitle = eventText = inventoryText = "";
+        logoutVisible = false;
         scores = new ScoreData[0];
         eventUntil = 0f;
         toasts.Clear();
@@ -74,9 +82,10 @@ public class Hud : MonoBehaviour
     {
         get
         {
-            if (Time.time >= eventUntil) return false;
             var m = Input.mousePosition;
-            return eventRect.Contains(new Vector2(m.x, Screen.height - m.y));
+            var p = new Vector2(m.x, Screen.height - m.y);
+            if (logoutVisible && logoutRect.Contains(p)) return true;
+            return Time.time < eventUntil && eventRect.Contains(p);
         }
     }
 
@@ -111,6 +120,12 @@ public class Hud : MonoBehaviour
             y += 26f;
         }
 
+        if (logoutVisible)
+        {
+            logoutRect = new Rect(Screen.width - 92f, Screen.height - 42f, 80f, 30f);
+            if (GUI.Button(logoutRect, "Esci", buttonStyle)) LogoutClicked?.Invoke();
+        }
+
         if (!string.IsNullOrEmpty(hint))
             GUI.Label(new Rect(Screen.width / 2f - 220f, 8f, 440f, 26f), hint, hintStyle);
 
@@ -126,6 +141,7 @@ public class Hud : MonoBehaviour
     void EnsureStyles()
     {
         if (statusStyle != null) return;
+        buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = 13 };
         statusStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold };
         statusStyle.normal.textColor = new Color(0.85f, 0.9f, 1f);
         scoreStyle = new GUIStyle(GUI.skin.label) { fontSize = 13 };
