@@ -315,7 +315,7 @@ public class BoardManager : MonoBehaviour
     Vector2 pressPosition, lastMouse;
     bool pressing, pressBlocked, dragged;
 
-    // La mappa occupa tutto lo schermo; il menu le sta sopra a sinistra, quindi la board intera si
+    // La mappa occupa tutto lo schermo; il menu le sta sopra a destra, quindi la board intera si
     // inquadra nello spazio che il menu lascia libero. Da li' in poi si puo' zoomare e spostare.
     void FitCamera()
     {
@@ -324,12 +324,12 @@ public class BoardManager : MonoBehaviour
         fittedCompact = Ui.Compact;
         boardBounds = GridMath.Bounds(current.grid, current.width, current.height);
 
-        float leftPixels = hud.OccupiedLeftPixels;
-        float freeAspect = Mathf.Max(0.2f, (Screen.width - leftPixels) / Screen.height);
+        float rightPixels = hud.OccupiedRightPixels;
+        float freeAspect = Mathf.Max(0.2f, (Screen.width - rightPixels) / Screen.height);
         fitSize = Mathf.Max(boardBounds.height / 2f, boardBounds.width / 2f / freeAspect) * 1.03f;
         cam.orthographicSize = fitSize;
         float worldPerPixel = 2f * fitSize / Screen.height;
-        cam.transform.position = new Vector3(boardBounds.center.x - leftPixels / 2f * worldPerPixel, boardBounds.center.y, -10f);
+        cam.transform.position = new Vector3(boardBounds.center.x + rightPixels / 2f * worldPerPixel, boardBounds.center.y, -10f);
     }
 
     // factor < 1 avvicina, > 1 allontana, 0 = torna a inquadrare la board intera.
@@ -549,7 +549,7 @@ public class BoardManager : MonoBehaviour
         if (piece.Data.board_id != current.id) ShowBoard(piece.Data.board_id);
         float worldPerPixel = 2f * cam.orthographicSize / Screen.height;
         var at = piece.transform.position;
-        cam.transform.position = new Vector3(at.x - hud.OccupiedLeftPixels / 2f * worldPerPixel, at.y, -10f);
+        cam.transform.position = new Vector3(at.x + hud.OccupiedRightPixels / 2f * worldPerPixel, at.y, -10f);
         MoveCamera(Vector3.zero);
         piece.Ping();
     }

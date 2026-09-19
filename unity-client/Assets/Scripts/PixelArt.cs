@@ -139,6 +139,21 @@ public static class PixelArt
             "....XXXXX...",
         },
         // Icone dell'interfaccia (barra a sinistra): linee chiare su sfondo scuro.
+        ["ui_star"] = new[]
+        {
+            ".....XX.....",
+            "....XyyX....",
+            "....XyyX....",
+            "XXXXXyyXXXXX",
+            "XyyyyyyyyyyX",
+            ".XyyyyyyyyX.",
+            "..XyyyyyyX..",
+            "..XyyyyyyX..",
+            ".XyyyXXyyyX.",
+            ".XyyX..XyyX.",
+            "XyyX....XyyX",
+            "XXX......XXX",
+        },
         ["ui_panel"] = new[]
         {
             ".wwwwwwwwww.",

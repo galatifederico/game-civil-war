@@ -3,9 +3,9 @@ using UnityEngine;
 
 // L'interfaccia sopra la mappa (che occupa tutto lo schermo).
 //
-// A sinistra c'e' una barra fissa con due icone: la prima mostra o nasconde il menu (riaprendolo
+// A destra c'e' una barra fissa con due icone: la prima mostra o nasconde il menu (riaprendolo
 // sull'ultima pagina), la seconda apre il menu generale (inventario, obiettivi, classifica,
-// squadra). In alto si vedono sempre i punti della squadra e i soldi. Il menu e' uno solo, accanto alla barra, e cambia pagina:
+// squadra). In alto a sinistra si vedono sempre i punti della squadra e i soldi. Il menu e' uno solo, alla sinistra della barra, e cambia pagina:
 //   Home, Inventario, Dettaglio oggetto, Obiettivi, Classifica, Squadra e la Scheda della pedina
 //   (che si apre da sola quando si clicca una pedina sulla mappa).
 // Sopra alla pagina compaiono i messaggi del server (dialoghi con gli NPC, sconfitte...).
@@ -86,8 +86,8 @@ public class Hud : MonoBehaviour
 
     public void SetLogoutVisible(bool visible) => inWorld = visible;
 
-    // Larghezza, in pixel di schermo, che l'interfaccia copre a sinistra: la mappa si inquadra nel resto.
-    public float OccupiedLeftPixels
+    // Larghezza, in pixel di schermo, che l'interfaccia copre a destra: la mappa si inquadra nel resto.
+    public float OccupiedRightPixels
     {
         get
         {
@@ -214,14 +214,15 @@ public class Hud : MonoBehaviour
         if (page == Page.Card && shown == null) page = cardBack;
         if (page == Page.ItemDetail && FindDetail() == null) page = Page.Inventory;
 
-        float railRight = Margin + RailWidth;
-        float panelWidth = Mathf.Min(PanelWidth, Ui.Width - railRight - 2f * Margin);
-        float mapLeft = menuOpen ? railRight + 8f + panelWidth : railRight;
-        float mapCenter = compact ? Ui.Width / 2f : (mapLeft + Ui.Width) / 2f;
+        // La barra sta a destra e il menu, quando e' aperto, subito alla sua sinistra.
+        float railLeft = Ui.Width - Margin - RailWidth;
+        float panelWidth = Mathf.Min(PanelWidth, railLeft - 8f - Margin);
+        float mapRight = menuOpen ? railLeft - 8f - panelWidth : railLeft;
+        float mapCenter = compact ? Ui.Width / 2f : mapRight / 2f;
         // In verticale il menu aperto copre quasi tutta la mappa: il resto si nasconde finche' non si chiude.
         bool overlayHidden = compact && menuOpen;
 
-        DrawStats(mapCenter);
+        DrawStats();
         if (!overlayHidden)
         {
             DrawBoardTabs(mapCenter);
@@ -235,20 +236,20 @@ public class Hud : MonoBehaviour
         }
         DrawRail();
         float panelTop = compact ? BarBottom : Margin;
-        if (menuOpen) DrawPanel(new Rect(railRight + 8f, panelTop, panelWidth, Ui.Height - panelTop - Margin));
+        if (menuOpen) DrawPanel(new Rect(railLeft - 8f - panelWidth, panelTop, panelWidth, Ui.Height - panelTop - Margin));
         else if (Time.time < eventUntil)
         {
-            eventRect = new Rect(railRight + 8f, panelTop, Mathf.Min(PanelWidth, Ui.Width - railRight - 2f * Margin), 110f);
+            eventRect = new Rect(railLeft - 8f - panelWidth, panelTop, panelWidth, 110f);
             DrawEvent(eventRect);
         }
     }
 
     // ---- fuori dal menu ----------------------------------------------------------------------
 
-    // In alto, sempre: i punti della squadra e i soldi. I soldi sono quelli del campione (e' lui che
+    // In alto a sinistra, sempre: i punti della squadra e i soldi. I soldi sono quelli del campione (e' lui che
     // riceve gli effetti degli oggetti sulle caratteristiche); senza campione o senza la
     // caratteristica "soldi" si mostra 0.
-    void DrawStats(float center)
+    void DrawStats()
     {
         int points = 0;
         foreach (var s in scores)
@@ -260,8 +261,8 @@ public class Hud : MonoBehaviour
                 if (trait.name == "soldi") money = trait.value;
 
         const float boxWidth = 128f, gap = 8f;
-        statsRect = new Rect(center - boxWidth - gap / 2f, 8f, 2f * boxWidth + gap, StatsHeight);
-        DrawStat(new Rect(statsRect.x, statsRect.y, boxWidth, StatsHeight), null, "Punti", points);
+        statsRect = new Rect(Margin, 8f, 2f * boxWidth + gap, StatsHeight);
+        DrawStat(new Rect(statsRect.x, statsRect.y, boxWidth, StatsHeight), "ui_star", "Punti", points);
         DrawStat(new Rect(statsRect.x + boxWidth + gap, statsRect.y, boxWidth, StatsHeight), "coin", "Soldi", money);
     }
 
@@ -277,13 +278,17 @@ public class Hud : MonoBehaviour
         GUI.Label(new Rect(x, r.y, r.xMax - x - 8f, r.height), $"{label}  {value}", statStyle);
     }
 
+    // La riga in alto e' libera se quello che si sta per disegnare non tocca i punti e i soldi a
+    // sinistra; altrimenti va sotto di loro.
+    float TopRow(float center, float width) => center - width / 2f >= statsRect.xMax + 8f ? 8f : BarBottom;
+
     void DrawBoardTabs(float center)
     {
         if (boardNames.Length <= 1) return;
         const float tabHeight = 28f;
         float tabWidth = Mathf.Min(110f, (Ui.Width - 16f) / boardNames.Length);
         float total = boardNames.Length * tabWidth;
-        tabsRect = new Rect(center - total / 2f, BarBottom, total, tabHeight);
+        tabsRect = new Rect(center - total / 2f, TopRow(center, total), total, tabHeight);
         for (int i = 0; i < boardNames.Length; i++)
         {
             var previous = GUI.backgroundColor;
@@ -298,7 +303,8 @@ public class Hud : MonoBehaviour
     {
         if (string.IsNullOrEmpty(hint)) return;
         float width = Mathf.Min(440f, Ui.Width - 16f);
-        GUI.Label(new Rect(center - width / 2f, BarBottom + (boardNames.Length > 1 ? 34f : 0f), width, 26f), hint, hintStyle);
+        float top = boardNames.Length > 1 ? tabsRect.yMax + 6f : TopRow(center, width);
+        GUI.Label(new Rect(center - width / 2f, top, width, 26f), hint, hintStyle);
     }
 
     void DrawToasts(float center)
@@ -315,17 +321,17 @@ public class Hud : MonoBehaviour
     void DrawZoomButtons()
     {
         const float size = 34f, gap = 6f;
-        zoomRect = new Rect(Ui.Width - size - Margin, Ui.Height - 3f * size - 2f * gap - Margin, size, 3f * size + 2f * gap);
+        zoomRect = new Rect(Ui.Width - Margin - RailWidth / 2f - size / 2f, Ui.Height - 3f * size - 2f * gap - Margin, size, 3f * size + 2f * gap);
         if (GUI.Button(new Rect(zoomRect.x, zoomRect.y, size, size), "+", buttonStyle)) ZoomRequested?.Invoke(0.75f);
         if (GUI.Button(new Rect(zoomRect.x, zoomRect.y + size + gap, size, size), "-", buttonStyle)) ZoomRequested?.Invoke(1.33f);
         if (GUI.Button(new Rect(zoomRect.x, zoomRect.y + 2f * (size + gap), size, size), "[ ]", buttonStyle)) ZoomRequested?.Invoke(0f);
     }
 
-    // ---- la barra a sinistra -----------------------------------------------------------------
+    // ---- la barra a destra -----------------------------------------------------------------
 
     void DrawRail()
     {
-        railRect = new Rect(Margin, Ui.Compact ? BarBottom + 38f : Margin, RailWidth, 2f * RailButton + RailGap + 8f);
+        railRect = new Rect(Ui.Width - Margin - RailWidth, Margin, RailWidth, 2f * RailButton + RailGap + 8f);
         GUI.Box(railRect, GUIContent.none, boxStyle);
         float x = railRect.x + 4f, y = railRect.y + 4f;
 
