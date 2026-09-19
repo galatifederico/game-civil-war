@@ -16,6 +16,7 @@ type Persister interface {
 	InsertUnits(ctx context.Context, boardID string, units []*Entity) error
 	SaveUnit(ctx context.Context, id string, x, y, health int) error
 	InsertStructure(ctx context.Context, boardID string, s *Entity) error
+	SaveItemPosition(ctx context.Context, id string, x, y int) error
 	DeleteItem(ctx context.Context, id string) error
 	AddInventory(ctx context.Context, playerID string, item Item) error
 	AddPoints(ctx context.Context, playerID string, delta int) error
@@ -215,6 +216,10 @@ func (l *Loop) Act(c *Client, a Action) {
 func (l *Loop) publish(playerID string, out *Outcome) {
 	for _, e := range out.Dirty {
 		l.saveUnit(e)
+	}
+	for _, item := range out.DirtyItems {
+		id, x, y := item.ID, item.X, item.Y
+		l.persist(func(ctx context.Context) error { return l.store.SaveItemPosition(ctx, id, x, y) })
 	}
 	for _, created := range out.Created {
 		// The worker runs concurrently: give it a copy, never the live entity.

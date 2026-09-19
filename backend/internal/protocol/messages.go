@@ -11,6 +11,7 @@ const (
 	TypePickup = "pickup"
 	TypeBuild  = "build"
 	TypeCreate = "create"
+	TypeMoveItem = "move_item"
 
 	// Server -> client.
 	TypeSnapshot  = "snapshot"

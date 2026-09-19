@@ -300,3 +300,70 @@ func TestCreateUnitRules(t *testing.T) {
 		}
 	})
 }
+
+func TestMoveItem(t *testing.T) {
+	move := func(unit, target string, x, y int) Action {
+		return Action{Kind: ActionMoveItem, UnitID: unit, TargetID: target, At: Point{x, y}}
+	}
+
+	t.Run("pushes the object, frees its old cell and takes the new one", func(t *testing.T) {
+		b := actionBoard() // item at (4,5); champion (5,5), vision 5; minor (6,5), speed 2
+		out, err := b.Do("p1", move("champ", "item", 4, 8), t0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if item := b.entities["item"]; item.X != 4 || item.Y != 8 {
+			t.Fatalf("item at %d,%d, want 4,8", item.X, item.Y)
+		}
+		if len(out.DirtyItems) != 1 || out.DirtyItems[0].ID != "item" {
+			t.Fatalf("the item's position should be persisted, got %v", out.DirtyItems)
+		}
+		if _, err := b.Move("p1", "minor", Point{4, 5}, t0); err != nil {
+			t.Fatalf("the old cell should be free: %v", err)
+		}
+		if _, err := b.Move("p1", "champ", Point{4, 8}, t0); err != ErrOccupied {
+			t.Fatalf("the new cell should be taken, got %v", err)
+		}
+	})
+
+	t.Run("has a cooldown", func(t *testing.T) {
+		b := actionBoard()
+		if _, err := b.Do("p1", move("champ", "item", 4, 8), t0); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := b.Do("p1", move("champ", "item", 4, 9), t0.Add(MoveItemCooldown/2)); err != ErrCooldown {
+			t.Fatalf("got %v", err)
+		}
+		if _, err := b.Do("p1", move("champ", "item", 4, 9), t0.Add(MoveItemCooldown)); err != nil {
+			t.Fatalf("should be ready after the cooldown: %v", err)
+		}
+	})
+
+	t.Run("item beyond the unit's vision", func(t *testing.T) {
+		b := actionBoard()
+		b.Add(&Entity{ID: "distant", Kind: KindItem, X: 15, Y: 15})
+		if _, err := b.Do("p1", move("champ", "distant", 15, 16), t0); err != ErrOutOfRange {
+			t.Fatalf("got %v", err)
+		}
+	})
+
+	tests := []struct {
+		name string
+		act  Action
+		want *Error
+	}{
+		{"destination occupied", move("champ", "item", 5, 5), ErrOccupied},
+		{"destination out of the board", move("champ", "item", -1, 5), ErrOutOfBounds},
+		{"destination beyond the unit's vision", move("minor", "item", 4, 9), ErrOutOfRange},
+		{"same cell", move("champ", "item", 4, 5), ErrSameCell},
+		{"only items can be pushed", move("champ", "enemy", 8, 9), ErrInvalidTarget},
+		{"unknown item", move("champ", "nope", 5, 6), ErrNoTarget},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := actionBoard().Do("p1", tc.act, t0); err != tc.want {
+				t.Fatalf("got %v, want %v", err, tc.want)
+			}
+		})
+	}
+}

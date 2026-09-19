@@ -14,6 +14,8 @@ const (
 	ActionPickup ActionKind = "pickup"
 	ActionBuild  ActionKind = "build"
 	ActionCreate ActionKind = "create"
+	// ActionMoveItem pushes an object to another cell within the unit's reach.
+	ActionMoveItem ActionKind = "move_item"
 )
 
 const (
@@ -22,6 +24,7 @@ const (
 	PickupCooldown = 500 * time.Millisecond
 	BuildCooldown  = 3 * time.Second
 	CreateCooldown = 5 * time.Second
+	MoveItemCooldown = 500 * time.Millisecond
 
 	// The champion pays with its own health to bring a new minor unit into the team
 	// (design.md: creation by consuming the champion's characteristics).
@@ -36,7 +39,7 @@ const (
 )
 
 // Action is a command a player gives to one of their units. The target is an entity id
-// (attack, talk, pickup) or a cell (build).
+// (attack, talk, pickup), a cell (build) or both (move_item: which object, to which cell).
 type Action struct {
 	Kind     ActionKind
 	UnitID   string
@@ -56,6 +59,7 @@ type Notice struct {
 type Outcome struct {
 	Changed []*Entity // to send to clients
 	Dirty   []*Entity // units whose persisted state (position, health) changed
+	DirtyItems []*Entity // items whose persisted position changed
 	Created []*Entity // new structures and units to insert
 	Removed []string  // entity ids that left the board
 	Picked  *Item     // added to the actor's team inventory
@@ -86,6 +90,8 @@ func (b *Board) Do(playerID string, a Action, now time.Time) (*Outcome, error) {
 		out, err = b.build(actor, a.At, now)
 	case ActionCreate:
 		out, err = b.create(actor, now)
+	case ActionMoveItem:
+		out, err = b.moveItem(actor, a.TargetID, a.At, now)
 	default:
 		return nil, ErrUnknownAction
 	}
@@ -267,4 +273,38 @@ func (b *Board) freeNeighbor(p Point) (Point, bool) {
 		}
 	}
 	return Point{}, false
+}
+
+// moveItem pushes an object to a free cell. Both the object and the destination must be
+// within the unit's vision.
+func (b *Board) moveItem(actor *Entity, targetID string, to Point, now time.Time) (*Outcome, error) {
+	t, err := b.target(targetID)
+	if err != nil {
+		return nil, err
+	}
+	if t.Kind != KindItem {
+		return nil, ErrInvalidTarget
+	}
+	if !inRange(actor, t) {
+		return nil, ErrOutOfRange
+	}
+	if !b.inBounds(to) {
+		return nil, ErrOutOfBounds
+	}
+	from := Point{t.X, t.Y}
+	if to == from {
+		return nil, ErrSameCell
+	}
+	if _, taken := b.cells[to]; taken {
+		return nil, ErrOccupied
+	}
+	if distance(Point{actor.X, actor.Y}, to) > actor.Vision {
+		return nil, ErrOutOfRange
+	}
+
+	delete(b.cells, from)
+	b.cells[to] = t.ID
+	t.X, t.Y = to.X, to.Y
+	actor.ActReadyAt = now.Add(MoveItemCooldown)
+	return &Outcome{Changed: []*Entity{t, actor}, DirtyItems: []*Entity{t}}, nil
 }

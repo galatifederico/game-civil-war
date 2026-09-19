@@ -256,6 +256,11 @@ func (s *Store) InsertStructure(ctx context.Context, boardID string, st *game.En
 	return err
 }
 
+func (s *Store) SaveItemPosition(ctx context.Context, id string, x, y int) error {
+	_, err := s.pool.Exec(ctx, `UPDATE board_items SET x = $2, y = $3 WHERE id::text = $1`, id, x, y)
+	return err
+}
+
 func (s *Store) DeleteItem(ctx context.Context, id string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM board_items WHERE id::text = $1`, id)
 	return err

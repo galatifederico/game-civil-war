@@ -68,6 +68,8 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 			s.Loop.Act(client, game.Action{Kind: game.ActionTalk, UnitID: msg.UnitID, TargetID: msg.TargetID})
 		case protocol.TypePickup:
 			s.Loop.Act(client, game.Action{Kind: game.ActionPickup, UnitID: msg.UnitID, TargetID: msg.TargetID})
+		case protocol.TypeMoveItem:
+			s.Loop.Act(client, game.Action{Kind: game.ActionMoveItem, UnitID: msg.UnitID, TargetID: msg.TargetID, At: at})
 		case protocol.TypeCreate:
 			s.Loop.Act(client, game.Action{Kind: game.ActionCreate, UnitID: msg.UnitID})
 		case protocol.TypeBuild:

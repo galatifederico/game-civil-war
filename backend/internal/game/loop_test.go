@@ -15,6 +15,7 @@ type noStore struct{}
 func (noStore) InsertUnits(context.Context, string, []*Entity) error   { return nil }
 func (noStore) SaveUnit(context.Context, string, int, int, int) error  { return nil }
 func (noStore) InsertStructure(context.Context, string, *Entity) error { return nil }
+func (noStore) SaveItemPosition(context.Context, string, int, int) error { return nil }
 func (noStore) DeleteItem(context.Context, string) error               { return nil }
 func (noStore) AddInventory(context.Context, string, Item) error       { return nil }
 func (noStore) AddPoints(context.Context, string, int) error           { return nil }

@@ -33,7 +33,9 @@ public class BoardManager : MonoBehaviour
     Piece selected;
     Transform rangeOutline;
     readonly Transform[] rangeBars = new Transform[4];
-    bool buildMode;
+    enum ClickMode { Move, Build, PushItem }
+    ClickMode mode = ClickMode.Move;
+    Piece pushedItem;
     string myPlayerId;
     int width, height;
     float fittedAspect;
@@ -292,7 +294,7 @@ public class BoardManager : MonoBehaviour
             return;
         }
 
-        SetBuildMode(false);
+        SetMode(ClickMode.Move);
         if (piece.Movable)
         {
             ClearSelection();
@@ -316,27 +318,44 @@ public class BoardManager : MonoBehaviour
             panel.Hide();
             return;
         }
-        if (buildMode)
+        switch (mode)
         {
-            net.SendCommand("build", selected.Data.id, null, square.X, square.Z);
-            SetBuildMode(false);
-            panel.Show(selected, ActionsFor(selected));
-            return;
+            case ClickMode.Build:
+                net.SendCommand("build", selected.Data.id, null, square.X, square.Z);
+                SetMode(ClickMode.Move);
+                panel.Show(selected, ActionsFor(selected));
+                break;
+            case ClickMode.PushItem:
+                net.SendCommand("move_item", selected.Data.id, pushedItem.Data.id, square.X, square.Z);
+                var item = pushedItem;
+                SetMode(ClickMode.Move);
+                panel.Show(item, ActionsFor(item));
+                break;
+            default:
+                net.SendMove(selected.Data.id, square.X, square.Z);
+                break;
         }
-        net.SendMove(selected.Data.id, square.X, square.Z);
     }
 
     public void ClearSelection()
     {
-        SetBuildMode(false);
+        SetMode(ClickMode.Move);
         if (selected != null) selected.SetHighlight(false);
         selected = null;
     }
 
-    void SetBuildMode(bool on)
+    // Dopo "Costruisci" o "Sposta" il clic successivo su una casella non muove la pedina:
+    // e' la destinazione dell'azione, e la scritta in alto lo ricorda.
+    void SetMode(ClickMode newMode, Piece item = null)
     {
-        buildMode = on;
-        hud.SetHint(on ? "Costruzione: clicca una casella libera" : "");
+        mode = newMode;
+        pushedItem = item;
+        switch (newMode)
+        {
+            case ClickMode.Build: hud.SetHint("Costruzione: clicca una casella libera"); break;
+            case ClickMode.PushItem: hud.SetHint($"Sposta {item.Data.name}: clicca una casella libera"); break;
+            default: hud.SetHint(""); break;
+        }
     }
 
     List<PanelAction> ActionsFor(Piece piece)
@@ -349,10 +368,10 @@ public class BoardManager : MonoBehaviour
         {
             list.Add(new PanelAction
             {
-                Label = buildMode ? "Annulla costruzione" : "Costruisci avamposto",
+                Label = mode == ClickMode.Build ? "Annulla costruzione" : "Costruisci avamposto",
                 Perform = () =>
                 {
-                    SetBuildMode(!buildMode);
+                    SetMode(mode == ClickMode.Build ? ClickMode.Move : ClickMode.Build);
                     panel.Show(actor, ActionsFor(actor));
                 },
                 BlockedReason = () => BlockReason(actor, null, needsReady: true),
@@ -377,6 +396,17 @@ public class BoardManager : MonoBehaviour
                 break;
             case Kinds.Item:
                 list.Add(Command("Raccogli", "pickup", actor, piece, needsReady: true));
+                list.Add(new PanelAction
+                {
+                    Label = mode == ClickMode.PushItem && pushedItem == piece ? "Annulla spostamento" : "Sposta",
+                    Perform = () =>
+                    {
+                        bool cancel = mode == ClickMode.PushItem && pushedItem == piece;
+                        SetMode(cancel ? ClickMode.Move : ClickMode.PushItem, piece);
+                        panel.Show(piece, ActionsFor(piece));
+                    },
+                    BlockedReason = () => BlockReason(actor, piece, needsReady: true),
+                });
                 break;
             case Kinds.Champion:
             case Kinds.Minor:
