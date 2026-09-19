@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -35,7 +36,15 @@ type env struct {
 	server *httptest.Server
 }
 
-func newEnv(t *testing.T) *env {
+// newEnv is a database with the schema and the seed, plus a running server. setup runs extra SQL
+// after the seed and before the server loads the world.
+func newEnv(t *testing.T, setup ...string) *env {
+	e := newDB(t, setup...)
+	e.startServer()
+	return e
+}
+
+func newDB(t *testing.T, setup ...string) *env {
 	adminURL := os.Getenv("TEST_DB_ADMIN_URL")
 	if adminURL == "" {
 		t.Skip("TEST_DB_ADMIN_URL not set")
@@ -81,16 +90,15 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { e.db.Close(context.Background()) })
-	for _, q := range []string{
+	queries := append([]string{
 		`INSERT INTO units (board_id, kind, name, x, y, speed, dialogue) SELECT id, 'npc', 'Test NPC', 3, 6, 0, 'ciao' FROM boards`,
 		`INSERT INTO board_items (board_id, name, x, y) SELECT id, 'Test Item', 4, 6 FROM boards`,
-	} {
+	}, setup...)
+	for _, q := range queries {
 		if _, err := e.db.Exec(ctx, q); err != nil {
 			t.Fatal(err)
 		}
 	}
-
-	e.startServer()
 	return e
 }
 
@@ -253,8 +261,8 @@ func TestAuthEndpoints(t *testing.T) {
 		if err := e.db.QueryRow(e.ctx, `SELECT count(*) FROM units WHERE player_id IS NOT NULL`).Scan(&units); err != nil {
 			t.Fatal(err)
 		}
-		if units != 1+game.MinorsPerTeam {
-			t.Fatalf("units owned by players = %d, want one team of %d", units, 1+game.MinorsPerTeam)
+		if units != 1+game.DefaultRules().MinorsPerTeam {
+			t.Fatalf("units owned by players = %d, want one team of %d", units, 1+game.DefaultRules().MinorsPerTeam)
 		}
 	})
 }
@@ -290,8 +298,8 @@ func TestGameplayAndPersistence(t *testing.T) {
 			mine++
 		}
 	}
-	if mine != 1+game.MinorsPerTeam {
-		t.Fatalf("player owns %d units, want %d", mine, 1+game.MinorsPerTeam)
+	if mine != 1+game.DefaultRules().MinorsPerTeam {
+		t.Fatalf("player owns %d units, want %d", mine, 1+game.DefaultRules().MinorsPerTeam)
 	}
 
 	// A second player joins far away: Alice learns about the new scoreboard entry, but with
@@ -368,7 +376,7 @@ func TestGameplayAndPersistence(t *testing.T) {
 	}
 	b.expectNothingAbout(item.ID, 200*time.Millisecond) // Bob never saw it, so he is not told it is gone
 
-	time.Sleep(game.PickupCooldown + 100*time.Millisecond)
+	time.Sleep(game.DefaultRules().PickupCooldown() + 100*time.Millisecond)
 	a.send(protocol.ClientMessage{Type: protocol.TypeBuild, UnitID: champ.ID, X: 3, Y: 7})
 	built := a.expect("the new structure", func(m protocol.ServerMessage) bool {
 		_, ok := findEntity(m.Entities, func(en protocol.Entity) bool { return en.Kind == "structure" })
@@ -379,7 +387,7 @@ func TestGameplayAndPersistence(t *testing.T) {
 	if structure.X != 3 || structure.Y != 7 || structure.OwnerID != idA {
 		t.Fatalf("structure = %+v", structure)
 	}
-	wantPoints := game.PointsPickup + game.PointsBuild
+	wantPoints := game.DefaultRules().Points.Pickup + game.DefaultRules().Points.Build
 	if len(built.Scores) == 0 || built.Scores[0].Points != wantPoints {
 		t.Fatalf("scores = %+v, want the leader on %d", built.Scores, wantPoints)
 	}
@@ -418,5 +426,48 @@ func TestGameplayAndPersistence(t *testing.T) {
 	}
 	if reloaded.X != to[0] || reloaded.Y != to[1] {
 		t.Fatalf("champion reloaded at %d,%d, want %v", reloaded.X, reloaded.Y, to)
+	}
+}
+
+func TestWorldRulesComeFromTheDatabase(t *testing.T) {
+	e := newEnv(t, `UPDATE worlds SET rules = '{"minors_per_team": 3, "minor": {"speed": 6}, "champion": {"vision": 9}}'`)
+	token, id := e.register("a@test.io", "Alice")
+	snap := e.dial(token).expect("snapshot", ofType(protocol.TypeSnapshot))
+
+	def := game.DefaultRules()
+	champions, minors := 0, 0
+	for _, en := range snap.Entities {
+		if en.OwnerID != id {
+			continue
+		}
+		switch en.Kind {
+		case "champion":
+			champions++
+			if en.Vision != 9 || en.Speed != def.Champion.Speed {
+				t.Fatalf("champion = %+v: vision should be overridden to 9, speed left at %d", en, def.Champion.Speed)
+			}
+		case "minor":
+			minors++
+			if en.Speed != 6 || en.Health != def.Minor.Health {
+				t.Fatalf("minor = %+v: speed should be 6 and health the default %d", en, def.Minor.Health)
+			}
+		}
+	}
+	if champions != 1 || minors != 3 {
+		t.Fatalf("team = %d champion and %d minors, want 1 and 3", champions, minors)
+	}
+}
+
+func TestInvalidWorldRulesAreRefusedWhenLoading(t *testing.T) {
+	for name, rules := range map[string]string{
+		"a rule that does not exist": `{"minors_per_tem": 3}`,
+		"a unit that cannot move":    `{"champion": {"speed": 0}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newDB(t, fmt.Sprintf(`UPDATE worlds SET rules = '%s'`, rules))
+			if _, err := e.store.LoadDefaultBoard(e.ctx); err == nil || !strings.Contains(err.Error(), "world rules") {
+				t.Fatalf("expected a world rules error, got %v", err)
+			}
+		})
 	}
 }

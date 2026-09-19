@@ -19,13 +19,6 @@ const (
 	KindStructure Kind = "structure"
 )
 
-const (
-	MinorsPerTeam = 12
-
-	championSpeed, championHealth, championVision, championStrength = 3, 200, 5, 30
-	minorSpeed, minorHealth, minorVision, minorStrength             = 2, 100, 3, 15
-)
-
 type Point struct{ X, Y int }
 
 type Entity struct {
@@ -76,10 +69,12 @@ type Score struct {
 }
 
 type Board struct {
-	ID       string
-	Name     string
-	Width    int
-	Height   int
+	ID     string
+	Name   string
+	Width  int
+	Height int
+	Rules  Rules // the world's parameters, see rules.go
+
 	entities map[string]*Entity
 	cells    map[Point]string
 	players  map[string]*Player
@@ -87,7 +82,7 @@ type Board struct {
 
 func NewBoard(id, name string, width, height int, entities []*Entity) *Board {
 	b := &Board{
-		ID: id, Name: name, Width: width, Height: height,
+		ID: id, Name: name, Width: width, Height: height, Rules: DefaultRules(),
 		entities: make(map[string]*Entity, len(entities)),
 		cells:    make(map[Point]string, len(entities)),
 		players:  map[string]*Player{},
@@ -244,12 +239,12 @@ func (b *Board) Tick(now time.Time) []*Entity {
 func (b *Board) ScheduleRespawns(now time.Time) {
 	for _, e := range b.entities {
 		if e.IsUnit() && e.Health <= 0 && e.RespawnAt.IsZero() {
-			e.RespawnAt = now.Add(RespawnDelay)
+			e.RespawnAt = now.Add(b.Rules.RespawnDelay())
 		}
 	}
 }
 
-// PlanTeam builds a new player's team (1 champion + MinorsPerTeam minor units) on the free
+// PlanTeam builds a new player's team (1 champion + Rules.MinorsPerTeam minor units) on the free
 // cells nearest to a per-player anchor, so teams spawn in separate areas. The entities have no
 // ID yet: the persistence layer assigns it.
 func (b *Board) PlanTeam(playerID, username string) ([]*Entity, error) {
@@ -269,7 +264,7 @@ func (b *Board) PlanTeam(playerID, username string) ([]*Entity, error) {
 			}
 		}
 	}
-	need := 1 + MinorsPerTeam
+	need := 1 + b.Rules.MinorsPerTeam
 	if len(free) < need {
 		return nil, ErrBoardFull
 	}
@@ -289,16 +284,16 @@ func (b *Board) PlanTeam(playerID, username string) ([]*Entity, error) {
 		OwnerID: playerID, Kind: KindChampion, Name: "Champion",
 		Description: fmt.Sprintf("Il campione della squadra di %s: forte, carismatico e convinto di essere indispensabile.", username),
 		X:           free[0].p.X, Y: free[0].p.Y,
-		Speed: championSpeed, Health: championHealth, MaxHealth: championHealth,
-		Vision: championVision, Strength: championStrength,
+		Speed: b.Rules.Champion.Speed, Health: b.Rules.Champion.Health, MaxHealth: b.Rules.Champion.Health,
+		Vision: b.Rules.Champion.Vision, Strength: b.Rules.Champion.Strength,
 	})
 	for i := 1; i < need; i++ {
 		team = append(team, &Entity{
 			OwnerID: playerID, Kind: KindMinor, Name: fmt.Sprintf("Pedina %d", i),
 			Description: fmt.Sprintf("Una fedele pedina della squadra di %s.", username),
 			X:           free[i].p.X, Y: free[i].p.Y,
-			Speed: minorSpeed, Health: minorHealth, MaxHealth: minorHealth,
-			Vision: minorVision, Strength: minorStrength,
+			Speed: b.Rules.Minor.Speed, Health: b.Rules.Minor.Health, MaxHealth: b.Rules.Minor.Health,
+			Vision: b.Rules.Minor.Vision, Strength: b.Rules.Minor.Strength,
 		})
 	}
 	return team, nil

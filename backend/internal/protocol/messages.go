@@ -4,13 +4,13 @@ package protocol
 
 const (
 	// Client -> server.
-	TypeAuth   = "auth"
-	TypeMove   = "move"
-	TypeAttack = "attack"
-	TypeTalk   = "talk"
-	TypePickup = "pickup"
-	TypeBuild  = "build"
-	TypeCreate = "create"
+	TypeAuth     = "auth"
+	TypeMove     = "move"
+	TypeAttack   = "attack"
+	TypeTalk     = "talk"
+	TypePickup   = "pickup"
+	TypeBuild    = "build"
+	TypeCreate   = "create"
 	TypeMoveItem = "move_item"
 
 	// Server -> client.

@@ -116,18 +116,24 @@ func (s *Store) player(ctx context.Context, query string, arg any) (Player, erro
 	return p, err
 }
 
-// LoadDefaultBoard loads the first board with everything on it, plus the players and their
-// points and inventories.
+// LoadDefaultBoard loads the first board with its world's rules and everything on it, plus the
+// players and their points and inventories.
 func (s *Store) LoadDefaultBoard(ctx context.Context) (*game.Board, error) {
 	var id, name string
 	var width, height int
-	err := s.pool.QueryRow(ctx, `SELECT id::text, name, width, height FROM boards ORDER BY created_at LIMIT 1`).
-		Scan(&id, &name, &width, &height)
+	var rulesJSON []byte
+	err := s.pool.QueryRow(ctx, `SELECT b.id::text, b.name, b.width, b.height, w.rules
+		FROM boards b JOIN worlds w ON w.id = b.world_id ORDER BY b.created_at LIMIT 1`).
+		Scan(&id, &name, &width, &height, &rulesJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, errors.New("no board in the database")
 	}
 	if err != nil {
 		return nil, err
+	}
+	rules, err := game.ParseRules(rulesJSON)
+	if err != nil {
+		return nil, fmt.Errorf("world rules: %w", err)
 	}
 
 	var entities []*game.Entity
@@ -179,6 +185,7 @@ func (s *Store) LoadDefaultBoard(ctx context.Context) (*game.Board, error) {
 	}
 
 	board := game.NewBoard(id, name, width, height, entities)
+	board.Rules = rules
 
 	err = s.each(ctx, `SELECT id::text, username, points FROM players`, nil, func(rows pgx.Rows) error {
 		var pid, username string

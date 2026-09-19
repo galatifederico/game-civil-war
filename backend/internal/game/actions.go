@@ -18,26 +18,6 @@ const (
 	ActionMoveItem ActionKind = "move_item"
 )
 
-const (
-	RespawnDelay   = 10 * time.Second
-	AttackCooldown = 1500 * time.Millisecond
-	PickupCooldown = 500 * time.Millisecond
-	BuildCooldown  = 3 * time.Second
-	CreateCooldown = 5 * time.Second
-	MoveItemCooldown = 500 * time.Millisecond
-
-	// The champion pays with its own health to bring a new minor unit into the team
-	// (design.md: creation by consuming the champion's characteristics).
-	CreateHealthCost = 20
-
-	PointsPerHit       = 5
-	PointsKillMinor    = 25
-	PointsKillChampion = 100 // design.md: taking out a champion is worth a big bonus, not a win
-	PointsPickup       = 5
-	PointsBuild        = 20
-	PointsCreate       = 10
-)
-
 // Action is a command a player gives to one of their units. The target is an entity id
 // (attack, talk, pickup), a cell (build) or both (move_item: which object, to which cell).
 type Action struct {
@@ -57,14 +37,14 @@ type Notice struct {
 // Outcome is everything that changed because of an action, so the caller can persist and
 // broadcast it. The board has already been updated when an Outcome is returned.
 type Outcome struct {
-	Changed []*Entity // to send to clients
-	Dirty   []*Entity // units whose persisted state (position, health) changed
+	Changed    []*Entity // to send to clients
+	Dirty      []*Entity // units whose persisted state (position, health) changed
 	DirtyItems []*Entity // items whose persisted position changed
-	Created []*Entity // new structures and units to insert
-	Removed []string  // entity ids that left the board
-	Picked  *Item     // added to the actor's team inventory
-	Points  int       // awarded to the actor's team
-	Notices []Notice
+	Created    []*Entity // new structures and units to insert
+	Removed    []string  // entity ids that left the board
+	Picked     *Item     // added to the actor's team inventory
+	Points     int       // awarded to the actor's team
+	Notices    []Notice
 }
 
 // Do applies an action if the rules allow it. Every action needs a live unit of the player,
@@ -132,18 +112,18 @@ func (b *Board) attack(actor *Entity, targetID string, now time.Time) (*Outcome,
 	}
 
 	t.Health = max(0, t.Health-max(actor.Strength, 1))
-	actor.ActReadyAt = now.Add(AttackCooldown)
-	out := &Outcome{Changed: []*Entity{t, actor}, Dirty: []*Entity{t}, Points: PointsPerHit}
+	actor.ActReadyAt = now.Add(b.Rules.AttackCooldown())
+	out := &Outcome{Changed: []*Entity{t, actor}, Dirty: []*Entity{t}, Points: b.Rules.Points.Hit}
 	if t.Health == 0 {
-		t.RespawnAt = now.Add(RespawnDelay)
+		t.RespawnAt = now.Add(b.Rules.RespawnDelay())
 		if t.Kind == KindChampion {
-			out.Points += PointsKillChampion
+			out.Points += b.Rules.Points.KillChampion
 		} else {
-			out.Points += PointsKillMinor
+			out.Points += b.Rules.Points.KillMinor
 		}
 		out.Notices = []Notice{
 			{actor.OwnerID, "Nemico sconfitto", fmt.Sprintf("Hai sconfitto %s.", t.Name)},
-			{t.OwnerID, "Pedina sconfitta", fmt.Sprintf("%s è fuori gioco per %d secondi.", t.Name, int(RespawnDelay.Seconds()))},
+			{t.OwnerID, "Pedina sconfitta", fmt.Sprintf("%s è fuori gioco per %d secondi.", t.Name, int(b.Rules.RespawnDelay().Seconds()))},
 		}
 	}
 	return out, nil
@@ -184,12 +164,12 @@ func (b *Board) pickup(actor *Entity, targetID string, now time.Time) (*Outcome,
 	team := b.EnsurePlayer(actor.OwnerID, "", 0)
 	team.Inventory = append(team.Inventory, item)
 	b.remove(t)
-	actor.ActReadyAt = now.Add(PickupCooldown)
+	actor.ActReadyAt = now.Add(b.Rules.PickupCooldown())
 	return &Outcome{
 		Changed: []*Entity{actor},
 		Removed: []string{t.ID},
 		Picked:  &item,
-		Points:  PointsPickup,
+		Points:  b.Rules.Points.Pickup,
 		Notices: []Notice{{actor.OwnerID, "Oggetto raccolto", fmt.Sprintf("%s è nell'inventario della squadra.", t.Name)}},
 	}, nil
 }
@@ -214,11 +194,11 @@ func (b *Board) build(actor *Entity, at Point, now time.Time) (*Outcome, error) 
 		X:           at.X, Y: at.Y,
 	}
 	b.Add(s)
-	actor.ActReadyAt = now.Add(BuildCooldown)
+	actor.ActReadyAt = now.Add(b.Rules.BuildCooldown())
 	return &Outcome{
 		Changed: []*Entity{s, actor},
 		Created: []*Entity{s},
-		Points:  PointsBuild,
+		Points:  b.Rules.Points.Build,
 	}, nil
 }
 
@@ -227,7 +207,7 @@ func (b *Board) create(actor *Entity, now time.Time) (*Outcome, error) {
 	if actor.Kind != KindChampion {
 		return nil, ErrChampionOnly
 	}
-	if actor.Health <= CreateHealthCost {
+	if actor.Health <= b.Rules.CreateHealthCost {
 		return nil, ErrTooWeak
 	}
 	spot, ok := b.freeNeighbor(Point{actor.X, actor.Y})
@@ -246,17 +226,18 @@ func (b *Board) create(actor *Entity, now time.Time) (*Outcome, error) {
 		ID: newID(), OwnerID: actor.OwnerID, Kind: KindMinor, Name: fmt.Sprintf("Pedina %d", minors+1),
 		Description: fmt.Sprintf("Una fedele pedina della squadra di %s.", owner.Username),
 		X:           spot.X, Y: spot.Y,
-		Speed: minorSpeed, Health: minorHealth, MaxHealth: minorHealth, Vision: minorVision, Strength: minorStrength,
+		Speed: b.Rules.Minor.Speed, Health: b.Rules.Minor.Health, MaxHealth: b.Rules.Minor.Health,
+		Vision: b.Rules.Minor.Vision, Strength: b.Rules.Minor.Strength,
 	}
 	b.Add(u)
-	actor.Health -= CreateHealthCost
-	actor.ActReadyAt = now.Add(CreateCooldown)
+	actor.Health -= b.Rules.CreateHealthCost
+	actor.ActReadyAt = now.Add(b.Rules.CreateCooldown())
 	return &Outcome{
 		Changed: []*Entity{u, actor},
 		Dirty:   []*Entity{actor},
 		Created: []*Entity{u},
-		Points:  PointsCreate,
-		Notices: []Notice{{actor.OwnerID, "Nuova pedina", fmt.Sprintf("%s si è unita alla squadra (il campione perde %d vita).", u.Name, CreateHealthCost)}},
+		Points:  b.Rules.Points.Create,
+		Notices: []Notice{{actor.OwnerID, "Nuova pedina", fmt.Sprintf("%s si è unita alla squadra (il campione perde %d vita).", u.Name, b.Rules.CreateHealthCost)}},
 	}, nil
 }
 
@@ -305,6 +286,6 @@ func (b *Board) moveItem(actor *Entity, targetID string, to Point, now time.Time
 	delete(b.cells, from)
 	b.cells[to] = t.ID
 	t.X, t.Y = to.X, to.Y
-	actor.ActReadyAt = now.Add(MoveItemCooldown)
+	actor.ActReadyAt = now.Add(b.Rules.MoveItemCooldown())
 	return &Outcome{Changed: []*Entity{t, actor}, DirtyItems: []*Entity{t}}, nil
 }

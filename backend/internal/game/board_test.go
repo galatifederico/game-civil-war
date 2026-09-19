@@ -6,14 +6,17 @@ import (
 	"time"
 )
 
-var t0 = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+var (
+	t0    = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	rules = DefaultRules() // boards built by NewBoard use these unless a test changes them
+)
 
 func testBoard() *Board {
 	return NewBoard("b", "test", 10, 10, []*Entity{
 		{ID: "u1", OwnerID: "p1", Kind: KindMinor, X: 1, Y: 1, Speed: 3, Health: 10, MaxHealth: 10},
 		{ID: "u2", OwnerID: "p2", Kind: KindMinor, X: 5, Y: 5, Speed: 2, Health: 10, MaxHealth: 10},
 		{ID: "u3", OwnerID: "p2", Kind: KindMinor, X: 1, Y: 2, Speed: 2, Health: 10, MaxHealth: 10},
-		{ID: "dead",OwnerID: "p1", Kind: KindMinor, X: 8, Y: 8, Speed: 2, Health: 0, MaxHealth: 10},
+		{ID: "dead", OwnerID: "p1", Kind: KindMinor, X: 8, Y: 8, Speed: 2, Health: 0, MaxHealth: 10},
 		{ID: "npc", Kind: KindNPC, X: 3, Y: 3, Health: 10, MaxHealth: 10},
 		{ID: "item", Kind: KindItem, X: 4, Y: 4},
 	})
@@ -96,7 +99,7 @@ func TestPlanTeam(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(team) != 1+MinorsPerTeam {
+	if len(team) != 1+rules.MinorsPerTeam {
 		t.Fatalf("team size = %d", len(team))
 	}
 	if team[0].Kind != KindChampion {

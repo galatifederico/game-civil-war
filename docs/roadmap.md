@@ -18,7 +18,7 @@ the_game/
 - **M1 — Slice verticale** ✅: register/login (bcrypt + JWT), una board seedata con NPC e oggetti, alla registrazione ogni giocatore riceve la sua squadra (1 campione + 12 pedine), movimento autoritativo via WebSocket con limite di distanza e cooldown (velocità), posizioni persistite su Postgres. Client Unity: login, snapshot, click per muovere le proprie pedine, menu info di ogni pedina.
 - **M2 — Tick loop, azioni a raggio** ✅ (Redis escluso, vedi sotto): attack / pickup / talk / build / create entro la "vista" della pedina; morte e respawn (solo cooldown); punti e classifica; inventario condiviso; nebbia di guerra (anticipata da M4). Manca ancora lo stato caldo su Redis.
 - **M3 — Multi-board e griglie miste**: board contigue di un'unica mappa, esagonale di prova, astrazione `Grid`.
-- **M4 — Motore regole**: razze, compatibilità, regole di creazione pedine, riproduzione, inventario condiviso (solo campione), "vista" = visibilità + raggio.
+- **M4 — Motore regole**: ✅ fondamenta fatte (parametri del mondo come dati, vedi "Stato attuale"); da fare razze, compatibilità, altre regole di creazione pedine, riproduzione, inventario condiviso (solo campione).
 - **M5 — Obiettivi, punteggio, condizioni di vittoria.**
 - **M6 — Admin web app** (`admin-web/`) e lobby mondi lato giocatore.
 - **M7 — Hardening**: riconnessione/afk, grafica 2D isometrica pixel art vera, Cloudflare Tunnel.
@@ -34,6 +34,7 @@ the_game/
 - **Punti** (design.md: ogni azione può cambiare i punti; eliminare il campione dà un grosso bonus, non la vittoria): colpo +5, sconfitta pedina +25, sconfitta campione +100, raccolta +5, costruzione +20. Classifica di tutti i giocatori sempre visibile.
 - **Nebbia di guerra** (design.md: "vista" = visibilità + raggio d'azione): il server manda a ogni giocatore solo le entità entro la vista di una sua pedina ancora in gioco (più tutto ciò che è suo). `Board.VisibleTo` calcola l'insieme, `Loop.sync` invia a ogni giocatore connesso le entità entrate in vista (complete), gli aggiornamenti di quelle già in vista e le uscite come `removed`. La classifica è pubblica. Non c'è memoria delle zone esplorate: una cosa fuori vista sparisce. Il client scurisce le caselle fuori vista.
 - **Partenza delle squadre**: `spawnAnchor` le distribuisce (prime sei ai lati, poi al centro) così che all'inizio siano fuori vista l'una dall'altra (test dedicato su 24x24).
+- **Regole come dati** (tecnico.md: motore di regole configurabile per mondo): tutti i parametri di gioco (statistiche di campione e pedine, dimensione della squadra iniziale, respawn, cooldown, costo di creazione, punti per azione) stanno in `game.Rules`, con i valori predefiniti in `DefaultRules()`. Ogni mondo li sovrascrive nella colonna `worlds.rules` (JSON con solo le differenze, es. `{"minors_per_team": 8, "champion": {"speed": 4}}`). `ParseRules` rifiuta campi sconosciuti (refusi) e valori che romperebbero la simulazione, e il server non parte con regole sbagliate. Il client Unity non ha valori hardcoded: legge tutto dalle entità. È la base su cui l'editor admin (M6) scriverà.
 - **Persistenza**: posizioni, vita, oggetti raccolti, inventario, strutture, nuove pedine e punti su Postgres. Il cooldown è stato effimero.
 - **Client Unity** (`unity-client/`): `GameController` crea tutto a runtime (nessun setup nella scena); `NetworkClient` (REST via UnityWebRequest + `ClientWebSocket`), `BoardManager` (snapshot/delta, click, azioni, territorio colorato), `Piece`, `InfoPanel` (scheda + pulsanti azione con motivo del blocco), `LoginScreen`, `Hud` (classifica, inventario, notifiche/dialoghi), tutti in IMGUI senza dipendenze da UGUI. Rendering con primitive 3D viste dall'alto: è un placeholder, la grafica vera arriva in M7.
 - **Come si gioca**: clic su una tua pedina la seleziona (poi una casella vuota la sposta). Con una pedina selezionata, clic su un NPC / oggetto / pedina nemica apre la sua scheda con "Parla" / "Raccogli" e "Sposta" / "Attacca" ("Sposta" e "Costruisci" chiedono poi di cliccare la casella di destinazione). Clic sulla pedina selezionata (scheda con "Costruisci avamposto") e poi su una casella libera costruisce.
@@ -50,7 +51,7 @@ the_game/
 ## Prossimi passi consigliati
 
 1. Provare il gioco con più giocatori reali (due istanze del client) per verificare bilanciamento di danno, punti e costo di creazione, e come si sente la nebbia.
-2. Regole di creazione: aggiungere le altre vie previste (risorse raccolte, edifici, riproduzione) e trasformare tutte le costanti (costi, cooldown, punti, statistiche) in dati per mondo: è il motore di regole di M4.
+2. Altre regole di creazione (risorse raccolte, edifici, riproduzione tra pedine) e razze definite dall'admin: estendere `Rules` (o una tabella `races`) invece di aggiungere costanti. Le regole oggi sono per mondo e uguali per tutte le pedine dello stesso tipo.
 3. Uso degli oggetti dell'inventario da parte del campione (gli oggetti oggi si possono raccogliere e spostare, non usare).
 4. Redis per lo stato caldo quando le pedine per giocatore crescono davvero.
 5. M3 (multi-board, griglie miste) e il resto di M4 (razze, riproduzione), poi grafica e layout mobile.

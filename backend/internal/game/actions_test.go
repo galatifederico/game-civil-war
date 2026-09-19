@@ -34,8 +34,8 @@ func TestAttackHurtsAndScores(t *testing.T) {
 	if got := b.entities["enemy"].Health; got != 70 {
 		t.Fatalf("enemy health = %d, want 70 (champion strength 30)", got)
 	}
-	if out.Points != PointsPerHit || b.Player("p1").Points != PointsPerHit {
-		t.Fatalf("points = %d / %d, want %d", out.Points, b.Player("p1").Points, PointsPerHit)
+	if out.Points != rules.Points.Hit || b.Player("p1").Points != rules.Points.Hit {
+		t.Fatalf("points = %d / %d, want %d", out.Points, b.Player("p1").Points, rules.Points.Hit)
 	}
 	if len(out.Dirty) != 1 || out.Dirty[0].ID != "enemy" {
 		t.Fatalf("only the target's persisted state changed, got %v", out.Dirty)
@@ -52,7 +52,7 @@ func TestAttackCooldownThenKillAndRespawn(t *testing.T) {
 			if _, err := b.Do("p1", attack("champ", "enemy"), now.Add(time.Second)); err != ErrCooldown {
 				t.Fatalf("hit %d: expected cooldown, got %v", hit, err)
 			}
-			now = now.Add(AttackCooldown)
+			now = now.Add(rules.AttackCooldown())
 		}
 		out, err = b.Do("p1", attack("champ", "enemy"), now)
 		if err != nil {
@@ -63,17 +63,17 @@ func TestAttackCooldownThenKillAndRespawn(t *testing.T) {
 	if enemy.Health != 0 || enemy.RespawnAt.IsZero() {
 		t.Fatalf("enemy should be defeated with a respawn time, health=%d", enemy.Health)
 	}
-	if want := 4*PointsPerHit + PointsKillMinor; b.Player("p1").Points != want {
+	if want := 4*rules.Points.Hit + rules.Points.KillMinor; b.Player("p1").Points != want {
 		t.Fatalf("points = %d, want %d", b.Player("p1").Points, want)
 	}
 	if len(out.Notices) != 2 || out.Notices[0].PlayerID != "p1" || out.Notices[1].PlayerID != "p2" {
 		t.Fatalf("notices = %+v", out.Notices)
 	}
 
-	if revived := b.Tick(now.Add(RespawnDelay - time.Second)); len(revived) != 0 {
+	if revived := b.Tick(now.Add(rules.RespawnDelay() - time.Second)); len(revived) != 0 {
 		t.Fatal("respawned too early")
 	}
-	revived := b.Tick(now.Add(RespawnDelay))
+	revived := b.Tick(now.Add(rules.RespawnDelay()))
 	if len(revived) != 1 || revived[0].Health != 100 || !revived[0].RespawnAt.IsZero() {
 		t.Fatalf("respawn failed: %+v", revived)
 	}
@@ -86,7 +86,7 @@ func TestKillingAChampionIsWorthMore(t *testing.T) {
 	if _, err := b.Do("p1", attack("champ", "enemy"), t0); err != nil {
 		t.Fatal(err)
 	}
-	if want := PointsPerHit + PointsKillChampion; b.Player("p1").Points != want {
+	if want := rules.Points.Hit + rules.Points.KillChampion; b.Player("p1").Points != want {
 		t.Fatalf("points = %d, want %d", b.Player("p1").Points, want)
 	}
 }
@@ -169,7 +169,7 @@ func TestPickupGoesToSharedInventory(t *testing.T) {
 	if len(out.Removed) != 1 || out.Removed[0] != "item" {
 		t.Fatalf("removed = %v", out.Removed)
 	}
-	if b.Player("p1").Points != PointsPickup {
+	if b.Player("p1").Points != rules.Points.Pickup {
 		t.Fatalf("points = %d", b.Player("p1").Points)
 	}
 	if _, err := b.Do("p1", pickup, t0.Add(time.Minute)); err != ErrNoTarget {
@@ -191,7 +191,7 @@ func TestBuildClaimsTerritory(t *testing.T) {
 	if len(out.Created) != 1 || out.Created[0].Kind != KindStructure || out.Created[0].OwnerID != "p1" || out.Created[0].ID == "" {
 		t.Fatalf("created = %+v", out.Created)
 	}
-	if b.Player("p1").Points != PointsBuild {
+	if b.Player("p1").Points != rules.Points.Build {
 		t.Fatalf("points = %d", b.Player("p1").Points)
 	}
 	if _, err := b.Move("p1", "minor", Point{5, 4}, t0); err != ErrOccupied {
@@ -201,7 +201,7 @@ func TestBuildClaimsTerritory(t *testing.T) {
 		t.Fatalf("building has a cooldown, got %v", err)
 	}
 
-	later := t0.Add(BuildCooldown)
+	later := t0.Add(rules.BuildCooldown())
 	if _, err := b.Do("p1", build(5, 4), later); err != ErrOccupied {
 		t.Fatalf("occupied cell: got %v", err)
 	}
@@ -227,7 +227,7 @@ func TestScheduleRespawnsForUnitsDefeatedBeforeRestart(t *testing.T) {
 	b := actionBoard()
 	b.entities["enemy"].Health = 0
 	b.ScheduleRespawns(t0)
-	if got := b.entities["enemy"].RespawnAt; !got.Equal(t0.Add(RespawnDelay)) {
+	if got := b.entities["enemy"].RespawnAt; !got.Equal(t0.Add(rules.RespawnDelay())) {
 		t.Fatalf("respawn at %v", got)
 	}
 }
@@ -240,8 +240,8 @@ func TestCreateUnitCostsTheChampionsHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := b.entities["champ"].Health; got != 200-CreateHealthCost {
-		t.Fatalf("champion health = %d, want %d", got, 200-CreateHealthCost)
+	if got := b.entities["champ"].Health; got != 200-rules.CreateHealthCost {
+		t.Fatalf("champion health = %d, want %d", got, 200-rules.CreateHealthCost)
 	}
 	if len(out.Created) != 1 || out.Created[0].Kind != KindMinor || out.Created[0].OwnerID != "p1" || out.Created[0].ID == "" {
 		t.Fatalf("created = %+v", out.Created)
@@ -253,7 +253,7 @@ func TestCreateUnitCostsTheChampionsHealth(t *testing.T) {
 	if _, ok := b.entities[u.ID]; !ok {
 		t.Fatal("the new unit is not on the board")
 	}
-	if out.Points != PointsCreate || b.Player("p1").Points != PointsCreate {
+	if out.Points != rules.Points.Create || b.Player("p1").Points != rules.Points.Create {
 		t.Fatalf("points = %d", b.Player("p1").Points)
 	}
 	if len(out.Dirty) != 1 || out.Dirty[0].ID != "champ" {
@@ -277,11 +277,11 @@ func TestCreateUnitRules(t *testing.T) {
 	})
 	t.Run("too weak", func(t *testing.T) {
 		b := actionBoard()
-		b.entities["champ"].Health = CreateHealthCost
+		b.entities["champ"].Health = rules.CreateHealthCost
 		if _, err := b.Do("p1", create("champ"), t0); err != ErrTooWeak {
 			t.Fatalf("got %v", err)
 		}
-		if b.entities["champ"].Health != CreateHealthCost {
+		if b.entities["champ"].Health != rules.CreateHealthCost {
 			t.Fatal("a refused creation must not cost health")
 		}
 	})
@@ -331,10 +331,10 @@ func TestMoveItem(t *testing.T) {
 		if _, err := b.Do("p1", move("champ", "item", 4, 8), t0); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := b.Do("p1", move("champ", "item", 4, 9), t0.Add(MoveItemCooldown/2)); err != ErrCooldown {
+		if _, err := b.Do("p1", move("champ", "item", 4, 9), t0.Add(rules.MoveItemCooldown()/2)); err != ErrCooldown {
 			t.Fatalf("got %v", err)
 		}
-		if _, err := b.Do("p1", move("champ", "item", 4, 9), t0.Add(MoveItemCooldown)); err != nil {
+		if _, err := b.Do("p1", move("champ", "item", 4, 9), t0.Add(rules.MoveItemCooldown())); err != nil {
 			t.Fatalf("should be ready after the cooldown: %v", err)
 		}
 	})

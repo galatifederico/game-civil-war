@@ -35,6 +35,8 @@ Confermato un editor visuale (non solo file di configurazione a mano) per creare
 **Proposta implementativa:** un pannello admin come applicazione **web separata** (non dentro Unity/l'app mobile), che parla con lo stesso backend Go tramite API REST — più veloce da costruire di un editor visuale dentro un motore di gioco, e riutilizza il backend esistente come unica fonte di verità. Il motore di regole configurabile (vedi sotto) è ciò che l'editor va effettivamente a modificare.
 
 ### Motore di regole configurabile (priorità architetturale)
+**Stato:** i parametri di gioco sono già dati per mondo (`worlds.rules`, vedi [roadmap.md](roadmap.md)); restano da fare razze, riproduzione e l'editor admin che scrive queste regole.
+
 Più meccaniche di design (razze, obiettivi individuali, regole di creazione/riproduzione delle pedine, conquista territorio, condizioni di vittoria) devono essere configurabili e modificabili per mondo dall'admin, non hard-coded. Il backend Go deve trattare queste regole come **dati/configurazione per mondo** (caricati es. da database), non come logica fissa nel codice — l'editor admin scrive su questa configurazione.
 
 ### Autenticazione: account con login vero
