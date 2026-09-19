@@ -10,6 +10,7 @@ const (
 	TypeTalk   = "talk"
 	TypePickup = "pickup"
 	TypeBuild  = "build"
+	TypeCreate = "create"
 
 	// Server -> client.
 	TypeSnapshot  = "snapshot"

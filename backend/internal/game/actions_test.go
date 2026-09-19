@@ -1,6 +1,7 @@
 package game
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -229,4 +230,73 @@ func TestScheduleRespawnsForUnitsDefeatedBeforeRestart(t *testing.T) {
 	if got := b.entities["enemy"].RespawnAt; !got.Equal(t0.Add(RespawnDelay)) {
 		t.Fatalf("respawn at %v", got)
 	}
+}
+
+func TestCreateUnitCostsTheChampionsHealth(t *testing.T) {
+	b := actionBoard()
+	create := Action{Kind: ActionCreate, UnitID: "champ"}
+
+	out, err := b.Do("p1", create, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := b.entities["champ"].Health; got != 200-CreateHealthCost {
+		t.Fatalf("champion health = %d, want %d", got, 200-CreateHealthCost)
+	}
+	if len(out.Created) != 1 || out.Created[0].Kind != KindMinor || out.Created[0].OwnerID != "p1" || out.Created[0].ID == "" {
+		t.Fatalf("created = %+v", out.Created)
+	}
+	u := out.Created[0]
+	if distance(Point{u.X, u.Y}, Point{5, 5}) != 1 {
+		t.Fatalf("new unit at %d,%d is not next to the champion", u.X, u.Y)
+	}
+	if _, ok := b.entities[u.ID]; !ok {
+		t.Fatal("the new unit is not on the board")
+	}
+	if out.Points != PointsCreate || b.Player("p1").Points != PointsCreate {
+		t.Fatalf("points = %d", b.Player("p1").Points)
+	}
+	if len(out.Dirty) != 1 || out.Dirty[0].ID != "champ" {
+		t.Fatalf("the champion's health should be persisted, dirty = %v", out.Dirty)
+	}
+	if _, err := b.Do("p1", create, t0.Add(time.Second)); err != ErrCooldown {
+		t.Fatalf("creating has a cooldown, got %v", err)
+	}
+	if _, err := b.Move("p1", u.ID, Point{u.X, u.Y}, t0); err != ErrSameCell {
+		t.Fatalf("the new unit should obey its owner, got %v", err)
+	}
+}
+
+func TestCreateUnitRules(t *testing.T) {
+	create := func(unit string) Action { return Action{Kind: ActionCreate, UnitID: unit} }
+
+	t.Run("only the champion", func(t *testing.T) {
+		if _, err := actionBoard().Do("p1", create("minor"), t0); err != ErrChampionOnly {
+			t.Fatalf("got %v", err)
+		}
+	})
+	t.Run("too weak", func(t *testing.T) {
+		b := actionBoard()
+		b.entities["champ"].Health = CreateHealthCost
+		if _, err := b.Do("p1", create("champ"), t0); err != ErrTooWeak {
+			t.Fatalf("got %v", err)
+		}
+		if b.entities["champ"].Health != CreateHealthCost {
+			t.Fatal("a refused creation must not cost health")
+		}
+	})
+	t.Run("no free cell around", func(t *testing.T) {
+		b := actionBoard()
+		for dy := -1; dy <= 1; dy++ {
+			for dx := -1; dx <= 1; dx++ {
+				p := Point{5 + dx, 5 + dy}
+				if _, taken := b.cells[p]; !taken {
+					b.Add(&Entity{ID: fmt.Sprintf("wall%d%d", dx, dy), Kind: KindItem, X: p.X, Y: p.Y})
+				}
+			}
+		}
+		if _, err := b.Do("p1", create("champ"), t0); err != ErrNoSpace {
+			t.Fatalf("got %v", err)
+		}
+	})
 }

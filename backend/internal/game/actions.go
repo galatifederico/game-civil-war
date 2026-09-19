@@ -13,6 +13,7 @@ const (
 	ActionTalk   ActionKind = "talk"
 	ActionPickup ActionKind = "pickup"
 	ActionBuild  ActionKind = "build"
+	ActionCreate ActionKind = "create"
 )
 
 const (
@@ -20,12 +21,18 @@ const (
 	AttackCooldown = 1500 * time.Millisecond
 	PickupCooldown = 500 * time.Millisecond
 	BuildCooldown  = 3 * time.Second
+	CreateCooldown = 5 * time.Second
+
+	// The champion pays with its own health to bring a new minor unit into the team
+	// (design.md: creation by consuming the champion's characteristics).
+	CreateHealthCost = 20
 
 	PointsPerHit       = 5
 	PointsKillMinor    = 25
 	PointsKillChampion = 100 // design.md: taking out a champion is worth a big bonus, not a win
 	PointsPickup       = 5
 	PointsBuild        = 20
+	PointsCreate       = 10
 )
 
 // Action is a command a player gives to one of their units. The target is an entity id
@@ -49,7 +56,7 @@ type Notice struct {
 type Outcome struct {
 	Changed []*Entity // to send to clients
 	Dirty   []*Entity // units whose persisted state (position, health) changed
-	Created []*Entity // new structures to insert
+	Created []*Entity // new structures and units to insert
 	Removed []string  // entity ids that left the board
 	Picked  *Item     // added to the actor's team inventory
 	Points  int       // awarded to the actor's team
@@ -77,6 +84,8 @@ func (b *Board) Do(playerID string, a Action, now time.Time) (*Outcome, error) {
 		out, err = b.pickup(actor, a.TargetID, now)
 	case ActionBuild:
 		out, err = b.build(actor, a.At, now)
+	case ActionCreate:
+		out, err = b.create(actor, now)
 	default:
 		return nil, ErrUnknownAction
 	}
@@ -205,4 +214,57 @@ func (b *Board) build(actor *Entity, at Point, now time.Time) (*Outcome, error) 
 		Created: []*Entity{s},
 		Points:  PointsBuild,
 	}, nil
+}
+
+// create makes a new minor unit on a free cell next to the champion, paid with the champion's health.
+func (b *Board) create(actor *Entity, now time.Time) (*Outcome, error) {
+	if actor.Kind != KindChampion {
+		return nil, ErrChampionOnly
+	}
+	if actor.Health <= CreateHealthCost {
+		return nil, ErrTooWeak
+	}
+	spot, ok := b.freeNeighbor(Point{actor.X, actor.Y})
+	if !ok {
+		return nil, ErrNoSpace
+	}
+
+	minors := 0
+	for _, e := range b.entities {
+		if e.OwnerID == actor.OwnerID && e.Kind == KindMinor {
+			minors++
+		}
+	}
+	owner := b.EnsurePlayer(actor.OwnerID, "", 0)
+	u := &Entity{
+		ID: newID(), OwnerID: actor.OwnerID, Kind: KindMinor, Name: fmt.Sprintf("Pedina %d", minors+1),
+		Description: fmt.Sprintf("Una fedele pedina della squadra di %s.", owner.Username),
+		X:           spot.X, Y: spot.Y,
+		Speed: minorSpeed, Health: minorHealth, MaxHealth: minorHealth, Vision: minorVision, Strength: minorStrength,
+	}
+	b.Add(u)
+	actor.Health -= CreateHealthCost
+	actor.ActReadyAt = now.Add(CreateCooldown)
+	return &Outcome{
+		Changed: []*Entity{u, actor},
+		Dirty:   []*Entity{actor},
+		Created: []*Entity{u},
+		Points:  PointsCreate,
+		Notices: []Notice{{actor.OwnerID, "Nuova pedina", fmt.Sprintf("%s si è unita alla squadra (il campione perde %d vita).", u.Name, CreateHealthCost)}},
+	}, nil
+}
+
+func (b *Board) freeNeighbor(p Point) (Point, bool) {
+	for dy := -1; dy <= 1; dy++ {
+		for dx := -1; dx <= 1; dx++ {
+			c := Point{p.X + dx, p.Y + dy}
+			if c == p || !b.inBounds(c) {
+				continue
+			}
+			if _, taken := b.cells[c]; !taken {
+				return c, true
+			}
+		}
+	}
+	return Point{}, false
 }

@@ -25,6 +25,9 @@ var (
 	ErrInvalidTarget = &Error{"invalid_target", "bersaglio non valido per questa azione"}
 	ErrTargetDead    = &Error{"target_dead", "il bersaglio è già fuori gioco"}
 	ErrOutOfRange    = &Error{"out_of_range", "bersaglio fuori portata"}
+	ErrChampionOnly  = &Error{"champion_only", "solo il campione può farlo"}
+	ErrTooWeak       = &Error{"too_weak", "il campione ha troppa poca vita per creare una pedina"}
+	ErrNoSpace       = &Error{"no_space", "non c'è spazio libero accanto al campione"}
 	ErrStopped       = errors.New("simulation stopped")
 )
 

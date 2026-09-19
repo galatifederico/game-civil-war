@@ -210,9 +210,14 @@ func (l *Loop) publish(playerID string, out *Outcome) {
 	for _, e := range out.Dirty {
 		l.saveUnit(e)
 	}
-	for _, s := range out.Created {
-		s := s
-		l.persist(func(ctx context.Context) error { return l.store.InsertStructure(ctx, l.board.ID, s) })
+	for _, created := range out.Created {
+		// The worker runs concurrently: give it a copy, never the live entity.
+		e := *created
+		if e.Kind == KindStructure {
+			l.persist(func(ctx context.Context) error { return l.store.InsertStructure(ctx, l.board.ID, &e) })
+		} else {
+			l.persist(func(ctx context.Context) error { return l.store.InsertUnits(ctx, l.board.ID, []*Entity{&e}) })
+		}
 	}
 	for _, id := range out.Removed {
 		id := id

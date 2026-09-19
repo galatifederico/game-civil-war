@@ -225,14 +225,16 @@ func (s *Store) each(ctx context.Context, query string, args []any, fn func(pgx.
 	return rows.Err()
 }
 
-// InsertUnits stores new units atomically and fills in their IDs.
+// InsertUnits stores new units atomically. Units that already have an ID keep it; the others
+// get one from the database, which is filled in.
 func (s *Store) InsertUnits(ctx context.Context, boardID string, units []*game.Entity) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		for _, u := range units {
 			err := tx.QueryRow(ctx, `INSERT INTO units
-				(board_id, player_id, kind, name, description, x, y, speed, health, max_health, vision, strength)
-				VALUES ($1, NULLIF($2, '')::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id::text`,
-				boardID, u.OwnerID, string(u.Kind), u.Name, u.Description, u.X, u.Y,
+				(id, board_id, player_id, kind, name, description, x, y, speed, health, max_health, vision, strength)
+				VALUES (COALESCE(NULLIF($1, '')::uuid, gen_random_uuid()), $2, NULLIF($3, '')::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+				RETURNING id::text`,
+				u.ID, boardID, u.OwnerID, string(u.Kind), u.Name, u.Description, u.X, u.Y,
 				u.Speed, u.Health, u.MaxHealth, u.Vision, u.Strength).Scan(&u.ID)
 			if err != nil {
 				return err

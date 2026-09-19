@@ -27,6 +27,8 @@ public class BoardManager : MonoBehaviour
     Square[,] grid;
     Material lightMaterial, darkMaterial;
     Piece selected;
+    Transform rangeOutline;
+    readonly Transform[] rangeBars = new Transform[4];
     bool buildMode;
     string myPlayerId;
     int width, height;
@@ -137,6 +139,41 @@ public class BoardManager : MonoBehaviour
     void LateUpdate()
     {
         if (width > 0 && !Mathf.Approximately(fittedAspect, cam.aspect)) FitCamera();
+        UpdateRangeOutline();
+    }
+
+    // Contorno della portata (la "vista") della pedina selezionata: e' il raggio delle sue azioni.
+    void UpdateRangeOutline()
+    {
+        if (rangeOutline == null)
+        {
+            rangeOutline = new GameObject("RangeOutline").transform;
+            rangeOutline.SetParent(transform);
+            var material = NewMaterial(new Color(0.4f, 0.9f, 1f));
+            for (int i = 0; i < rangeBars.Length; i++)
+            {
+                var bar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                bar.GetComponent<Collider>().enabled = false;
+                bar.GetComponent<Renderer>().sharedMaterial = material;
+                bar.transform.SetParent(rangeOutline);
+                rangeBars[i] = bar.transform;
+            }
+        }
+
+        bool show = selected != null && !selected.Defeated;
+        rangeOutline.gameObject.SetActive(show);
+        if (!show) return;
+
+        const float thickness = 0.08f, y = 0.11f;
+        float half = (selected.Data.vision + 0.5f) * CellSize;
+        float side = half * 2f + thickness;
+        var c = selected.transform.position;
+        rangeBars[0].position = new Vector3(c.x, y, c.z + half);
+        rangeBars[1].position = new Vector3(c.x, y, c.z - half);
+        rangeBars[2].position = new Vector3(c.x + half, y, c.z);
+        rangeBars[3].position = new Vector3(c.x - half, y, c.z);
+        rangeBars[0].localScale = rangeBars[1].localScale = new Vector3(side, thickness, thickness);
+        rangeBars[2].localScale = rangeBars[3].localScale = new Vector3(thickness, thickness, side);
     }
 
     void Spawn(EntityData e)
@@ -271,6 +308,15 @@ public class BoardManager : MonoBehaviour
                 },
                 BlockedReason = () => BlockReason(actor, null, needsReady: true),
             });
+            if (actor.Data.kind == Kinds.Champion)
+            {
+                list.Add(new PanelAction
+                {
+                    Label = "Crea pedina (costa vita)",
+                    Perform = () => net.SendCommand("create", actor.Data.id, null),
+                    BlockedReason = () => BlockReason(actor, null, needsReady: true),
+                });
+            }
             return list;
         }
         if (piece.Mine) return list;
