@@ -20,10 +20,19 @@ the_game/
 - **M3 — Multi-board e griglie miste** ✅: board contigue di un'unica mappa collegate da passaggi, board esagonale di prova, astrazione `Grid`.
 - **M4 — Motore regole** ✅: razze, compatibilità e ereditarietà, tutte le vie di creazione pedine (vita del campione, oggetti dell'inventario, riproduzione, edifici), inventario gestito solo dal campione con effetti degli oggetti. Tutto è dato per mondo.
 - **M5 — Obiettivi, punteggio, condizioni di vittoria** ✅: obiettivi di mondo e individuali configurabili, assegnazione casuale o manuale.
-- **M6 — Admin web app** (`admin-web/`) e lobby mondi lato giocatore. Lobby e mondi multipli ✅; admin web app da fare.
+- **M6 — Admin web app** ✅ (`admin-web/`) e lobby mondi lato giocatore ✅.
 - **M7 — Hardening**: riconnessione/afk (riconnessione automatica del client ✅), grafica 2D isometrica pixel art vera, Cloudflare Tunnel.
 
 ## Stato attuale
+
+**M6 — admin web app:**
+
+- `admin-web/` è una pagina statica (HTML + JS senza build, DOM costruito solo con `textContent`) servita dal backend su `/admin/` (`ADMIN_WEB_DIR`, già impostata da `make run`). Login con l'account di gioco; si vedono i mondi di cui si è admin (`worlds.owner_id`). Schede: Mondo (nome, descrizione), Regole (un campo per parametro, generato dalla struttura che manda il server; si salvano solo le differenze dai predefiniti con `Rules.Diff`), Board, Passaggi, Razze, Compatibilità, Obiettivi, NPC, Oggetti (con mappa cliccabile per piazzarli, quadrata ed esagonale) e Giocatori (statistiche + assegnazione manuale degli obiettivi).
+- API `/admin/api/worlds/{id}` (GET definizione, PUT `meta` / `rules` / `boards` / `links` / `races` / `compat` / `goals` / `npcs` / `items`, POST `assign`), tutte riservate al proprietario del mondo. Ogni lista si salva **intera** (righe con id = aggiornate, senza id = create, mancanti = eliminate) in una transazione.
+- Una modifica viene prima **provata in una transazione annullata** (senza toccare il mondo: un errore di battitura non scollega nessuno); se è accettabile, `Hub.Edit` ferma il mondo, aspetta che il loop abbia scritto tutto su DB, applica la modifica e ricarica il mondo. I client connessi si riconnettono da soli e ritrovano tutto com'era (test: una pedina spostata prima della modifica resta dov'era).
+- Controlli: board 1–64 di lato, niente elementi fuori dalla board, due elementi non possono stare sulla stessa casella, razze e board con pedine/strutture dei giocatori non si cancellano, caratteristiche solo tra `trait_names`.
+- Loop: ora sopravvive ai panic di un comando (li registra) e alla fermata **svuota la coda di scritture** con un contesto non annullato (prima le ultime scritture prima dello stop fallivano).
+- Non c'è la cancellazione di un mondo intero né un "azzera obiettivi di mondo" (si può fare a mano su DB).
 
 **M5 — obiettivi e condizioni di vittoria (migrazione `0007`):**
 

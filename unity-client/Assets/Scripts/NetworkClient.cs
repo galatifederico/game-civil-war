@@ -23,6 +23,9 @@ public class NetworkClient : MonoBehaviour
     public bool InWorld => !string.IsNullOrEmpty(sessionWorld);
     public string WorldId => sessionWorld;
 
+    // Indirizzo dell'app web di amministrazione, servita dallo stesso backend.
+    public string AdminUrl => string.IsNullOrEmpty(sessionUrl) ? null : sessionUrl.TrimEnd('/') + "/admin/";
+
     // Il token ottenuto col login e il mondo scelto nella lobby: servono a riconnettersi senza
     // chiedere di nuovo le credenziali.
     string sessionUrl, sessionToken, sessionWorld;

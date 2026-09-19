@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Game - Admin</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="top" hidden>
+    <strong>The Game · Admin</strong>
+    <span id="who"></span>
+    <span class="spacer"></span>
+    <select id="worldPicker" aria-label="Mondo"></select>
+    <button id="newWorld" class="ghost">Nuovo mondo</button>
+    <button id="logout" class="ghost">Esci</button>
+  </header>
+
+  <main>
+    <section id="login" class="card narrow" hidden>
+      <h1>Accesso admin</h1>
+      <p class="muted">Usa l'account con cui giochi: puoi modificare i mondi di cui sei admin.</p>
+      <label>Email <input id="email" type="email" autocomplete="username"></label>
+      <label>Password <input id="password" type="password" autocomplete="current-password"></label>
+      <button id="doLogin">Entra</button>
+    </section>
+
+    <section id="editor" hidden>
+      <nav id="tabs"></nav>
+      <div id="notice" role="status"></div>
+      <div id="panel"></div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

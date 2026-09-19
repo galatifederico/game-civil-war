@@ -68,6 +68,8 @@ public class LobbyScreen : MonoBehaviour
             GUILayout.BeginHorizontal();
             GUILayout.Label(w.name + (w.admin ? "  (admin)" : ""), nameStyle);
             GUILayout.FlexibleSpace();
+            if (w.admin && GUILayout.Button("Editor", buttonStyle, GUILayout.Width(80f)))
+                Application.OpenURL(net.AdminUrl);
             GUI.enabled = !busy;
             var races = w.races ?? new RaceEntry[0];
             chosenRace.TryGetValue(w.id, out int pick);

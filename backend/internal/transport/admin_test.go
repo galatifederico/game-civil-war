@@ -162,7 +162,9 @@ func TestAdminEditsReachPlayersAndKeepTheirProgress(t *testing.T) {
 		}
 	}
 	c.send(protocol.ClientMessage{Type: protocol.TypeMove, UnitID: champ.ID, X: to[0], Y: to[1]})
-	if m := c.expect("move answer", func(m protocol.ServerMessage) bool { return m.Type == protocol.TypeDelta || m.Type == protocol.TypeError }); m.Type == protocol.TypeError {
+	if m := c.expect("move answer", func(m protocol.ServerMessage) bool {
+		return m.Type == protocol.TypeDelta || m.Type == protocol.TypeError
+	}); m.Type == protocol.TypeError {
 		t.Fatalf("the move was refused: %+v (from %d,%d to %v)", m, champ.X, champ.Y, to)
 	}
 
