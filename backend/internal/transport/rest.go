@@ -19,17 +19,23 @@ type Server struct {
 	Tokens *auth.Tokens
 	Hub    *hub.Hub
 
+	// TrustProxyHeaders makes the server believe CF-Connecting-IP (set it only behind Cloudflare Tunnel).
+	TrustProxyHeaders bool
+
+	authLimiter *ipLimiter
+
 	// AdminDir is the folder of the admin web app (admin-web/); empty means it is not served.
 	AdminDir string
 }
 
 func (s *Server) Router() http.Handler {
+	s.authLimiter = newIPLimiter()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	mux.HandleFunc("POST /auth/register", s.register)
-	mux.HandleFunc("POST /auth/login", s.login)
+	mux.HandleFunc("POST /auth/register", s.limitAuth(s.register))
+	mux.HandleFunc("POST /auth/login", s.limitAuth(s.login))
 	mux.HandleFunc("GET /worlds", s.authed(s.listWorlds))
 	mux.HandleFunc("POST /worlds", s.authed(s.createWorld))
 	mux.HandleFunc("POST /worlds/{id}/join", s.authed(s.joinWorld))

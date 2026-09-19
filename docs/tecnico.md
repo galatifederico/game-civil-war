@@ -57,5 +57,5 @@ Preferito a SQLite nonostante l'hosting su singolo PC personale, perché: suppor
 ### Cache realtime: Redis, da subito
 Redis tiene lo stato "caldo" (posizioni, cooldown, pedine attive) in memoria per le letture/scritture ad alta frequenza del server realtime; PostgreSQL resta la fonte di verità persistente (config di mondo, account, stato "a riposo" di pedine/oggetti/territorio), aggiornato con minore frequenza. Questo riduce anche la pressione di scrittura su Postgres.
 
-### Accesso da remoto: da definire in seguito, nessuna azione ora
-Per il momento il server resta solo in rete locale per i test, senza esposizione su internet. Quando si vorrà farlo giocare agli amici da remoto, il candidato consigliato è **Cloudflare Tunnel** (gratuito, non richiede di aprire porte sul router né esporre l'IP di casa) rispetto al classico DNS dinamico + port forwarding — da rivalutare comunque al momento opportuno.
+### Accesso da remoto: Cloudflare Tunnel (predisposto, non ancora provato)
+Il server resta in rete locale finché non serve altro. Per farlo giocare agli amici da remoto la scelta è **Cloudflare Tunnel** (gratuito, non richiede di aprire porte sul router né esporre l'IP di casa) rispetto al classico DNS dinamico + port forwarding. Il backend ha un `Dockerfile`, il compose ha i profili `app` e `tunnel` e il backend rispetta `TRUST_PROXY`; la procedura è in [deploy.md](deploy.md).

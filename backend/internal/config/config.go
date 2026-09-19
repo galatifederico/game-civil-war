@@ -10,6 +10,8 @@ type Config struct {
 	DatabaseURL string
 	JWTSecret   string
 	AdminWebDir string // folder of the admin web app; empty = not served
+	// TrustProxy: believe CF-Connecting-IP for the client address. Only behind Cloudflare Tunnel.
+	TrustProxy bool
 }
 
 func Load() (Config, error) {
@@ -18,6 +20,7 @@ func Load() (Config, error) {
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 		JWTSecret:   os.Getenv("JWT_SECRET"),
 		AdminWebDir: os.Getenv("ADMIN_WEB_DIR"),
+		TrustProxy:  os.Getenv("TRUST_PROXY") == "1",
 	}
 	if cfg.DatabaseURL == "" {
 		return cfg, errors.New("DATABASE_URL is required")

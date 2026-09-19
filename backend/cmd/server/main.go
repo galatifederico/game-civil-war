@@ -47,7 +47,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           (&transport.Server{Store: st, Tokens: auth.NewTokens(cfg.JWTSecret, 30*24*time.Hour), Hub: worlds, AdminDir: cfg.AdminWebDir}).Router(),
+		Handler:           (&transport.Server{Store: st, Tokens: auth.NewTokens(cfg.JWTSecret, 30*24*time.Hour), Hub: worlds, AdminDir: cfg.AdminWebDir, TrustProxyHeaders: cfg.TrustProxy}).Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {

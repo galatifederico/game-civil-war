@@ -1,0 +1,5 @@
+unity-client
+backend/.cache
+backend/bin
+.git
+docs

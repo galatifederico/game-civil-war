@@ -8,8 +8,8 @@ services:
       POSTGRES_DB: thegame
     ports:
       # Host port 5433, not 5432: this machine already has another Postgres
-      # container bound to 5432.
-      - "5433:5432"
+      # container bound to 5432. Solo su localhost: il database non va mai esposto.
+      - "127.0.0.1:5433:5432"
     volumes:
       - thegame_postgres_data:/var/lib/postgresql/data
 
@@ -17,9 +17,42 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - thegame_redis_data:/data
+
+  # Il backend come container: serve per il deploy (docs/deploy.md). In sviluppo si usa `make run`.
+  # Si avvia con `docker compose --profile app up -d` (o `--profile tunnel`, che include anche questo).
+  backend:
+    profiles: ["app", "tunnel"]
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      PORT: "8090"
+      DATABASE_URL: postgres://thegame:thegame@postgres:5432/thegame?sslmode=disable
+      # Senza JWT_SECRET il backend rifiuta di partire (e cosi' deve essere).
+      JWT_SECRET: ${JWT_SECRET:-}
+      # Dietro Cloudflare Tunnel l'indirizzo reale del client e' nell'header CF-Connecting-IP.
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+    ports:
+      - "127.0.0.1:${PORT:-8090}:8090"
+
+  # Cloudflare Tunnel: espone il backend su internet senza aprire porte sul router.
+  # Serve TUNNEL_TOKEN in deploy/.env (dashboard Cloudflare > Zero Trust > Networks > Tunnels); il "public hostname"
+  # del tunnel deve puntare a http://backend:8090.
+  cloudflared:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      - backend
 
 volumes:
   thegame_postgres_data:

@@ -284,6 +284,11 @@ func (l *Loop) Unregister(c *Client) {
 	})
 }
 
+// Reject tells a client that one of its commands was refused before it reached the world.
+func (l *Loop) Reject(c *Client, err error) {
+	l.do(func() { l.sendError(c, err) })
+}
+
 func (l *Loop) Move(c *Client, unitID string, to Point) {
 	l.do(func() {
 		l.touch(c.PlayerID)

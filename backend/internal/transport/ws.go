@@ -48,12 +48,26 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 
 	go s.writeLoop(ctx, cancel, conn, client)
 
+	var commands bucket
+	var refused int
 	for {
 		_, data, err := conn.Read(ctx)
 		if err != nil {
 			conn.Close(websocket.StatusNormalClosure, "")
 			return
 		}
+		if !commands.allow(time.Now(), commandRate, commandBurst) {
+			refused++
+			if refused >= commandAbuseLimit {
+				conn.Close(websocket.StatusPolicyViolation, "too many commands")
+				return
+			}
+			if refused == 1 {
+				loop.Reject(client, game.ErrTooManyCommands)
+			}
+			continue
+		}
+		refused = 0
 		var msg protocol.ClientMessage
 		if err := json.Unmarshal(data, &msg); err != nil {
 			continue
