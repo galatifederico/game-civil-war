@@ -3,9 +3,9 @@ using UnityEngine;
 
 // L'interfaccia sopra la mappa (che occupa tutto lo schermo).
 //
-// A sinistra c'e' una barra fissa con tre icone: la prima mostra o nasconde il menu (riaprendolo
-// sull'ultima pagina), la seconda apre l'inventario, la terza il menu generale (inventario,
-// obiettivi, classifica, squadra). Il menu e' uno solo, accanto alla barra, e cambia pagina:
+// A sinistra c'e' una barra fissa con due icone: la prima mostra o nasconde il menu (riaprendolo
+// sull'ultima pagina), la seconda apre il menu generale (inventario, obiettivi, classifica,
+// squadra). In alto si vedono sempre i punti della squadra e i soldi. Il menu e' uno solo, accanto alla barra, e cambia pagina:
 //   Home, Inventario, Dettaglio oggetto, Obiettivi, Classifica, Squadra e la Scheda della pedina
 //   (che si apre da sola quando si clicca una pedina sulla mappa).
 // Sopra alla pagina compaiono i messaggi del server (dialoghi con gli NPC, sconfitte...).
@@ -21,6 +21,8 @@ public class Hud : MonoBehaviour
     const float RailButton = 44f;
     const float RailGap = 6f;
     const float RailWidth = RailButton + 2f * 4f;
+    const float StatsHeight = 30f;
+    const float BarBottom = 8f + StatsHeight + 6f; // sotto la riga dei punti: qui iniziano le schede delle board
 
     enum Page { Home, Inventory, ItemDetail, Goals, Scores, Squad, Card }
 
@@ -55,12 +57,8 @@ public class Hud : MonoBehaviour
     Piece lastCardPiece;
     bool lastCompact;
     string detailKey;
-    Piece squadOpen;
-    float previewRefreshAt;
-    string previewKey;
-    Texture2D previewCache;
     Vector2 scroll;
-    Rect railRect, panelRect, tabsRect, zoomRect, eventRect;
+    Rect railRect, panelRect, tabsRect, zoomRect, eventRect, statsRect;
     Stack pendingUse;
     int pendingBoard = -1;
     string[] boardNames = new string[0];
@@ -71,7 +69,7 @@ public class Hud : MonoBehaviour
 
     GUIStyle goalStyle, doneGoalStyle, buttonStyle, statusStyle, toastStyle, scoreStyle, mineScoreStyle, hintStyle, boxStyle,
         eventTitleStyle, eventTextStyle, headingStyle, itemNameStyle, itemInfoStyle, quantityStyle, mutedStyle, bigButtonStyle,
-        titleStyle, railStyle, rowStyle, rowTitleStyle;
+        titleStyle, railStyle, rowStyle, rowTitleStyle, statStyle;
 
     public event System.Action LogoutClicked;
     public event System.Action<ItemData> ItemUseRequested;
@@ -171,7 +169,6 @@ public class Hud : MonoBehaviour
         toasts.Clear();
         page = Page.Home;
         detailKey = null;
-        squadOpen = null;
         menuOpen = !Ui.Compact;
         lastCardPiece = null;
     }
@@ -183,7 +180,7 @@ public class Hud : MonoBehaviour
         {
             if (!inWorld) return false;
             var p = Ui.Pointer;
-            if (railRect.Contains(p) || zoomRect.Contains(p)) return true;
+            if (railRect.Contains(p) || zoomRect.Contains(p) || statsRect.Contains(p)) return true;
             if (menuOpen && panelRect.Contains(p)) return true;
             if (boardNames.Length > 1 && tabsRect.Contains(p)) return true;
             return !menuOpen && Time.time < eventUntil && eventRect.Contains(p);
@@ -224,6 +221,7 @@ public class Hud : MonoBehaviour
         // In verticale il menu aperto copre quasi tutta la mappa: il resto si nasconde finche' non si chiude.
         bool overlayHidden = compact && menuOpen;
 
+        DrawStats(mapCenter);
         if (!overlayHidden)
         {
             DrawBoardTabs(mapCenter);
@@ -236,15 +234,49 @@ public class Hud : MonoBehaviour
             tabsRect = zoomRect = default;
         }
         DrawRail();
-        if (menuOpen) DrawPanel(new Rect(railRight + 8f, Margin, panelWidth, Ui.Height - 2f * Margin));
+        float panelTop = compact ? BarBottom : Margin;
+        if (menuOpen) DrawPanel(new Rect(railRight + 8f, panelTop, panelWidth, Ui.Height - panelTop - Margin));
         else if (Time.time < eventUntil)
         {
-            eventRect = new Rect(railRight + 8f, Margin, Mathf.Min(PanelWidth, Ui.Width - railRight - 2f * Margin), 110f);
+            eventRect = new Rect(railRight + 8f, panelTop, Mathf.Min(PanelWidth, Ui.Width - railRight - 2f * Margin), 110f);
             DrawEvent(eventRect);
         }
     }
 
     // ---- fuori dal menu ----------------------------------------------------------------------
+
+    // In alto, sempre: i punti della squadra e i soldi. I soldi sono quelli del campione (e' lui che
+    // riceve gli effetti degli oggetti sulle caratteristiche); non si mostrano se il mondo non ha
+    // la caratteristica "soldi".
+    void DrawStats(float center)
+    {
+        int points = 0;
+        foreach (var s in scores)
+            if (s.player_id == myPlayerId) points = s.points;
+        int? money = null;
+        var champion = BoardManager.Instance != null ? BoardManager.Instance.MyChampion() : null;
+        if (champion != null)
+            foreach (var trait in champion.Data.traits ?? new TraitData[0])
+                if (trait.name == "soldi") money = trait.value;
+
+        const float boxWidth = 128f, gap = 8f;
+        float total = money.HasValue ? 2f * boxWidth + gap : boxWidth;
+        statsRect = new Rect(center - total / 2f, 8f, total, StatsHeight);
+        DrawStat(new Rect(statsRect.x, statsRect.y, boxWidth, StatsHeight), null, "Punti", points);
+        if (money.HasValue) DrawStat(new Rect(statsRect.x + boxWidth + gap, statsRect.y, boxWidth, StatsHeight), "coin", "Soldi", money.Value);
+    }
+
+    void DrawStat(Rect r, string icon, string label, int value)
+    {
+        GUI.Box(r, GUIContent.none, boxStyle);
+        float x = r.x + 8f;
+        if (icon != null)
+        {
+            GUI.DrawTexture(new Rect(x, r.y + 5f, 20f, 20f), PixelArt.ItemIcon(icon), ScaleMode.ScaleToFit);
+            x += 26f;
+        }
+        GUI.Label(new Rect(x, r.y, r.xMax - x - 8f, r.height), $"{label}  {value}", statStyle);
+    }
 
     void DrawBoardTabs(float center)
     {
@@ -252,7 +284,7 @@ public class Hud : MonoBehaviour
         const float tabHeight = 28f;
         float tabWidth = Mathf.Min(110f, (Ui.Width - 16f) / boardNames.Length);
         float total = boardNames.Length * tabWidth;
-        tabsRect = new Rect(center - total / 2f, 8f, total, tabHeight);
+        tabsRect = new Rect(center - total / 2f, BarBottom, total, tabHeight);
         for (int i = 0; i < boardNames.Length; i++)
         {
             var previous = GUI.backgroundColor;
@@ -267,7 +299,7 @@ public class Hud : MonoBehaviour
     {
         if (string.IsNullOrEmpty(hint)) return;
         float width = Mathf.Min(440f, Ui.Width - 16f);
-        GUI.Label(new Rect(center - width / 2f, boardNames.Length > 1 ? 42f : 8f, width, 26f), hint, hintStyle);
+        GUI.Label(new Rect(center - width / 2f, BarBottom + (boardNames.Length > 1 ? 34f : 0f), width, 26f), hint, hintStyle);
     }
 
     void DrawToasts(float center)
@@ -294,21 +326,14 @@ public class Hud : MonoBehaviour
 
     void DrawRail()
     {
-        railRect = new Rect(Margin, Margin, RailWidth, 3f * RailButton + 2f * RailGap + 8f);
+        railRect = new Rect(Margin, Ui.Compact ? BarBottom + 38f : Margin, RailWidth, 2f * RailButton + RailGap + 8f);
         GUI.Box(railRect, GUIContent.none, boxStyle);
         float x = railRect.x + 4f, y = railRect.y + 4f;
 
         // 1. Mostra/nasconde il menu: riapre l'ultima pagina.
         if (RailIcon(new Rect(x, y, RailButton, RailButton), "ui_panel", menuOpen)) menuOpen = !menuOpen;
         y += RailButton + RailGap;
-        // 2. L'inventario.
-        if (RailIcon(new Rect(x, y, RailButton, RailButton), "ui_bag", menuOpen && (page == Page.Inventory || page == Page.ItemDetail)))
-        {
-            if (menuOpen && (page == Page.Inventory || page == Page.ItemDetail)) menuOpen = false;
-            else { page = Page.Inventory; menuOpen = true; }
-        }
-        y += RailButton + RailGap;
-        // 3. Il menu generale.
+        // 2. Il menu generale.
         if (RailIcon(new Rect(x, y, RailButton, RailButton), "ui_menu", menuOpen && page == Page.Home))
         {
             if (menuOpen && page == Page.Home) menuOpen = false;
@@ -451,8 +476,9 @@ public class Hud : MonoBehaviour
         }
     }
 
-    // ---- squadra: l'elenco delle pedine, con l'anteprima di dove sono ---------------------------
+    // ---- squadra: l'elenco delle pedine ---------------------------------------------------------
 
+    // Un clic su una riga mostra la pedina sulla mappa; "Scheda" apre la sua scheda.
     void DrawSquad()
     {
         var board = BoardManager.Instance;
@@ -460,50 +486,23 @@ public class Hud : MonoBehaviour
         if (units.Count == 0) GUILayout.Label("Nessuna pedina.", mutedStyle);
         foreach (var unit in units)
         {
-            bool open = squadOpen == unit;
             var rect = GUILayoutUtility.GetRect(10f, 44f, GUILayout.ExpandWidth(true));
-            if (GUI.Button(rect, GUIContent.none, rowStyle))
-            {
-                squadOpen = open ? null : unit;
-                if (!open) board.Locate(unit);
-            }
+            const float cardWidth = 70f;
+            if (GUI.Button(new Rect(rect.x, rect.y, rect.width - cardWidth - 4f, rect.height), GUIContent.none, rowStyle)) board.Locate(unit);
             var d = unit.Data;
             var previous = GUI.color;
             GUI.color = unit.TeamColor;
             GUI.DrawTexture(new Rect(rect.x + 6f, rect.y + 6f, 32f, 32f), unit.Icon.texture, ScaleMode.ScaleToFit);
             GUI.color = previous;
-            GUI.Label(new Rect(rect.x + 44f, rect.y + 3f, rect.width - 50f, 20f), d.name + (d.kind == Kinds.Champion ? "  (campione)" : ""), rowTitleStyle);
-            string where = board.BoardName(d.board_id);
+            float textWidth = rect.width - cardWidth - 56f;
+            GUI.Label(new Rect(rect.x + 44f, rect.y + 3f, textWidth, 20f), d.name + (d.kind == Kinds.Champion ? "  (campione)" : ""), rowTitleStyle);
             string life = unit.Defeated ? "fuori gioco" : $"vita {d.health}/{d.max_health}";
-            GUI.Label(new Rect(rect.x + 44f, rect.y + 22f, rect.width - 50f, 18f), $"{life}  ·  {where}", mutedStyle);
-
-            if (!open) continue;
-
-            GUILayout.BeginVertical(GUI.skin.box);
-            // L'anteprima si ridisegna solo se la pedina si e' mossa o ogni mezzo secondo (le altre si muovono).
-            string previewId = $"{d.id}|{d.board_id}|{d.x}|{d.y}";
-            if (previewId != previewKey || Time.time >= previewRefreshAt)
-            {
-                previewKey = previewId;
-                previewRefreshAt = Time.time + 0.5f;
-                previewCache = board.BoardPreview(unit, 280, 140);
-            }
-            var preview = previewCache;
-            if (preview != null)
-            {
-                var pr = GUILayoutUtility.GetRect(10f, preview.height * (280f / Mathf.Max(preview.width, 1)), GUILayout.ExpandWidth(true));
-                GUI.DrawTexture(pr, preview, ScaleMode.ScaleToFit);
-            }
-            GUILayout.Label($"{board.BoardName(d.board_id)}  ·  casella ({d.x}, {d.y})", mutedStyle);
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Scheda", buttonStyle))
+            GUI.Label(new Rect(rect.x + 44f, rect.y + 22f, textWidth, 18f), $"{life}  ·  {board.BoardName(d.board_id)}", mutedStyle);
+            if (GUI.Button(new Rect(rect.xMax - cardWidth, rect.y, cardWidth, rect.height), "Scheda", buttonStyle))
             {
                 if (page != Page.Card) cardBack = Page.Squad;
                 board.SelectAndShow(unit);
             }
-            if (GUILayout.Button("Mostra sulla mappa", buttonStyle)) board.Locate(unit);
-            GUILayout.EndHorizontal();
-            GUILayout.EndVertical();
         }
     }
 
@@ -625,6 +624,8 @@ public class Hud : MonoBehaviour
         mutedStyle.normal.textColor = new Color(0.6f, 0.65f, 0.72f);
         bodyBright = new GUIStyle(GUI.skin.label) { fontSize = 13, wordWrap = true };
         bodyBright.normal.textColor = new Color(0.9f, 0.9f, 0.9f);
+        statStyle = new GUIStyle(GUI.skin.label) { fontSize = 15, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
+        statStyle.normal.textColor = new Color(1f, 0.9f, 0.55f);
         rowTitleStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold };
         rowTitleStyle.normal.textColor = Color.white;
         itemNameStyle = new GUIStyle(GUI.skin.label) { fontSize = 15, fontStyle = FontStyle.Bold, wordWrap = true };
