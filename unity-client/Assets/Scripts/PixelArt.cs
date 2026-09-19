@@ -138,6 +138,44 @@ public static class PixelArt
             ".....XnX....",
             "....XXXXX...",
         },
+        // Icone dell'interfaccia (barra a sinistra): linee chiare su sfondo scuro.
+        ["ui_panel"] = new[]
+        {
+            ".wwwwwwwwww.",
+            ".w.w......w.",
+            ".w.w......w.",
+            ".w.w......w.",
+            ".w.w......w.",
+            ".w.w......w.",
+            ".w.w......w.",
+            ".wwwwwwwwww.",
+        },
+        ["ui_bag"] = new[]
+        {
+            "....wwww....",
+            "...w....w...",
+            "..wwwwwwww..",
+            ".wwwwwwwwww.",
+            ".wwwwwwwwww.",
+            ".wsssssssww.",
+            ".wsssssssww.",
+            ".wwwwwwwwww.",
+            ".wwwwwwwwww.",
+            "..wwwwwwww..",
+        },
+        ["ui_menu"] = new[]
+        {
+            "............",
+            ".wwwwwwwwww.",
+            ".wwwwwwwwww.",
+            "............",
+            ".wwwwwwwwww.",
+            ".wwwwwwwwww.",
+            "............",
+            ".wwwwwwwwww.",
+            ".wwwwwwwwww.",
+            "............",
+        },
         ["box"] = new[]
         {
             "..XXXXXXXX..",

@@ -11,16 +11,16 @@ public class PanelAction
     public Func<string> BlockedReason;
 }
 
-// La scheda della pedina cliccata (descrizione e azioni possibili). Non ha una finestra sua: il
-// menu unico (Hud) la mostra al posto del contenuto normale finche' c'e' una pedina da mostrare.
+// La scheda della pedina cliccata: nome, razza, classe, vita, azioni e, in fondo, le caratteristiche.
+// Non ha una finestra sua: il menu unico (Hud) la mostra come una delle sue pagine.
 public class InfoPanel : MonoBehaviour
 {
-    const float ButtonHeight = 32f;
+    const int ActionsPerRow = 2;
 
     Piece piece;
     List<PanelAction> actions = new List<PanelAction>();
     PanelAction pending;
-    GUIStyle titleStyle, kindStyle, bodyStyle, statsStyle, traitStyle, buttonStyle;
+    GUIStyle titleStyle, labelStyle, valueStyle, bodyStyle, headingStyle, buttonStyle, statusStyle, barTextStyle;
 
     public Piece Current => piece;
 
@@ -34,6 +34,13 @@ public class InfoPanel : MonoBehaviour
 
     // Toglie la scheda dal menu (la pedina resta selezionata sulla mappa).
     public void Hide() => piece = null;
+
+    // Chiude la scheda e deseleziona la pedina.
+    public void Close()
+    {
+        Hide();
+        Closed?.Invoke();
+    }
 
     // Le azioni cambiano lo stato del pannello: si eseguono fuori da OnGUI, tra un frame e l'altro.
     void Update()
@@ -49,49 +56,97 @@ public class InfoPanel : MonoBehaviour
     {
         if (piece == null) return;
         EnsureStyles();
-
         var data = piece.Data;
+
+        GUILayout.BeginHorizontal();
+        var iconRect = GUILayoutUtility.GetRect(48f, 48f, GUILayout.Width(48f), GUILayout.Height(48f));
+        var sprite = piece.Icon;
+        if (sprite != null)
+        {
+            var previous = GUI.color;
+            GUI.color = piece.TeamColor;
+            GUI.DrawTexture(iconRect, sprite.texture, ScaleMode.ScaleToFit);
+            GUI.color = previous;
+        }
+        GUILayout.BeginVertical();
         GUILayout.Label(data.name, titleStyle);
-        GUILayout.Label(piece.KindLabel, kindStyle);
+        GUILayout.Label(piece.Mine ? "La tua squadra" : piece.Data.kind == Kinds.Npc || piece.Data.kind == Kinds.Item ? "Non controllabile" : "Squadra avversaria", labelStyle);
+        GUILayout.EndVertical();
+        GUILayout.EndHorizontal();
         GUILayout.Space(6f);
-        GUILayout.Label(data.description, bodyStyle);
-        GUILayout.Space(8f);
+
+        if (!string.IsNullOrEmpty(data.race)) Row("Razza", data.race);
+        Row("Classe", piece.ClassLabel);
+        if (piece.IsUnit) DrawLife(data);
+        string status = StatusText();
+        if (status.Length > 0) GUILayout.Label(status, statusStyle);
+        if (!string.IsNullOrEmpty(data.description))
+        {
+            GUILayout.Space(4f);
+            GUILayout.Label(data.description, bodyStyle);
+        }
+
+        if (actions.Count > 0)
+        {
+            GUILayout.Space(8f);
+            GUILayout.Label("Azioni", headingStyle);
+            for (int i = 0; i < actions.Count; i += ActionsPerRow)
+            {
+                GUILayout.BeginHorizontal();
+                for (int j = i; j < Mathf.Min(i + ActionsPerRow, actions.Count); j++) DrawAction(actions[j]);
+                GUILayout.EndHorizontal();
+            }
+        }
+
         if (piece.IsUnit)
-            GUILayout.Label($"Velocità {data.speed}  ·  Vita {data.health}/{data.max_health}  ·  Vista {data.vision}", statsStyle);
-        string traits = TraitsText(data);
-        if (traits.Length > 0) GUILayout.Label(traits, traitStyle);
-        GUILayout.Label($"Posizione: {data.x}, {data.y}{StatusSuffix()}", kindStyle);
-        GUILayout.Space(8f);
-
-        foreach (var action in actions)
         {
-            var reason = action.BlockedReason?.Invoke();
-            GUI.enabled = reason == null;
-            if (GUILayout.Button(reason == null ? action.Label : $"{action.Label} ({reason})", buttonStyle))
-                pending = action;
-            GUI.enabled = true;
-        }
-
-        if (GUILayout.Button("Chiudi", buttonStyle))
-        {
-            Hide();
-            Closed?.Invoke();
+            GUILayout.Space(8f);
+            GUILayout.Label("Caratteristiche", headingStyle);
+            Row("Velocità", data.speed.ToString());
+            Row("Vista", data.vision.ToString());
+            Row("Forza", data.strength.ToString());
+            foreach (var trait in data.traits ?? new TraitData[0]) Row(trait.name, trait.value.ToString());
         }
     }
 
-    // Le caratteristiche estese della pedina (soldi, alcol...): il server le manda gia' nell'ordine del mondo.
-    static string TraitsText(EntityData data)
+    void DrawAction(PanelAction action)
     {
-        if (data.traits == null || data.traits.Length == 0) return "";
-        var parts = new string[data.traits.Length];
-        for (int i = 0; i < parts.Length; i++) parts[i] = $"{data.traits[i].name} {data.traits[i].value}";
-        return string.Join("  ·  ", parts);
+        var reason = action.BlockedReason?.Invoke();
+        GUI.enabled = reason == null;
+        if (GUILayout.Button(reason == null ? action.Label : $"{action.Label}\n({reason})", buttonStyle, GUILayout.MinHeight(38f)))
+            pending = action;
+        GUI.enabled = true;
     }
 
-    string StatusSuffix()
+    void Row(string label, string value)
     {
-        if (piece.Defeated) return $"  ·  fuori gioco, torna tra {piece.SecondsUntilRespawn:0}s";
-        if (piece.Movable && piece.SecondsUntilReady > 0f) return $"  ·  pronta tra {piece.SecondsUntilReady:0.0}s";
+        GUILayout.BeginHorizontal();
+        GUILayout.Label(label, labelStyle, GUILayout.Width(96f));
+        GUILayout.Label(value, valueStyle);
+        GUILayout.EndHorizontal();
+    }
+
+    // Una barra: piena = vita intera; il colore va dal verde al rosso.
+    void DrawLife(EntityData data)
+    {
+        GUILayout.BeginHorizontal();
+        GUILayout.Label("Vita", labelStyle, GUILayout.Width(96f));
+        var rect = GUILayoutUtility.GetRect(10f, 18f, GUILayout.ExpandWidth(true));
+        float share = data.max_health > 0 ? Mathf.Clamp01(data.health / (float)data.max_health) : 0f;
+        var previous = GUI.color;
+        GUI.color = new Color(0.15f, 0.16f, 0.2f, 1f);
+        GUI.DrawTexture(rect, Texture2D.whiteTexture);
+        GUI.color = share > 0.5f ? new Color(0.3f, 0.75f, 0.4f) : share > 0.25f ? new Color(0.95f, 0.7f, 0.25f) : new Color(0.9f, 0.3f, 0.3f);
+        GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width * share, rect.height), Texture2D.whiteTexture);
+        GUI.color = previous;
+        GUI.Label(rect, $"{data.health}/{data.max_health}", barTextStyle);
+        GUILayout.EndHorizontal();
+    }
+
+    string StatusText()
+    {
+        if (piece.Defeated) return $"Fuori gioco, torna tra {piece.SecondsUntilRespawn:0}s";
+        if (piece.Movable && piece.SecondsUntilReady > 0f) return $"Pronta tra {piece.SecondsUntilReady:0.0}s";
         return "";
     }
 
@@ -102,18 +157,24 @@ public class InfoPanel : MonoBehaviour
         titleStyle = new GUIStyle(GUI.skin.label) { fontSize = 20, fontStyle = FontStyle.Bold, wordWrap = true };
         titleStyle.normal.textColor = Color.white;
 
-        kindStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, fontStyle = FontStyle.Italic, wordWrap = true };
-        kindStyle.normal.textColor = new Color(0.7f, 0.75f, 0.85f);
+        labelStyle = new GUIStyle(GUI.skin.label) { fontSize = 13, wordWrap = true };
+        labelStyle.normal.textColor = new Color(0.62f, 0.68f, 0.78f);
 
-        bodyStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, wordWrap = true };
-        bodyStyle.normal.textColor = new Color(0.9f, 0.9f, 0.9f);
+        valueStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold, wordWrap = true };
+        valueStyle.normal.textColor = new Color(0.95f, 0.95f, 0.95f);
 
-        statsStyle = new GUIStyle(GUI.skin.label) { fontSize = 13, wordWrap = true };
-        statsStyle.normal.textColor = new Color(0.95f, 0.85f, 0.5f);
+        bodyStyle = new GUIStyle(GUI.skin.label) { fontSize = 13, fontStyle = FontStyle.Italic, wordWrap = true };
+        bodyStyle.normal.textColor = new Color(0.8f, 0.82f, 0.88f);
 
-        traitStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, wordWrap = true };
-        traitStyle.normal.textColor = new Color(0.65f, 0.85f, 0.75f);
+        headingStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold };
+        headingStyle.normal.textColor = new Color(1f, 0.85f, 0.4f);
 
-        buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = 14, fixedHeight = ButtonHeight };
+        statusStyle = new GUIStyle(GUI.skin.label) { fontSize = 13, wordWrap = true };
+        statusStyle.normal.textColor = new Color(0.95f, 0.75f, 0.4f);
+
+        barTextStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+        barTextStyle.normal.textColor = Color.white;
+
+        buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = 13, wordWrap = true };
     }
 }

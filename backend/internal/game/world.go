@@ -107,6 +107,32 @@ func (e Effect) Summary() string {
 	return strings.Join(parts, ", ")
 }
 
+// Lines describes the effect one line at a time, for the item's detail page.
+func (e Effect) Lines() []string {
+	if e.IsZero() {
+		return []string{"Nessun effetto: è solo un oggetto d'ambiente."}
+	}
+	var lines []string
+	if e.Heal != 0 {
+		lines = append(lines, fmt.Sprintf("Cura %d punti vita del campione (senza superare il massimo).", e.Heal))
+	}
+	if e.Points != 0 {
+		lines = append(lines, fmt.Sprintf("%+d punti alla squadra.", e.Points))
+	}
+	if e.Strength != 0 {
+		lines = append(lines, fmt.Sprintf("%+d forza al campione, in modo permanente.", e.Strength))
+	}
+	names := make([]string, 0, len(e.Traits))
+	for name := range e.Traits {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		lines = append(lines, fmt.Sprintf("%s del campione: %+d.", name, e.Traits[name]))
+	}
+	return lines
+}
+
 // Race is a kind of unit defined by the world's admin: minimum characteristics plus a random
 // bonus added on top for each new unit (design.md: inheritance is minimums per race + chance).
 type Race struct {

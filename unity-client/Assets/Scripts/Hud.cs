@@ -1,24 +1,28 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-// L'interfaccia sopra la mappa. Il menu e' uno solo, in sovrapposizione sulla sinistra, e cambia
-// contenuto a seconda di cio' che succede:
-//   - scheda della pedina o dell'oggetto cliccato (con le sue azioni), se c'e';
-//   - altrimenti l'inventario, se e' stato aperto;
-//   - altrimenti la squadra: classifica, obiettivi ed "Esci".
-// Sopra a tutto compaiono i messaggi (dialoghi con gli NPC, sconfitte...). Fuori dal menu restano
-// solo le schede delle board, il suggerimento dell'azione in corso, i messaggi d'errore e i
-// pulsanti dello zoom, cosi' la mappa occupa tutto lo schermo.
+// L'interfaccia sopra la mappa (che occupa tutto lo schermo).
+//
+// A sinistra c'e' una barra fissa con tre icone: la prima mostra o nasconde il menu (riaprendolo
+// sull'ultima pagina), la seconda apre l'inventario, la terza il menu generale (inventario,
+// obiettivi, classifica, squadra). Il menu e' uno solo, accanto alla barra, e cambia pagina:
+//   Home, Inventario, Dettaglio oggetto, Obiettivi, Classifica, Squadra e la Scheda della pedina
+//   (che si apre da sola quando si clicca una pedina sulla mappa).
+// Sopra alla pagina compaiono i messaggi del server (dialoghi con gli NPC, sconfitte...).
+// Fuori dal menu restano solo le schede delle board, il suggerimento dell'azione in corso, gli
+// errori brevi e i pulsanti dello zoom.
 public class Hud : MonoBehaviour
 {
     const float ToastSeconds = 3f;
     const float EventSeconds = 8f;
     const int MaxToasts = 4;
-    const int MaxScoresShown = 8;
-    const float MenuWidth = 330f;
+    const float PanelWidth = 330f;
     const float Margin = 10f;
+    const float RailButton = 44f;
+    const float RailGap = 6f;
+    const float RailWidth = RailButton + 2f * 4f;
 
-    enum Tab { Home, Inventory }
+    enum Page { Home, Inventory, ItemDetail, Goals, Scores, Squad, Card }
 
     struct Toast
     {
@@ -26,12 +30,15 @@ public class Hud : MonoBehaviour
         public float Until;
     }
 
-    // Oggetti uguali (stesso nome, effetto e icona) si mostrano come una riga sola con la quantita'.
+    // Oggetti uguali (stesso nome, effetto, icona e descrizione) si mostrano come una riga sola con la quantita'.
     class Stack
     {
         public ItemData First;
         public int Count;
+        public string Key => Identify(First);
     }
+
+    static string Identify(ItemData i) => i.name + "|" + i.effect + "|" + i.icon + "|" + i.description;
 
     readonly List<Toast> toasts = new List<Toast>();
     readonly List<Stack> stacks = new List<Stack>();
@@ -43,12 +50,17 @@ public class Hud : MonoBehaviour
     float eventUntil;
 
     InfoPanel card;
-    Tab tab = Tab.Home;
+    Page page = Page.Home, cardBack = Page.Home;
     bool menuOpen = true;
     Piece lastCardPiece;
     bool lastCompact;
+    string detailKey;
+    Piece squadOpen;
+    float previewRefreshAt;
+    string previewKey;
+    Texture2D previewCache;
     Vector2 scroll;
-    Rect menuRect, toggleRect, tabsRect, zoomRect, eventRect;
+    Rect railRect, panelRect, tabsRect, zoomRect, eventRect;
     Stack pendingUse;
     int pendingBoard = -1;
     string[] boardNames = new string[0];
@@ -58,7 +70,8 @@ public class Hud : MonoBehaviour
     Texture2D boxTexture;
 
     GUIStyle goalStyle, doneGoalStyle, buttonStyle, statusStyle, toastStyle, scoreStyle, mineScoreStyle, hintStyle, boxStyle,
-        eventTitleStyle, eventTextStyle, headingStyle, itemNameStyle, itemInfoStyle, quantityStyle, mutedStyle;
+        eventTitleStyle, eventTextStyle, headingStyle, itemNameStyle, itemInfoStyle, quantityStyle, mutedStyle, bigButtonStyle,
+        titleStyle, railStyle, rowStyle, rowTitleStyle;
 
     public event System.Action LogoutClicked;
     public event System.Action<ItemData> ItemUseRequested;
@@ -75,8 +88,16 @@ public class Hud : MonoBehaviour
 
     public void SetLogoutVisible(bool visible) => inWorld = visible;
 
-    // Larghezza, in pixel di schermo, che il menu copre a sinistra: la mappa si inquadra nel resto.
-    public float OccupiedLeftPixels => menuOpen && !Ui.Compact ? (MenuWidth + 2f * Margin) * Ui.Scale : 0f;
+    // Larghezza, in pixel di schermo, che l'interfaccia copre a sinistra: la mappa si inquadra nel resto.
+    public float OccupiedLeftPixels
+    {
+        get
+        {
+            float width = Margin + RailWidth + 8f;
+            if (menuOpen && !Ui.Compact) width += PanelWidth + Margin;
+            return width * Ui.Scale;
+        }
+    }
 
     // Schede per passare da una board all'altra (solo la vista: le pedine non si spostano).
     public void SetBoards(string[] names, int current, System.Action<int> onSelect)
@@ -119,7 +140,7 @@ public class Hud : MonoBehaviour
 
     public void SetScores(ScoreData[] newScores, string playerId)
     {
-        scores = newScores;
+        scores = newScores ?? new ScoreData[0];
         myPlayerId = playerId;
     }
 
@@ -131,8 +152,7 @@ public class Hud : MonoBehaviour
         inventoryCount = items?.Length ?? 0;
         foreach (var item in items ?? new ItemData[0])
         {
-            var stack = stacks.Find(s => s.First.name == item.name && s.First.effect == item.effect
-                && s.First.icon == item.icon && s.First.description == item.description);
+            var stack = stacks.Find(s => s.Key == Identify(item));
             if (stack == null) stacks.Add(stack = new Stack { First = item });
             stack.Count++;
         }
@@ -149,7 +169,9 @@ public class Hud : MonoBehaviour
         inventoryCount = 0;
         eventUntil = 0f;
         toasts.Clear();
-        tab = Tab.Home;
+        page = Page.Home;
+        detailKey = null;
+        squadOpen = null;
         menuOpen = !Ui.Compact;
         lastCardPiece = null;
     }
@@ -159,9 +181,10 @@ public class Hud : MonoBehaviour
     {
         get
         {
+            if (!inWorld) return false;
             var p = Ui.Pointer;
-            if (menuOpen ? menuRect.Contains(p) : toggleRect.Contains(p)) return true;
-            if (inWorld && zoomRect.Contains(p)) return true;
+            if (railRect.Contains(p) || zoomRect.Contains(p)) return true;
+            if (menuOpen && panelRect.Contains(p)) return true;
             if (boardNames.Length > 1 && tabsRect.Contains(p)) return true;
             return !menuOpen && Time.time < eventUntil && eventRect.Contains(p);
         }
@@ -174,11 +197,6 @@ public class Hud : MonoBehaviour
         toasts.RemoveAll(t => t.Until < Time.time);
         if (!inWorld) return;
 
-        // Una pedina appena cliccata apre il menu, anche se era chiuso.
-        var shown = card != null ? card.Current : null;
-        if (shown != null && shown != lastCardPiece) menuOpen = true;
-        lastCardPiece = shown;
-
         bool compact = Ui.Compact;
         if (compact != lastCompact)
         {
@@ -186,10 +204,25 @@ public class Hud : MonoBehaviour
             lastCompact = compact;
             menuOpen = !compact;
         }
-        float menuRight = menuOpen ? Margin + Mathf.Min(MenuWidth, Ui.Width - 2f * Margin) : 0f;
+
+        // Una pedina appena cliccata apre la sua scheda, anche se il menu era chiuso.
+        var shown = card != null ? card.Current : null;
+        if (shown != null && shown != lastCardPiece)
+        {
+            if (page != Page.Card) cardBack = page;
+            page = Page.Card;
+            menuOpen = true;
+        }
+        lastCardPiece = shown;
+        if (page == Page.Card && shown == null) page = cardBack;
+        if (page == Page.ItemDetail && FindDetail() == null) page = Page.Inventory;
+
+        float railRight = Margin + RailWidth;
+        float panelWidth = Mathf.Min(PanelWidth, Ui.Width - railRight - 2f * Margin);
+        float mapLeft = menuOpen ? railRight + 8f + panelWidth : railRight;
+        float mapCenter = compact ? Ui.Width / 2f : (mapLeft + Ui.Width) / 2f;
         // In verticale il menu aperto copre quasi tutta la mappa: il resto si nasconde finche' non si chiude.
         bool overlayHidden = compact && menuOpen;
-        float mapCenter = compact ? Ui.Width / 2f : (menuRight + Ui.Width) / 2f;
 
         if (!overlayHidden)
         {
@@ -198,8 +231,17 @@ public class Hud : MonoBehaviour
             DrawToasts(mapCenter);
             DrawZoomButtons();
         }
-        if (menuOpen) DrawMenu();
-        else DrawCollapsed();
+        else
+        {
+            tabsRect = zoomRect = default;
+        }
+        DrawRail();
+        if (menuOpen) DrawPanel(new Rect(railRight + 8f, Margin, panelWidth, Ui.Height - 2f * Margin));
+        else if (Time.time < eventUntil)
+        {
+            eventRect = new Rect(railRight + 8f, Margin, Mathf.Min(PanelWidth, Ui.Width - railRight - 2f * Margin), 110f);
+            DrawEvent(eventRect);
+        }
     }
 
     // ---- fuori dal menu ----------------------------------------------------------------------
@@ -248,58 +290,112 @@ public class Hud : MonoBehaviour
         if (GUI.Button(new Rect(zoomRect.x, zoomRect.y + 2f * (size + gap), size, size), "[ ]", buttonStyle)) ZoomRequested?.Invoke(0f);
     }
 
-    // ---- il menu -----------------------------------------------------------------------------
+    // ---- la barra a sinistra -----------------------------------------------------------------
 
-    void DrawCollapsed()
+    void DrawRail()
     {
-        toggleRect = new Rect(Margin, Margin, 76f, 32f);
-        if (GUI.Button(toggleRect, "Menu", buttonStyle)) menuOpen = true;
-        if (Time.time < eventUntil)
+        railRect = new Rect(Margin, Margin, RailWidth, 3f * RailButton + 2f * RailGap + 8f);
+        GUI.Box(railRect, GUIContent.none, boxStyle);
+        float x = railRect.x + 4f, y = railRect.y + 4f;
+
+        // 1. Mostra/nasconde il menu: riapre l'ultima pagina.
+        if (RailIcon(new Rect(x, y, RailButton, RailButton), "ui_panel", menuOpen)) menuOpen = !menuOpen;
+        y += RailButton + RailGap;
+        // 2. L'inventario.
+        if (RailIcon(new Rect(x, y, RailButton, RailButton), "ui_bag", menuOpen && (page == Page.Inventory || page == Page.ItemDetail)))
         {
-            eventRect = new Rect(Margin, toggleRect.yMax + 6f, Mathf.Min(MenuWidth, Ui.Width - 2f * Margin), 120f);
-            DrawEvent(eventRect);
+            if (menuOpen && (page == Page.Inventory || page == Page.ItemDetail)) menuOpen = false;
+            else { page = Page.Inventory; menuOpen = true; }
+        }
+        y += RailButton + RailGap;
+        // 3. Il menu generale.
+        if (RailIcon(new Rect(x, y, RailButton, RailButton), "ui_menu", menuOpen && page == Page.Home))
+        {
+            if (menuOpen && page == Page.Home) menuOpen = false;
+            else { page = Page.Home; menuOpen = true; }
         }
     }
 
-    void DrawMenu()
+    bool RailIcon(Rect r, string icon, bool active)
     {
-        float width = Mathf.Min(MenuWidth, Ui.Width - 2f * Margin);
-        menuRect = new Rect(Margin, Margin, width, Ui.Height - 2f * Margin);
-        GUI.Box(menuRect, GUIContent.none, boxStyle);
+        var previous = GUI.backgroundColor;
+        GUI.backgroundColor = active ? new Color(1f, 0.85f, 0.4f) : Color.white;
+        bool clicked = GUI.Button(r, GUIContent.none, railStyle);
+        GUI.backgroundColor = previous;
+        GUI.DrawTexture(new Rect(r.x + 8f, r.y + 8f, r.width - 16f, r.height - 16f), PixelArt.ItemIcon(icon), ScaleMode.ScaleToFit);
+        return clicked;
+    }
 
-        GUILayout.BeginArea(new Rect(menuRect.x + 10f, menuRect.y + 8f, width - 20f, menuRect.height - 16f));
+    // ---- il menu -----------------------------------------------------------------------------
 
-        bool showingCard = card != null && card.Current != null;
+    void DrawPanel(Rect rect)
+    {
+        panelRect = rect;
+        GUI.Box(rect, GUIContent.none, boxStyle);
+        GUILayout.BeginArea(new Rect(rect.x + 10f, rect.y + 8f, rect.width - 20f, rect.height - 16f));
+
         GUILayout.BeginHorizontal();
-        if (TabButton("Squadra", !showingCard && tab == Tab.Home)) { card?.Hide(); tab = Tab.Home; }
-        if (TabButton($"Inventario ({inventoryCount})", !showingCard && tab == Tab.Inventory)) { card?.Hide(); tab = Tab.Inventory; }
-        if (GUILayout.Button("<<", buttonStyle, GUILayout.Width(36f))) menuOpen = false;
+        if (page != Page.Home && GUILayout.Button("<", buttonStyle, GUILayout.Width(34f))) GoBack();
+        GUILayout.Label(PageTitle(), titleStyle);
+        GUILayout.FlexibleSpace();
+        if (GUILayout.Button("x", buttonStyle, GUILayout.Width(34f))) menuOpen = false;
         GUILayout.EndHorizontal();
-        GUILayout.Space(6f);
+        GUILayout.Space(4f);
 
         if (Time.time < eventUntil)
         {
-            eventRect = GUILayoutUtility.GetRect(width - 20f, 92f);
+            eventRect = GUILayoutUtility.GetRect(rect.width - 20f, 96f);
             DrawEvent(eventRect);
             GUILayout.Space(6f);
         }
 
         scroll = GUILayout.BeginScrollView(scroll);
-        if (showingCard) card.DrawCard();
-        else if (tab == Tab.Inventory) DrawInventory();
-        else DrawHome();
+        switch (page)
+        {
+            case Page.Inventory: DrawInventory(); break;
+            case Page.ItemDetail: DrawItemDetail(); break;
+            case Page.Goals: DrawGoals(); break;
+            case Page.Scores: DrawScores(); break;
+            case Page.Squad: DrawSquad(); break;
+            case Page.Card: card.DrawCard(); break;
+            default: DrawHome(); break;
+        }
         GUILayout.EndScrollView();
-
         GUILayout.EndArea();
     }
 
-    bool TabButton(string label, bool active)
+    string PageTitle()
     {
-        var previous = GUI.backgroundColor;
-        GUI.backgroundColor = active ? new Color(1f, 0.85f, 0.4f) : Color.white;
-        bool clicked = GUILayout.Button(label, buttonStyle);
-        GUI.backgroundColor = previous;
-        return clicked;
+        switch (page)
+        {
+            case Page.Inventory: return $"Inventario ({inventoryCount})";
+            case Page.ItemDetail: return "Oggetto";
+            case Page.Goals: return "Obiettivi";
+            case Page.Scores: return "Classifica";
+            case Page.Squad: return "Squadra";
+            case Page.Card: return "Scheda";
+            default: return "Menu";
+        }
+    }
+
+    void GoBack()
+    {
+        scroll = Vector2.zero;
+        switch (page)
+        {
+            case Page.ItemDetail: page = Page.Inventory; break;
+            case Page.Card:
+                card.Close();
+                page = cardBack;
+                break;
+            default: page = Page.Home; break;
+        }
+    }
+
+    void Go(Page next)
+    {
+        page = next;
+        scroll = Vector2.zero;
     }
 
     void DrawEvent(Rect r)
@@ -309,41 +405,112 @@ public class Hud : MonoBehaviour
         GUI.Label(new Rect(r.x + 10f, r.y + 30f, r.width - 20f, r.height - 34f), eventText, eventTextStyle);
     }
 
+    // ---- pagine ------------------------------------------------------------------------------
+
     void DrawHome()
     {
         if (!string.IsNullOrEmpty(status)) GUILayout.Label(status, statusStyle);
-
         GUILayout.Space(6f);
-        GUILayout.Label("Classifica", headingStyle);
-        for (int i = 0; i < Mathf.Min(scores.Length, MaxScoresShown); i++)
-        {
-            var s = scores[i];
-            bool mine = s.player_id == myPlayerId;
-            GUILayout.Label($"{i + 1}. {s.username}{(mine ? " (tu)" : "")}{(s.afk ? " (assente)" : "")}  {s.points} pt", mine ? mineScoreStyle : scoreStyle);
-        }
-
-        if (goals.Length > 0)
-        {
-            GUILayout.Space(10f);
-            GUILayout.Label("Obiettivi", headingStyle);
-            foreach (var g in goals)
-            {
-                string line;
-                if (g.scope == "world")
-                    line = g.completed ? $"Mondo: {g.title} - vinto da {g.achieved_by}" : $"Mondo: {g.title} {g.progress}/{g.target}";
-                else
-                    line = g.completed ? $"[fatto] {g.title}" : $"Obiettivo: {g.title} {g.progress}/{g.target} (+{g.reward} pt)";
-                GUILayout.Label(line, g.completed ? doneGoalStyle : goalStyle);
-            }
-        }
-
-        GUILayout.Space(14f);
+        if (GUILayout.Button($"Inventario ({inventoryCount})", bigButtonStyle)) Go(Page.Inventory);
+        if (GUILayout.Button("Obiettivi", bigButtonStyle)) Go(Page.Goals);
+        if (GUILayout.Button("Classifica", bigButtonStyle)) Go(Page.Scores);
+        int units = BoardManager.Instance != null ? BoardManager.Instance.MyUnits().Count : 0;
+        if (GUILayout.Button($"Squadra ({units} pedine)", bigButtonStyle)) Go(Page.Squad);
+        GUILayout.Space(16f);
         if (GUILayout.Button("Esci dal mondo", buttonStyle)) LogoutClicked?.Invoke();
     }
 
+    void DrawScores()
+    {
+        if (scores.Length == 0) GUILayout.Label("Nessun punteggio.", mutedStyle);
+        for (int i = 0; i < scores.Length; i++)
+        {
+            var s = scores[i];
+            bool mine = s.player_id == myPlayerId;
+            GUILayout.Label($"{i + 1}. {s.username}{(mine ? " (tu)" : "")}{(s.afk ? " (assente)" : "")}  -  {s.points} pt", mine ? mineScoreStyle : scoreStyle);
+        }
+    }
+
+    void DrawGoals()
+    {
+        if (goals.Length == 0) GUILayout.Label("Questo mondo non ha obiettivi.", mutedStyle);
+        foreach (var g in goals)
+        {
+            GUILayout.BeginVertical(GUI.skin.box);
+            string scope = g.scope == "world" ? "Mondo" : "Tuo";
+            GUILayout.Label($"{g.title}  ({scope})", g.completed ? doneGoalStyle : headingStyle);
+            if (!string.IsNullOrEmpty(g.description)) GUILayout.Label(g.description, mutedStyle);
+            if (g.scope == "world" && g.completed) GUILayout.Label($"Vinto da {g.achieved_by}", doneGoalStyle);
+            else if (g.completed) GUILayout.Label("Completato", doneGoalStyle);
+            else
+            {
+                DrawBar(g.target > 0 ? g.progress / (float)g.target : 0f, $"{g.progress}/{g.target}", new Color(0.35f, 0.75f, 0.55f));
+                GUILayout.Label($"Premio: +{g.reward} pt", itemInfoStyle);
+            }
+            GUILayout.EndVertical();
+        }
+    }
+
+    // ---- squadra: l'elenco delle pedine, con l'anteprima di dove sono ---------------------------
+
+    void DrawSquad()
+    {
+        var board = BoardManager.Instance;
+        var units = board != null ? board.MyUnits() : new List<Piece>();
+        if (units.Count == 0) GUILayout.Label("Nessuna pedina.", mutedStyle);
+        foreach (var unit in units)
+        {
+            bool open = squadOpen == unit;
+            var rect = GUILayoutUtility.GetRect(10f, 44f, GUILayout.ExpandWidth(true));
+            if (GUI.Button(rect, GUIContent.none, rowStyle))
+            {
+                squadOpen = open ? null : unit;
+                if (!open) board.Locate(unit);
+            }
+            var d = unit.Data;
+            var previous = GUI.color;
+            GUI.color = unit.TeamColor;
+            GUI.DrawTexture(new Rect(rect.x + 6f, rect.y + 6f, 32f, 32f), unit.Icon.texture, ScaleMode.ScaleToFit);
+            GUI.color = previous;
+            GUI.Label(new Rect(rect.x + 44f, rect.y + 3f, rect.width - 50f, 20f), d.name + (d.kind == Kinds.Champion ? "  (campione)" : ""), rowTitleStyle);
+            string where = board.BoardName(d.board_id);
+            string life = unit.Defeated ? "fuori gioco" : $"vita {d.health}/{d.max_health}";
+            GUI.Label(new Rect(rect.x + 44f, rect.y + 22f, rect.width - 50f, 18f), $"{life}  ·  {where}", mutedStyle);
+
+            if (!open) continue;
+
+            GUILayout.BeginVertical(GUI.skin.box);
+            // L'anteprima si ridisegna solo se la pedina si e' mossa o ogni mezzo secondo (le altre si muovono).
+            string previewId = $"{d.id}|{d.board_id}|{d.x}|{d.y}";
+            if (previewId != previewKey || Time.time >= previewRefreshAt)
+            {
+                previewKey = previewId;
+                previewRefreshAt = Time.time + 0.5f;
+                previewCache = board.BoardPreview(unit, 280, 140);
+            }
+            var preview = previewCache;
+            if (preview != null)
+            {
+                var pr = GUILayoutUtility.GetRect(10f, preview.height * (280f / Mathf.Max(preview.width, 1)), GUILayout.ExpandWidth(true));
+                GUI.DrawTexture(pr, preview, ScaleMode.ScaleToFit);
+            }
+            GUILayout.Label($"{board.BoardName(d.board_id)}  ·  casella ({d.x}, {d.y})", mutedStyle);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Scheda", buttonStyle))
+            {
+                if (page != Page.Card) cardBack = Page.Squad;
+                board.SelectAndShow(unit);
+            }
+            if (GUILayout.Button("Mostra sulla mappa", buttonStyle)) board.Locate(unit);
+            GUILayout.EndHorizontal();
+            GUILayout.EndVertical();
+        }
+    }
+
+    // ---- inventario ------------------------------------------------------------------------
+
     void DrawInventory()
     {
-        GUILayout.Label("Inventario di squadra", headingStyle);
         if (stacks.Count == 0)
         {
             GUILayout.Label("Vuoto. Raccogli gli oggetti sulla mappa: il campione poi li usa da qui.", mutedStyle);
@@ -358,54 +525,123 @@ public class Hud : MonoBehaviour
             GUI.DrawTexture(iconRect, PixelArt.ItemIcon(item.icon), ScaleMode.ScaleToFit);
 
             GUILayout.BeginVertical();
+            GUILayout.BeginHorizontal();
             GUILayout.Label(item.name, itemNameStyle);
-            if (!string.IsNullOrEmpty(item.effect)) GUILayout.Label(item.effect, itemInfoStyle);
-            if (!string.IsNullOrEmpty(item.description)) GUILayout.Label(item.description, mutedStyle);
-            GUILayout.EndVertical();
-
             GUILayout.FlexibleSpace();
-            GUILayout.BeginVertical(GUILayout.Width(48f));
             GUILayout.Label($"x{stack.Count}", quantityStyle);
+            GUILayout.EndHorizontal();
+            if (!string.IsNullOrEmpty(item.effect)) GUILayout.Label(item.effect, itemInfoStyle);
+            GUILayout.BeginHorizontal();
             if (!string.IsNullOrEmpty(item.effect) && GUILayout.Button("Usa", buttonStyle)) pendingUse = stack;
+            if (GUILayout.Button("Descrizione", buttonStyle))
+            {
+                detailKey = stack.Key;
+                Go(Page.ItemDetail);
+            }
+            GUILayout.EndHorizontal();
             GUILayout.EndVertical();
 
             GUILayout.EndHorizontal();
         }
-        GUILayout.Space(6f);
-        GUILayout.Label("Gli oggetti si usano con il campione.", mutedStyle);
     }
+
+    Stack FindDetail() => detailKey == null ? null : stacks.Find(s => s.Key == detailKey);
+
+    // La pagina di un oggetto: tutto quello che serve per decidere se usarlo.
+    void DrawItemDetail()
+    {
+        var stack = FindDetail();
+        if (stack == null) return;
+        var item = stack.First;
+
+        GUILayout.BeginHorizontal();
+        var iconRect = GUILayoutUtility.GetRect(64f, 64f, GUILayout.Width(64f), GUILayout.Height(64f));
+        GUI.DrawTexture(iconRect, PixelArt.ItemIcon(item.icon), ScaleMode.ScaleToFit);
+        GUILayout.BeginVertical();
+        GUILayout.Label(item.name, titleStyle);
+        GUILayout.Label($"Ne hai {stack.Count}", mutedStyle);
+        GUILayout.EndVertical();
+        GUILayout.EndHorizontal();
+
+        GUILayout.Space(8f);
+        GUILayout.Label("Descrizione", headingStyle);
+        GUILayout.Label(string.IsNullOrEmpty(item.description) ? "Nessuna descrizione." : item.description, bodyBright);
+
+        GUILayout.Space(8f);
+        GUILayout.Label("Effetto", headingStyle);
+        var lines = item.effect_lines != null && item.effect_lines.Length > 0 ? item.effect_lines : new[] { string.IsNullOrEmpty(item.effect) ? "Nessun effetto." : item.effect };
+        foreach (var line in lines) GUILayout.Label("•  " + line, itemInfoStyle);
+
+        GUILayout.Space(8f);
+        GUILayout.Label("Come si usa", headingStyle);
+        bool usable = !string.IsNullOrEmpty(item.effect);
+        GUILayout.Label(usable
+            ? "Lo usa il campione (deve essere in gioco). L'effetto parte da lui e l'oggetto viene consumato."
+            : "Non si può usare: serve solo come oggetto d'ambiente.", bodyBright);
+
+        GUILayout.Space(10f);
+        GUILayout.BeginHorizontal();
+        if (usable && GUILayout.Button("Usa", bigButtonStyle)) pendingUse = stack;
+        if (GUILayout.Button("Torna all'inventario", bigButtonStyle)) Go(Page.Inventory);
+        GUILayout.EndHorizontal();
+    }
+
+    void DrawBar(float share, string text, Color fill)
+    {
+        var rect = GUILayoutUtility.GetRect(10f, 16f, GUILayout.ExpandWidth(true));
+        var previous = GUI.color;
+        GUI.color = new Color(0.15f, 0.16f, 0.2f, 1f);
+        GUI.DrawTexture(rect, Texture2D.whiteTexture);
+        GUI.color = fill;
+        GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width * Mathf.Clamp01(share), rect.height), Texture2D.whiteTexture);
+        GUI.color = previous;
+        GUI.Label(rect, text, barTextStyle);
+    }
+
+    GUIStyle bodyBright, barTextStyle;
 
     void EnsureStyles()
     {
         if (statusStyle != null) return;
         buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = 13, fixedHeight = 30f };
+        bigButtonStyle = new GUIStyle(GUI.skin.button) { fontSize = 15, fixedHeight = 42f };
+        railStyle = new GUIStyle(GUI.skin.button);
+        rowStyle = new GUIStyle(GUI.skin.button);
         statusStyle = new GUIStyle(GUI.skin.label) { fontSize = 16, fontStyle = FontStyle.Bold };
         statusStyle.normal.textColor = new Color(0.85f, 0.9f, 1f);
-        headingStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold };
+        titleStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, fontStyle = FontStyle.Bold, wordWrap = true };
+        titleStyle.normal.textColor = Color.white;
+        headingStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold, wordWrap = true };
         headingStyle.normal.textColor = new Color(1f, 0.85f, 0.4f);
-        scoreStyle = new GUIStyle(GUI.skin.label) { fontSize = 13 };
+        scoreStyle = new GUIStyle(GUI.skin.label) { fontSize = 14 };
         scoreStyle.normal.textColor = new Color(0.75f, 0.8f, 0.9f);
         mineScoreStyle = new GUIStyle(scoreStyle) { fontStyle = FontStyle.Bold };
         mineScoreStyle.normal.textColor = new Color(1f, 0.85f, 0.4f);
         goalStyle = new GUIStyle(GUI.skin.label) { fontSize = 13, wordWrap = true };
         goalStyle.normal.textColor = new Color(0.65f, 0.9f, 0.75f);
-        doneGoalStyle = new GUIStyle(goalStyle);
+        doneGoalStyle = new GUIStyle(headingStyle);
         doneGoalStyle.normal.textColor = new Color(0.5f, 0.55f, 0.6f);
         mutedStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, wordWrap = true };
         mutedStyle.normal.textColor = new Color(0.6f, 0.65f, 0.72f);
+        bodyBright = new GUIStyle(GUI.skin.label) { fontSize = 13, wordWrap = true };
+        bodyBright.normal.textColor = new Color(0.9f, 0.9f, 0.9f);
+        rowTitleStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold };
+        rowTitleStyle.normal.textColor = Color.white;
         itemNameStyle = new GUIStyle(GUI.skin.label) { fontSize = 15, fontStyle = FontStyle.Bold, wordWrap = true };
         itemNameStyle.normal.textColor = Color.white;
-        itemInfoStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, wordWrap = true };
+        itemInfoStyle = new GUIStyle(GUI.skin.label) { fontSize = 13, wordWrap = true };
         itemInfoStyle.normal.textColor = new Color(0.95f, 0.85f, 0.5f);
-        quantityStyle = new GUIStyle(GUI.skin.label) { fontSize = 16, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
+        quantityStyle = new GUIStyle(GUI.skin.label) { fontSize = 15, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
         quantityStyle.normal.textColor = new Color(0.85f, 0.9f, 1f);
+        barTextStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+        barTextStyle.normal.textColor = Color.white;
         toastStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, alignment = TextAnchor.MiddleCenter };
         toastStyle.normal.textColor = new Color(1f, 0.55f, 0.5f);
         hintStyle = new GUIStyle(GUI.skin.label) { fontSize = 15, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
         hintStyle.normal.textColor = new Color(0.5f, 0.9f, 1f);
 
         boxTexture = new Texture2D(1, 1) { hideFlags = HideFlags.HideAndDontSave };
-        boxTexture.SetPixel(0, 0, new Color(0.08f, 0.09f, 0.12f, 0.9f));
+        boxTexture.SetPixel(0, 0, new Color(0.08f, 0.09f, 0.12f, 0.92f));
         boxTexture.Apply();
         boxStyle = new GUIStyle(GUI.skin.box);
         boxStyle.normal.background = boxTexture;

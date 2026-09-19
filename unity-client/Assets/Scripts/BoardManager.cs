@@ -521,6 +521,106 @@ public class BoardManager : MonoBehaviour
         }
     }
 
+    // ---- Squadra: elenco, inquadratura e anteprima --------------------------------------------
+
+    // Le unita' della propria squadra (campione per primo), anche quelle su un'altra board.
+    public List<Piece> MyUnits()
+    {
+        var list = new List<Piece>();
+        foreach (var p in pieces.Values)
+            if (p.Mine && p.IsUnit) list.Add(p);
+        list.Sort((a, b) =>
+        {
+            int ka = a.Data.kind == Kinds.Champion ? 0 : 1, kb = b.Data.kind == Kinds.Champion ? 0 : 1;
+            if (ka != kb) return ka.CompareTo(kb);
+            if (a.Data.name.Length != b.Data.name.Length) return a.Data.name.Length.CompareTo(b.Data.name.Length);
+            return string.CompareOrdinal(a.Data.name, b.Data.name);
+        });
+        return list;
+    }
+
+    public string BoardName(string boardId) => boards.TryGetValue(boardId ?? "", out var b) ? b.name : "";
+
+    // Mostra la pedina sulla mappa: cambia board se serve, la porta al centro dello spazio libero e
+    // ne fa lampeggiare l'anello.
+    public void Locate(Piece piece)
+    {
+        if (current == null || piece == null) return;
+        if (piece.Data.board_id != current.id) ShowBoard(piece.Data.board_id);
+        float worldPerPixel = 2f * cam.orthographicSize / Screen.height;
+        var at = piece.transform.position;
+        cam.transform.position = new Vector3(at.x - hud.OccupiedLeftPixels / 2f * worldPerPixel, at.y, -10f);
+        MoveCamera(Vector3.zero);
+        piece.Ping();
+    }
+
+    // Come cliccare la pedina sulla mappa: la seleziona (se e' una tua) e ne apre la scheda.
+    public void SelectAndShow(Piece piece)
+    {
+        if (current == null || piece == null) return;
+        if (piece.Data.board_id != current.id) ShowBoard(piece.Data.board_id);
+        SetMode(ClickMode.Move);
+        if (piece.Movable && selected != piece)
+        {
+            ClearSelection();
+            selected = piece;
+            piece.SetHighlight(true);
+        }
+        panel.Show(piece, ActionsFor(piece));
+    }
+
+    Texture2D previewTexture;
+
+    // Una piccola mappa della board della pedina, nello stesso stile isometrico: le caselle, i
+    // passaggi, le pedine della squadra e, ben visibile, quella cercata.
+    public Texture2D BoardPreview(Piece target, int maxWidth, int maxHeight)
+    {
+        if (target == null || !boards.TryGetValue(target.Data.board_id, out var data)) return null;
+        var bounds = GridMath.Bounds(data.grid, data.width, data.height);
+        float scale = Mathf.Min(maxWidth / bounds.width, maxHeight / bounds.height);
+        int w = Mathf.Max(8, Mathf.CeilToInt(bounds.width * scale)), h = Mathf.Max(8, Mathf.CeilToInt(bounds.height * scale));
+        if (previewTexture == null || previewTexture.width != w || previewTexture.height != h)
+        {
+            previewTexture = new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, hideFlags = HideFlags.HideAndDontSave };
+        }
+        var pixels = new Color32[w * h];
+        int cw = Mathf.Max(1, Mathf.RoundToInt(scale) - 1), ch = Mathf.Max(1, Mathf.RoundToInt(scale * 0.5f) - 1);
+        var gateways = new HashSet<Vector2Int>();
+        foreach (var g in data.gateways ?? new GatewayData[0]) gateways.Add(new Vector2Int(g.x, g.y));
+
+        for (int x = 0; x < data.width; x++)
+        {
+            for (int y = 0; y < data.height; y++)
+            {
+                var c = GridMath.CellToWorld(data.grid, x, y);
+                Color32 color = gateways.Contains(new Vector2Int(x, y)) ? new Color32(150, 100, 200, 255)
+                    : (x + y) % 2 == 0 ? new Color32(96, 92, 84, 255) : new Color32(64, 52, 46, 255);
+                FillRect(pixels, w, h, Mathf.RoundToInt((c.x - bounds.xMin) * scale) - cw / 2, Mathf.RoundToInt((c.y - bounds.yMin) * scale) - ch / 2, cw, ch, color);
+            }
+        }
+        foreach (var p in pieces.Values)
+        {
+            if (!p.Mine || p.Data.board_id != data.id || p == target) continue;
+            var c = GridMath.CellToWorld(data.grid, p.Data.x, p.Data.y);
+            FillRect(pixels, w, h, Mathf.RoundToInt((c.x - bounds.xMin) * scale) - 1, Mathf.RoundToInt((c.y - bounds.yMin) * scale) - 1, 3, 3, new Color32(70, 140, 255, 255));
+        }
+        var t = GridMath.CellToWorld(data.grid, target.Data.x, target.Data.y);
+        int tx = Mathf.RoundToInt((t.x - bounds.xMin) * scale), ty = Mathf.RoundToInt((t.y - bounds.yMin) * scale);
+        FillRect(pixels, w, h, tx - 4, ty - 3, 9, 7, new Color32(255, 255, 255, 255));
+        FillRect(pixels, w, h, tx - 3, ty - 2, 7, 5, new Color32(255, 200, 40, 255));
+
+        previewTexture.SetPixels32(pixels);
+        previewTexture.Apply();
+        return previewTexture;
+    }
+
+    static void FillRect(Color32[] pixels, int w, int h, int x0, int y0, int rw, int rh, Color32 color)
+    {
+        for (int y = Mathf.Max(0, y0); y < Mathf.Min(h, y0 + rh); y++)
+            for (int x = Mathf.Max(0, x0); x < Mathf.Min(w, x0 + rw); x++)
+                pixels[y * w + x] = color;
+    }
+
     // ---- Azioni nel menu ------------------------------------------------------------------------
 
     List<PanelAction> ActionsFor(Piece piece)

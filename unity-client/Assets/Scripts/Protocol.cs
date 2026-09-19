@@ -42,6 +42,7 @@ public class ItemData
     public string description;
     public string effect;
     public string icon;
+    public string[] effect_lines;
 }
 
 [Serializable]

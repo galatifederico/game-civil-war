@@ -76,6 +76,8 @@ type Item struct {
 	Description string `json:"description"`
 	Effect      string `json:"effect"` // a short description of what using it does
 	Icon        string `json:"icon"`   // which icon to draw (game.ItemIcons)
+	// EffectLines is the effect in full, one line each, for the detail page.
+	EffectLines []string `json:"effect_lines"`
 }
 
 // Goal is a goal as one player sees it: every world goal plus their own individual ones.

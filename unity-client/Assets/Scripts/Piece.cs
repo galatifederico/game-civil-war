@@ -14,6 +14,7 @@ public class Piece : MonoBehaviour
     Vector3 target;
     float actReadyAt, respawnAt, readyAt;
     bool highlighted;
+    float pingUntil;
 
     public bool Movable => Mine && (Data.kind == Kinds.Champion || Data.kind == Kinds.Minor);
     public bool IsUnit => Data.kind == Kinds.Champion || Data.kind == Kinds.Minor || Data.kind == Kinds.Npc;
@@ -21,6 +22,28 @@ public class Piece : MonoBehaviour
     public float SecondsUntilReady => Mathf.Max(0f, readyAt - Time.time);
     public float SecondsUntilActReady => Mathf.Max(0f, actReadyAt - Time.time);
     public float SecondsUntilRespawn => Mathf.Max(0f, respawnAt - Time.time);
+
+    public Color TeamColor => baseColor;
+    public Sprite Icon => body.sprite;
+
+    // La classe della pedina (ruolo), come la mostra la scheda.
+    public string ClassLabel
+    {
+        get
+        {
+            switch (Data.kind)
+            {
+                case Kinds.Champion: return "Campione";
+                case Kinds.Minor: return "Pedina";
+                case Kinds.Npc: return "NPC";
+                case Kinds.Structure: return "Struttura";
+                default: return "Oggetto";
+            }
+        }
+    }
+
+    // Fa lampeggiare l'anello attorno alla pedina, per farla trovare sulla mappa.
+    public void Ping(float seconds = 3f) => pingUntil = Time.time + seconds;
 
     public string KindLabel
     {
@@ -78,6 +101,8 @@ public class Piece : MonoBehaviour
     {
         transform.position = Vector3.MoveTowards(transform.position, target, SlideSpeed * Time.deltaTime);
         UpdateSorting();
+        bool pinging = Time.time < pingUntil && (int)(Time.time * 4f) % 2 == 0;
+        ring.enabled = highlighted || pinging;
     }
 
     // Piu' in basso sullo schermo = piu' vicino = disegnato sopra.
