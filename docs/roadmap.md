@@ -124,3 +124,4 @@ the_game/
 3. Decidere cosa fanno le caratteristiche estese (soldi, alcol, alpha, thc, beatitudine, mana) e come si conquista il territorio: sono le due parti di design ancora aperte.
 4. Build mobile del client Unity (iOS/Android): il codice è pronto per i tocchi e la scala, ma non è mai stata fatta una build.
 5. Cancellazione di un mondo e azzeramento degli obiettivi di mondo dall'app admin.
+6. **Migliorare la grafica**: risorse e vincoli in [risorse-grafiche.md](risorse-grafiche.md) (Kenney e Kitbitz CC0, Tiled, il repo locale sprite-sheet-creator). Serve prima scegliere la direzione dello stile e, per un terreno vario, aggiungere un dato "terreno per casella".
