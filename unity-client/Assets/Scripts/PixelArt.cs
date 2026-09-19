@@ -41,6 +41,146 @@ public static class PixelArt
         return sprite;
     }
 
+    // Icone degli oggetti (inventario): a colori veri, non tinte per squadra. Il server dice quale
+    // usare (game.ItemIcons); una chiave sconosciuta ripiega sulla scatola.
+    static readonly Dictionary<string, Texture2D> itemIcons = new Dictionary<string, Texture2D>();
+
+    public static Texture2D ItemIcon(string key)
+    {
+        if (string.IsNullOrEmpty(key) || !IconArt.ContainsKey(key)) key = "box";
+        if (!itemIcons.TryGetValue(key, out var tex))
+            tex = itemIcons[key] = FromColorRows(IconArt[key]);
+        return tex;
+    }
+
+    // Legenda: X contorno, r/R rosso, y/Y oro, b/B/c blu, n/N legno, s/S acciaio, w bianco, p rosa.
+    static readonly Dictionary<string, string[]> IconArt = new Dictionary<string, string[]>
+    {
+        ["potion"] = new[]
+        {
+            "....XXXX....",
+            "....XssX....",
+            ".....XX.....",
+            "....XssX....",
+            "...XwwwwX...",
+            "..XwrrrrwX..",
+            "..XrrprrrX..",
+            "..XrpprrrX..",
+            "..XrrrrrrX..",
+            "..XRrrrrRX..",
+            "...XRRRRX...",
+            "....XXXX....",
+        },
+        ["coin"] = new[]
+        {
+            "...XXXXXX...",
+            "..XyyyyyyX..",
+            ".XywyyyyyyX.",
+            "XyyyYYYYyyyX",
+            "XyyYyyyyYyyX",
+            "XyyYyyyyYyyX",
+            "XyyYyyyyYyyX",
+            "XyyyYYYYyyyX",
+            ".XyyyyyyyyX.",
+            "..XyyyyyyX..",
+            "...XXXXXX...",
+        },
+        ["sword"] = new[]
+        {
+            "........XXX.",
+            ".......XwsX.",
+            "......XwsX..",
+            ".....XwsX...",
+            "..X.XwsX....",
+            "..XXwsX.....",
+            "...XwX......",
+            "..XyyyX.....",
+            ".XyXXyyX....",
+            "XnXX.XyX....",
+            "XNX...X.....",
+            ".X..........",
+        },
+        ["gem"] = new[]
+        {
+            "...XXXXXX...",
+            "..XcwwcbbX..",
+            ".XcwcbbbbBX.",
+            "XcccbbbbbBBX",
+            ".XcbbbbbbBX.",
+            "..XcbbbbBX..",
+            "...XcbbBX...",
+            "....XcBX....",
+            ".....XX.....",
+        },
+        ["chest"] = new[]
+        {
+            "..XXXXXXXX..",
+            ".XnnnnnnnnX.",
+            "XnNNNNNNNNnX",
+            "XXXXXyyXXXXX",
+            "XnnnnyyynnnX",
+            "XnNNNNNNNNnX",
+            "XnnnnnnnnnnX",
+            "XNNNNNNNNNNX",
+            ".XXXXXXXXXX.",
+        },
+        ["sign"] = new[]
+        {
+            ".XXXXXXXXXX.",
+            "XnnnnnnnnnnX",
+            "XnwwwwwwwwnX",
+            "XnnnnnnnnnnX",
+            "XnwwwwwwnnnX",
+            "XnnnnnnnnnnX",
+            ".XXXXXXXXXX.",
+            ".....XnX....",
+            ".....XnX....",
+            ".....XnX....",
+            "....XXXXX...",
+        },
+        ["box"] = new[]
+        {
+            "..XXXXXXXX..",
+            ".XwwwwwwwwX.",
+            "XwsssssssswX",
+            "XwsSSSSSSswX",
+            "XwsSSSSSSswX",
+            "XwsssssssswX",
+            ".XwwwwwwwwX.",
+            "..XXXXXXXX..",
+        },
+    };
+
+    static Texture2D FromColorRows(string[] rows)
+    {
+        int h = rows.Length, w = 0;
+        foreach (var r in rows) w = Mathf.Max(w, r.Length);
+        var pixels = new Color32[w * h];
+        for (int row = 0; row < h; row++)
+        {
+            for (int col = 0; col < rows[row].Length; col++)
+            {
+                if (!Palette.TryGetValue(rows[row][col], out var c)) continue;
+                pixels[(h - 1 - row) * w + col] = c;
+            }
+        }
+        var tex = NewTexture(w, h);
+        tex.SetPixels32(pixels);
+        tex.Apply();
+        return tex;
+    }
+
+    static readonly Dictionary<char, Color32> Palette = new Dictionary<char, Color32>
+    {
+        ['X'] = new Color32(38, 38, 46, 255),
+        ['r'] = new Color32(222, 66, 66, 255), ['R'] = new Color32(150, 36, 44, 255), ['p'] = new Color32(255, 160, 160, 255),
+        ['y'] = new Color32(250, 208, 70, 255), ['Y'] = new Color32(196, 142, 30, 255),
+        ['b'] = new Color32(80, 150, 240, 255), ['B'] = new Color32(44, 90, 170, 255), ['c'] = new Color32(170, 220, 255, 255),
+        ['n'] = new Color32(160, 108, 62, 255), ['N'] = new Color32(102, 66, 38, 255),
+        ['s'] = new Color32(176, 182, 198, 255), ['S'] = new Color32(112, 118, 136, 255),
+        ['w'] = new Color32(238, 238, 238, 255),
+    };
+
     // Legenda: X contorno, w colore pieno, g chiaro, k scuro, . trasparente.
     static readonly string[] MinorArt =
     {

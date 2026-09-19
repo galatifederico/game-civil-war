@@ -354,6 +354,33 @@ func TestAdminRacesGoalsNPCsAndItems(t *testing.T) {
 		t.Fatalf("the item's effect was lost: %+v", pozione)
 	}
 
+	// Icons: the seeded items have theirs, a made-up one is refused, and one can be set.
+	icons := map[string]string{}
+	for _, it := range got {
+		icons[it.Name] = it.Icon
+	}
+	if icons["Forziere"] != "chest" || icons["Cristallo"] != "gem" || icons["Pozione"] != "" {
+		t.Fatalf("icons = %v", icons)
+	}
+	withIcon := append([]store.AdminItem(nil), got...)
+	for i := range withIcon {
+		if withIcon[i].Name == "Pozione" {
+			withIcon[i].Icon = "banana"
+		}
+	}
+	e.save(owner, "items", withIcon, http.StatusBadRequest)
+	for i := range withIcon {
+		if withIcon[i].Name == "Pozione" {
+			withIcon[i].Icon = "potion"
+		}
+	}
+	e.save(owner, "items", withIcon, http.StatusOK)
+	for _, it := range e.definition(owner).Items {
+		if it.Name == "Pozione" && it.Icon != "potion" {
+			t.Fatalf("the icon was not saved: %+v", it)
+		}
+	}
+
 	// Two NPCs can swap places in one save.
 	a, b := d.NPCs[0], d.NPCs[1]
 	if a.BoardID == b.BoardID {

@@ -130,6 +130,7 @@ type AdminItem struct {
 	X           int         `json:"x"`
 	Y           int         `json:"y"`
 	Effect      game.Effect `json:"effect"`
+	Icon        string      `json:"icon"` // "" = automatic
 }
 
 type AdminPlayer struct {
@@ -251,11 +252,11 @@ func (s *Store) Definition(ctx context.Context, id string) (WorldDefinition, err
 	}); err != nil {
 		return d, err
 	}
-	if err := s.each(ctx, `SELECT i.id::text, i.board_id::text, i.name, i.description, i.x, i.y, i.effect
+	if err := s.each(ctx, `SELECT i.id::text, i.board_id::text, i.name, i.description, i.x, i.y, i.effect, i.icon
 		FROM board_items i JOIN boards b ON b.id = i.board_id WHERE b.world_id = $1::uuid
 		ORDER BY b.position, i.name, i.created_at`, []any{id}, func(rows pgx.Rows) error {
 		var it AdminItem
-		if err := rows.Scan(&it.ID, &it.BoardID, &it.Name, &it.Description, &it.X, &it.Y, &it.Effect); err != nil {
+		if err := rows.Scan(&it.ID, &it.BoardID, &it.Name, &it.Description, &it.X, &it.Y, &it.Effect, &it.Icon); err != nil {
 			return err
 		}
 		d.Items = append(d.Items, it)
@@ -855,6 +856,9 @@ func ItemsChange(worldID string, items []AdminItem) Change {
 			if !d.contains(it.X, it.Y) {
 				return invalid("oggetto %q: la casella (%d, %d) è fuori dalla board", name, it.X, it.Y)
 			}
+			if !game.ValidIcon(it.Icon) {
+				return invalid("oggetto %q: icona %q sconosciuta", name, it.Icon)
+			}
 			if it.Effect.Heal < 0 {
 				return invalid("oggetto %q: la cura non può essere negativa", name)
 			}
@@ -864,15 +868,15 @@ func ItemsChange(worldID string, items []AdminItem) Change {
 				}
 			}
 			if it.ID == "" {
-				_, err = tx.Exec(ctx, `INSERT INTO board_items (board_id, name, description, x, y, effect)
-					VALUES ($1::uuid, $2, $3, $4, $5, $6)`, it.BoardID, name, it.Description, it.X, it.Y, it.Effect)
+				_, err = tx.Exec(ctx, `INSERT INTO board_items (board_id, name, description, x, y, effect, icon)
+					VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)`, it.BoardID, name, it.Description, it.X, it.Y, it.Effect, it.Icon)
 			} else {
 				if !existing[it.ID] {
 					return invalid("oggetto sconosciuto: %s", it.ID)
 				}
 				kept[it.ID] = true
 				_, err = tx.Exec(ctx, `UPDATE board_items SET board_id = $2::uuid, name = $3, description = $4, x = $5, y = $6,
-					effect = $7 WHERE id = $1::uuid`, it.ID, it.BoardID, name, it.Description, it.X, it.Y, it.Effect)
+					effect = $7, icon = $8 WHERE id = $1::uuid`, it.ID, it.BoardID, name, it.Description, it.X, it.Y, it.Effect, it.Icon)
 			}
 			if err != nil {
 				return invalidIfUnique(err, "oggetto %q: la casella (%d, %d) è già occupata", name, it.X, it.Y)

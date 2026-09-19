@@ -11,34 +11,20 @@ public class PanelAction
     public Func<string> BlockedReason;
 }
 
-// Menu con la descrizione della pedina cliccata e le azioni possibili (IMGUI: nessuna
-// dipendenza da UGUI).
+// La scheda della pedina cliccata (descrizione e azioni possibili). Non ha una finestra sua: il
+// menu unico (Hud) la mostra al posto del contenuto normale finche' c'e' una pedina da mostrare.
 public class InfoPanel : MonoBehaviour
 {
-    const float Width = 290f;
-    const float BaseHeight = 250f;
-    const float ButtonHeight = 36f;
-    const float Margin = 12f;
+    const float ButtonHeight = 32f;
 
     Piece piece;
     List<PanelAction> actions = new List<PanelAction>();
     PanelAction pending;
-    Rect rect;
-    GUIStyle boxStyle, titleStyle, kindStyle, bodyStyle, statsStyle, traitStyle, buttonStyle;
+    GUIStyle titleStyle, kindStyle, bodyStyle, statsStyle, traitStyle, buttonStyle;
 
     public Piece Current => piece;
 
     public event Action Closed;
-
-    // OnMouseDown scatta anche sotto i controlli IMGUI: la scena deve ignorare i click sul pannello.
-    public bool BlocksPointer
-    {
-        get
-        {
-            if (piece == null) return false;
-            return rect.Contains(Ui.Pointer);
-        }
-    }
 
     public void Show(Piece p, List<PanelAction> panelActions = null)
     {
@@ -46,11 +32,8 @@ public class InfoPanel : MonoBehaviour
         actions = panelActions ?? new List<PanelAction>();
     }
 
-    public void Hide()
-    {
-        piece = null;
-        Ui.BottomInset = 0f;
-    }
+    // Toglie la scheda dal menu (la pedina resta selezionata sulla mappa).
+    public void Hide() => piece = null;
 
     // Le azioni cambiano lo stato del pannello: si eseguono fuori da OnGUI, tra un frame e l'altro.
     void Update()
@@ -61,41 +44,24 @@ public class InfoPanel : MonoBehaviour
         action.Perform();
     }
 
-    void OnGUI()
+    // Disegna la scheda con controlli GUILayout, dentro l'area del menu.
+    public void DrawCard()
     {
         if (piece == null) return;
-        Ui.Begin();
         EnsureStyles();
 
         var data = piece.Data;
-        string traits = TraitsText(data);
-        float height = BaseHeight + actions.Count * ButtonHeight + (traits.Length > 0 ? 40f : 0f);
-        if (Ui.Compact)
-        {
-            // In verticale il menu e' un pannello a tutta larghezza in fondo allo schermo.
-            height = Mathf.Min(height, Ui.Height * 0.55f);
-            rect = new Rect(Margin, Ui.Height - height - Margin, Ui.Width - 2f * Margin, height);
-            Ui.BottomInset = height + Margin;
-        }
-        else
-        {
-            rect = new Rect(Ui.Width - Width - Margin, Margin, Width, height);
-            Ui.BottomInset = 0f;
-        }
-        GUI.Box(rect, GUIContent.none, boxStyle);
-
-        GUILayout.BeginArea(new Rect(rect.x + 12f, rect.y + 10f, rect.width - 24f, height - 20f));
         GUILayout.Label(data.name, titleStyle);
         GUILayout.Label(piece.KindLabel, kindStyle);
         GUILayout.Space(6f);
         GUILayout.Label(data.description, bodyStyle);
-        GUILayout.FlexibleSpace();
+        GUILayout.Space(8f);
         if (piece.IsUnit)
-        {
             GUILayout.Label($"Velocità {data.speed}  ·  Vita {data.health}/{data.max_health}  ·  Vista {data.vision}", statsStyle);
-        }
+        string traits = TraitsText(data);
         if (traits.Length > 0) GUILayout.Label(traits, traitStyle);
         GUILayout.Label($"Posizione: {data.x}, {data.y}{StatusSuffix()}", kindStyle);
+        GUILayout.Space(8f);
 
         foreach (var action in actions)
         {
@@ -111,7 +77,6 @@ public class InfoPanel : MonoBehaviour
             Hide();
             Closed?.Invoke();
         }
-        GUILayout.EndArea();
     }
 
     // Le caratteristiche estese della pedina (soldi, alcol...): il server le manda gia' nell'ordine del mondo.
@@ -132,30 +97,23 @@ public class InfoPanel : MonoBehaviour
 
     void EnsureStyles()
     {
-        if (boxStyle != null) return;
+        if (titleStyle != null) return;
 
-        var bg = new Texture2D(1, 1) { hideFlags = HideFlags.HideAndDontSave };
-        bg.SetPixel(0, 0, new Color(0.08f, 0.09f, 0.12f, 0.94f));
-        bg.Apply();
-
-        boxStyle = new GUIStyle(GUI.skin.box);
-        boxStyle.normal.background = bg;
-
-        titleStyle = new GUIStyle(GUI.skin.label) { fontSize = 20, fontStyle = FontStyle.Bold };
+        titleStyle = new GUIStyle(GUI.skin.label) { fontSize = 20, fontStyle = FontStyle.Bold, wordWrap = true };
         titleStyle.normal.textColor = Color.white;
 
-        kindStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, fontStyle = FontStyle.Italic };
+        kindStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, fontStyle = FontStyle.Italic, wordWrap = true };
         kindStyle.normal.textColor = new Color(0.7f, 0.75f, 0.85f);
 
         bodyStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, wordWrap = true };
         bodyStyle.normal.textColor = new Color(0.9f, 0.9f, 0.9f);
 
-        statsStyle = new GUIStyle(GUI.skin.label) { fontSize = 13 };
+        statsStyle = new GUIStyle(GUI.skin.label) { fontSize = 13, wordWrap = true };
         statsStyle.normal.textColor = new Color(0.95f, 0.85f, 0.5f);
 
         traitStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, wordWrap = true };
         traitStyle.normal.textColor = new Color(0.65f, 0.85f, 0.75f);
 
-        buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = 14, fixedHeight = 30f };
+        buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = 14, fixedHeight = ButtonHeight };
     }
 }

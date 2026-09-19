@@ -207,7 +207,7 @@ func (w *World) pickup(actor *Entity, targetID string, now time.Time) (*Outcome,
 	}
 
 	// The item goes straight into the shared team inventory, however far the champion is.
-	item := Item{ID: newID(), Name: t.Name, Description: t.Description, Effect: t.Effect}
+	item := Item{ID: newID(), Name: t.Name, Description: t.Description, Effect: t.Effect, Icon: t.Icon}
 	team := w.EnsurePlayer(actor.OwnerID, "", 0)
 	team.Inventory = append(team.Inventory, item)
 	team.Stats.Pickups++

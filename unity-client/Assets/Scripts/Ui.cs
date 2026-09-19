@@ -2,7 +2,7 @@ using UnityEngine;
 
 // Misure comuni dell'interfaccia IMGUI, cosi' che lo stesso codice di layout vada bene su un
 // monitor e su un telefono: sui display ad alta densita' tutto si ingrandisce (i pulsanti
-// restano toccabili) e in verticale il menu della pedina diventa un pannello in basso.
+// restano toccabili) e in verticale il menu parte chiuso e, aperto, copre quasi tutta la mappa.
 public static class Ui
 {
     // Larghezza minima, in unita' di interfaccia, che il layout deve poter usare.
@@ -11,10 +11,6 @@ public static class Ui
     // 0 = automatico. Serve a provare il layout da telefono nell'editor.
     public static float ScaleOverride;
     public static bool ForceCompact;
-
-    // Quanto e' alto (in unita' di interfaccia) cio' che occupa il fondo dello schermo, cosi' che il
-    // resto dell'interfaccia (notifiche, pulsante Esci) non ci finisca sotto.
-    public static float BottomInset;
 
     public static float Scale
     {
@@ -28,7 +24,7 @@ public static class Ui
     public static float Width => Screen.width / Scale;
     public static float Height => Screen.height / Scale;
 
-    // Schermo in verticale: la board sta in alto e il menu in basso, invece che a destra.
+    // Schermo in verticale (telefono): il menu, largo come lo schermo, parte chiuso.
     public static bool Compact => ForceCompact || Screen.height > Screen.width;
 
     // Va chiamato all'inizio di ogni OnGUI: da li' in poi si disegna in unita' di interfaccia.

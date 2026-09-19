@@ -38,7 +38,6 @@ public class BoardManager : MonoBehaviour
     Piece selected;
     Piece pushedItem;
     string rangeKey = "";
-    ItemData[] inventory = new ItemData[0];
     string myPlayerId;
     Vector2Int fittedScreen;
     bool fittedCompact;
@@ -58,12 +57,20 @@ public class BoardManager : MonoBehaviour
         panel = infoPanel;
         this.hud = hud;
         cam = camera;
+        hud.ItemUseRequested += UseItemFromInventory;
+        hud.ZoomRequested += ZoomFromButton;
     }
 
-    // L'inventario di squadra: il campione ne usa gli oggetti dal proprio menu.
-    public void SetInventory(ItemData[] items) => inventory = items ?? new ItemData[0];
-
-    bool PointerBlocked => panel.BlocksPointer || hud.BlocksPointer;
+    // "Usa" nell'inventario: solo il campione usa gli oggetti, quindi e' lui che li usa.
+    void UseItemFromInventory(ItemData item)
+    {
+        Piece champion = null;
+        foreach (var p in pieces.Values)
+            if (p.Mine && p.Data.kind == Kinds.Champion) champion = p;
+        if (champion == null) hud.ShowToast("Non hai un campione");
+        else if (champion.Defeated) hud.ShowToast("Il campione e' fuori gioco");
+        else net.SendCommand("use_item", champion.Data.id, item.id);
+    }
 
     // ---- Snapshot e aggiornamenti ------------------------------------------------------------
 
@@ -297,22 +304,63 @@ public class BoardManager : MonoBehaviour
         }
     }
 
-    // Sui display larghi la fascia di destra e' riservata al menu della pedina: la board si inquadra
-    // nello spazio che resta, cosi' non finisce mai sotto il menu.
-    // In verticale (telefono) il menu sta in basso: la board occupa la parte alta dello schermo.
-    const float PanelStripWidth = 310f;
-    const float PanelSheetShare = 0.4f;
+    // ---- Camera: tutto lo schermo, con zoom e trascinamento ---------------------------------------
 
+    const float MinOrthoSize = 2.2f;     // massimo zoom: circa una decina di caselle in altezza
+    const float MaxZoomOutSlack = 1.25f; // si puo' allontanare un po' oltre la board intera
+    const float DragThresholdPixels = 8f;
+
+    float fitSize = 6f;
+    Rect boardBounds;
+    Vector2 pressPosition, lastMouse;
+    bool pressing, pressBlocked, dragged;
+
+    // La mappa occupa tutto lo schermo; il menu le sta sopra a sinistra, quindi la board intera si
+    // inquadra nello spazio che il menu lascia libero. Da li' in poi si puo' zoomare e spostare.
     void FitCamera()
     {
-        float width = Ui.Width;
-        if (Ui.Compact) cam.rect = new Rect(0f, PanelSheetShare, 1f, 1f - PanelSheetShare);
-        else cam.rect = new Rect(0f, 0f, width > 700f ? (width - PanelStripWidth) / width : 1f, 1f);
+        cam.rect = new Rect(0f, 0f, 1f, 1f);
         fittedScreen = new Vector2Int(Screen.width, Screen.height);
         fittedCompact = Ui.Compact;
-        var bounds = GridMath.Bounds(current.grid, current.width, current.height);
-        cam.orthographicSize = Mathf.Max(bounds.height / 2f, bounds.width / 2f / cam.aspect) * 1.03f;
-        cam.transform.position = new Vector3(bounds.center.x, bounds.center.y, -10f);
+        boardBounds = GridMath.Bounds(current.grid, current.width, current.height);
+
+        float leftPixels = hud.OccupiedLeftPixels;
+        float freeAspect = Mathf.Max(0.2f, (Screen.width - leftPixels) / Screen.height);
+        fitSize = Mathf.Max(boardBounds.height / 2f, boardBounds.width / 2f / freeAspect) * 1.03f;
+        cam.orthographicSize = fitSize;
+        float worldPerPixel = 2f * fitSize / Screen.height;
+        cam.transform.position = new Vector3(boardBounds.center.x - leftPixels / 2f * worldPerPixel, boardBounds.center.y, -10f);
+    }
+
+    // factor < 1 avvicina, > 1 allontana, 0 = torna a inquadrare la board intera.
+    void ZoomFromButton(float factor)
+    {
+        if (current == null) return;
+        if (factor <= 0f) FitCamera();
+        else ZoomAt(new Vector2(Screen.width / 2f, Screen.height / 2f), factor);
+    }
+
+    void ZoomAt(Vector2 screenPoint, float factor)
+    {
+        var before = cam.ScreenToWorldPoint(screenPoint);
+        cam.orthographicSize = Mathf.Clamp(cam.orthographicSize * factor, MinOrthoSize, Mathf.Max(MinOrthoSize, fitSize * MaxZoomOutSlack));
+        var after = cam.ScreenToWorldPoint(screenPoint);
+        MoveCamera(before - after);
+    }
+
+    void PanByPixels(Vector2 pixels)
+    {
+        float worldPerPixel = 2f * cam.orthographicSize / Screen.height;
+        MoveCamera(new Vector3(-pixels.x, -pixels.y, 0f) * worldPerPixel);
+    }
+
+    // Il centro della vista resta dentro la board: non ci si puo' perdere nel vuoto.
+    void MoveCamera(Vector3 delta)
+    {
+        var p = cam.transform.position + delta;
+        p.x = Mathf.Clamp(p.x, boardBounds.xMin, boardBounds.xMax);
+        p.y = Mathf.Clamp(p.y, boardBounds.yMin, boardBounds.yMax);
+        cam.transform.position = p;
     }
 
     void LateUpdate()
@@ -324,12 +372,52 @@ public class BoardManager : MonoBehaviour
 
     // ---- Input --------------------------------------------------------------------------------
 
+    // Rotella o pizzico = zoom; trascinare (tasto sinistro/destro/centrale o un dito) = sposta la vista;
+    // un clic o un tocco breve, senza trascinare, sceglie la casella. Il clic scatta al rilascio.
     void Update()
     {
-        if (current == null || !Input.GetMouseButtonDown(0) || PointerBlocked) return;
-        var world = cam.ScreenToWorldPoint(Input.mousePosition);
-        var cell = GridMath.WorldToCell(current.grid, world);
-        ClickCell(cell.x, cell.y);
+        if (current == null) return;
+        Vector2 mouse = Input.mousePosition;
+
+        if (Input.touchCount >= 2)
+        {
+            var a = Input.GetTouch(0);
+            var b = Input.GetTouch(1);
+            float previous = ((a.position - a.deltaPosition) - (b.position - b.deltaPosition)).magnitude;
+            float now = (a.position - b.position).magnitude;
+            if (previous > 1f && now > 1f) ZoomAt((a.position + b.position) / 2f, previous / now);
+            dragged = true;
+            lastMouse = mouse;
+            return;
+        }
+
+        float wheel = Input.mouseScrollDelta.y;
+        if (Mathf.Abs(wheel) > 0.01f && !hud.BlocksPointer) ZoomAt(mouse, Mathf.Pow(0.85f, wheel));
+
+        if ((Input.GetMouseButton(1) || Input.GetMouseButton(2)) && !hud.BlocksPointer) PanByPixels(mouse - lastMouse);
+
+        if (Input.GetMouseButtonDown(0))
+        {
+            pressing = true;
+            pressBlocked = hud.BlocksPointer;
+            dragged = false;
+            pressPosition = mouse;
+        }
+        if (pressing && !pressBlocked && Input.GetMouseButton(0))
+        {
+            if (!dragged && (mouse - pressPosition).magnitude > DragThresholdPixels) dragged = true;
+            if (dragged) PanByPixels(mouse - lastMouse);
+        }
+        if (pressing && Input.GetMouseButtonUp(0))
+        {
+            pressing = false;
+            if (!pressBlocked && !dragged)
+            {
+                var cell = GridMath.WorldToCell(current.grid, cam.ScreenToWorldPoint(mouse));
+                ClickCell(cell.x, cell.y);
+            }
+        }
+        lastMouse = mouse;
     }
 
     // Un clic (o un tocco) su una casella della board mostrata: se c'e' una pedina e' un clic su di lei.
@@ -480,17 +568,6 @@ public class BoardManager : MonoBehaviour
                     Perform = () => net.SendCommand("create", actor.Data.id, null, method: "resources"),
                     BlockedReason = () => BlockReason(actor, null, needsReady: true),
                 });
-                // Solo il campione gestisce l'inventario condiviso.
-                for (int i = 0; i < inventory.Length && i < 6; i++)
-                {
-                    var item = inventory[i];
-                    list.Add(new PanelAction
-                    {
-                        Label = string.IsNullOrEmpty(item.effect) ? $"Usa {item.name}" : $"Usa {item.name} ({item.effect})",
-                        Perform = () => net.SendCommand("use_item", actor.Data.id, item.id),
-                        BlockedReason = () => BlockReason(actor, null, needsReady: true),
-                    });
-                }
             }
             return list;
         }

@@ -222,11 +222,11 @@ func (s *Store) LoadWorld(ctx context.Context, id string) (*game.World, error) {
 		return nil, err
 	}
 
-	err = s.each(ctx, `SELECT i.id::text, i.board_id::text, i.name, i.description, i.x, i.y, i.effect
+	err = s.each(ctx, `SELECT i.id::text, i.board_id::text, i.name, i.description, i.x, i.y, i.effect, i.icon
 		FROM board_items i JOIN boards b ON b.id = i.board_id WHERE b.world_id = $1::uuid`,
 		[]any{id}, func(rows pgx.Rows) error {
 			e := &game.Entity{Kind: game.KindItem}
-			if err := rows.Scan(&e.ID, &e.BoardID, &e.Name, &e.Description, &e.X, &e.Y, &e.Effect); err != nil {
+			if err := rows.Scan(&e.ID, &e.BoardID, &e.Name, &e.Description, &e.X, &e.Y, &e.Effect, &e.Icon); err != nil {
 				return err
 			}
 			world.Add(e)
@@ -267,12 +267,12 @@ func (s *Store) LoadWorld(ctx context.Context, id string) (*game.World, error) {
 		return nil, err
 	}
 
-	err = s.each(ctx, `SELECT player_id::text, id::text, name, description, effect FROM inventory_items
+	err = s.each(ctx, `SELECT player_id::text, id::text, name, description, effect, icon FROM inventory_items
 		WHERE world_id = $1::uuid ORDER BY acquired_at`, []any{id},
 		func(rows pgx.Rows) error {
 			var pid string
 			var item game.Item
-			if err := rows.Scan(&pid, &item.ID, &item.Name, &item.Description, &item.Effect); err != nil {
+			if err := rows.Scan(&pid, &item.ID, &item.Name, &item.Description, &item.Effect, &item.Icon); err != nil {
 				return err
 			}
 			p := world.Player(pid)
@@ -390,9 +390,9 @@ func (s *Store) DeleteItem(ctx context.Context, id string) error {
 }
 
 func (s *Store) AddInventory(ctx context.Context, worldID, playerID string, item game.Item) error {
-	_, err := s.pool.Exec(ctx, `INSERT INTO inventory_items (id, world_id, player_id, name, description, effect)
-		VALUES (COALESCE(NULLIF($1, '')::uuid, gen_random_uuid()), $2::uuid, $3::uuid, $4, $5, $6)`,
-		item.ID, worldID, playerID, item.Name, item.Description, item.Effect)
+	_, err := s.pool.Exec(ctx, `INSERT INTO inventory_items (id, world_id, player_id, name, description, effect, icon)
+		VALUES (COALESCE(NULLIF($1, '')::uuid, gen_random_uuid()), $2::uuid, $3::uuid, $4, $5, $6, $7)`,
+		item.ID, worldID, playerID, item.Name, item.Description, item.Effect, item.Icon)
 	return err
 }
 

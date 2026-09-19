@@ -31,6 +31,7 @@ public class GameController : MonoBehaviour
         login = gameObject.AddComponent<LoginScreen>();
         lobby = gameObject.AddComponent<LobbyScreen>();
 
+        hud.Init(panel);
         board.Init(net, panel, hud, cam);
         login.Init(net);
         lobby.Init(net);
@@ -59,7 +60,6 @@ public class GameController : MonoBehaviour
                 hud.SetStatus(net.Username);
                 hud.SetScores(message.scores, message.your_player_id);
                 hud.SetInventory(message.inventory);
-                board.SetInventory(message.inventory);
                 hud.SetGoals(message.goals);
                 break;
             case "delta":
@@ -68,7 +68,6 @@ public class GameController : MonoBehaviour
                 break;
             case "inventory":
                 hud.SetInventory(message.inventory);
-                board.SetInventory(message.inventory);
                 break;
             case "goals":
                 hud.SetGoals(message.goals);
@@ -145,15 +144,6 @@ public class GameController : MonoBehaviour
         cam.backgroundColor = new Color(0.1f, 0.1f, 0.12f);
         camGO.transform.position = new Vector3(0f, 0f, -10f);
         camGO.transform.rotation = Quaternion.identity;
-
-        // La camera principale disegna solo nel suo rettangolo (il resto e' del menu): una seconda
-        // camera che non vede nulla pulisce l'intero schermo, altrimenti fuori resterebbe spazzatura.
-        var back = new GameObject("Background Camera").AddComponent<Camera>();
-        back.transform.SetParent(camGO.transform, false);
-        back.clearFlags = CameraClearFlags.SolidColor;
-        back.backgroundColor = cam.backgroundColor;
-        back.cullingMask = 0;
-        back.depth = cam.depth - 1f;
         return cam;
     }
 }

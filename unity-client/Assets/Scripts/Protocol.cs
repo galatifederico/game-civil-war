@@ -41,6 +41,7 @@ public class ItemData
     public string name;
     public string description;
     public string effect;
+    public string icon;
 }
 
 [Serializable]

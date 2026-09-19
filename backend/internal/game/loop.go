@@ -548,7 +548,7 @@ func (l *Loop) inventory(playerID string) []protocol.Item {
 	}
 	out := make([]protocol.Item, 0, len(p.Inventory))
 	for _, it := range p.Inventory {
-		out = append(out, protocol.Item{ID: it.ID, Name: it.Name, Description: it.Description, Effect: it.Effect.Summary()})
+		out = append(out, protocol.Item{ID: it.ID, Name: it.Name, Description: it.Description, Effect: it.Effect.Summary(), Icon: it.ResolvedIcon()})
 	}
 	return out
 }

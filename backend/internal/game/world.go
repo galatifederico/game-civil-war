@@ -48,6 +48,7 @@ type Entity struct {
 	RaceID      string         // units only; empty when the world has no races
 	Traits      map[string]int // the extended characteristics (soldi, alcol...)
 	Effect      Effect         // items only: what using one does
+	Icon        string         // items only: the inventory icon ("" = automatic)
 
 	// Ephemeral real-time state, not persisted.
 	ReadyAt    time.Time // next moment the unit can move
@@ -158,6 +159,7 @@ type Item struct {
 	Name        string
 	Description string
 	Effect      Effect
+	Icon        string // "" = automatic (see ResolveIcon)
 }
 
 // Player is the roster owner: one player is exactly one team (see design.md).

@@ -25,6 +25,14 @@ the_game/
 
 ## Stato attuale
 
+**Interfaccia del client: mappa a tutto schermo e menu unico (dopo M7):**
+
+- La **mappa copre tutto lo schermo** ed è **zoomabile**: rotella del mouse (verso il puntatore), pizzico con due dita, pulsanti `+` `-` `[ ]` in basso a destra (`[ ]` = inquadra tutta la board). Si sposta trascinando (tasto sinistro oltre 8 px, destro o centrale, o un dito); un clic o tocco breve sceglie la casella e scatta **al rilascio**. Il centro della vista resta dentro la board. Zoom massimo circa una decina di caselle in altezza. Cambiare board reinquadra.
+- Il **menu è uno solo**, in sovrapposizione a sinistra (`Hud.cs`), e cambia contenuto: la **scheda** della pedina/oggetto cliccato con le sue azioni (`InfoPanel` non ha più una finestra sua: disegna solo la scheda dentro il menu); altrimenti l'**Inventario** se è aperto; altrimenti la **Squadra** (classifica, obiettivi, "Esci dal mondo"). I messaggi del server (dialoghi con gli NPC, sconfitte, "Oggetto usato") compaiono in testa al menu per 8 secondi, o accanto al pulsante "Menu" se il menu è chiuso. Il menu si chiude con `<<`; cliccare una pedina lo riapre. In verticale (telefono) parte chiuso e, aperto, copre quasi tutta la mappa.
+- **Inventario** (scheda "Inventario (n)"): un'icona in pixel art, il nome, l'effetto, la descrizione e la **quantità** ("x2": oggetti uguali per nome, effetto, icona e descrizione si raggruppano), con "Usa" (lo usa il campione, che deve essere in gioco). Le icone sono un dato: `board_items.icon` / `inventory_items.icon` (migrazione `0008`), scelte dall'admin tra `game.ItemIcons` (`potion`, `coin`, `sword`, `gem`, `chest`, `sign`, `box`); vuota = automatica dall'effetto (cura → pozione, punti → moneta, forza → spada, caratteristiche → gemma, altrimenti scatola). Raccogliere un oggetto ne copia l'icona nell'inventario. Il disegno delle icone è in `PixelArt.cs`.
+- I pulsanti "Usa <oggetto>" nella scheda del campione sono stati tolti (c'è l'Inventario).
+- Provato nell'editor (schermo 1102x510 e 540x960 verticale, con la vista di gioco reale contro un backend vero): menu, inventario con raggruppamento, uso di un oggetto, scheda nel menu, zoom e spostamento (chiamando i metodi: **rotella, trascinamento e pizzico veri non sono stati provati**).
+
 **M7 — hardening:**
 
 - **AFK** (`game/afk.go`, regola `afk` per mondo: `after_ms`, predefinito 10 minuti, 0 = mai; `shield`, predefinito sì): una squadra è attiva quando il giocatore si connette, si disconnette o manda un comando; dopo `after_ms` senza nulla è **assente** e, con lo scudo, le sue pedine non si possono attaccare (`target_afk`). Chi torna (un qualunque comando) perde subito lo scudo. La classifica mostra "(assente)" (`afk` nel messaggio `Score`, aggiornato a tutti quando cambia). Lo stato non è su DB: al riavvio del mondo tutti contano come attivi.

@@ -64,6 +64,7 @@ type adminWorldView struct {
 	DefaultRules   game.Rules `json:"default_rules"`
 	EffectiveRules game.Rules `json:"effective_rules"`
 	GoalKinds      []string   `json:"goal_kinds"`
+	ItemIcons      []string   `json:"item_icons"`
 }
 
 func (s *Server) adminGet(w http.ResponseWriter, r *http.Request, id string) {
@@ -78,6 +79,7 @@ func (s *Server) adminGet(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	view := adminWorldView{WorldDefinition: def, DefaultRules: game.DefaultRules(), EffectiveRules: eff}
+	view.ItemIcons = game.ItemIcons
 	for _, k := range game.GoalKinds() {
 		view.GoalKinds = append(view.GoalKinds, string(k))
 	}

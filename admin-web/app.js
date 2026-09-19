@@ -342,7 +342,7 @@ const LISTS = {
   },
   items: {
     title: 'Oggetti', path: '/items', map: 'entities',
-    blank: () => ({ id: '', board_id: state.def.boards[0].id, name: 'Nuovo oggetto', description: '', x: 0, y: 0, effect: {} }),
+    blank: () => ({ id: '', board_id: state.def.boards[0].id, name: 'Nuovo oggetto', description: '', x: 0, y: 0, effect: {}, icon: '' }),
     help: 'Oggetti a terra. Chi li raccoglie li mette nell\'inventario della squadra; il champion può usarli e l\'effetto (cura, punti, forza, caratteristiche) si applica a lui. Con tutti gli effetti a zero l\'oggetto è solo decorativo.',
     cols: [
       { key: 'name', label: 'Nome', kind: 'text' },
@@ -353,6 +353,7 @@ const LISTS = {
       { key: 'effect.points', label: 'Punti', kind: 'number' },
       { key: 'effect.strength', label: 'Forza', kind: 'number' },
       { key: 'effect.traits', label: 'Caratteristiche', kind: 'traits' },
+      { key: 'icon', label: 'Icona (inventario)', kind: 'select', options: () => [['', '(automatica)']].concat(state.def.item_icons.map((k) => [k, k])) },
     ],
   },
 };
