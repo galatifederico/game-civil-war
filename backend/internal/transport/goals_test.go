@@ -34,8 +34,14 @@ func TestGoalsOverTheWireAndInTheDatabase(t *testing.T) {
 	if len(bobSnap.Goals) != 2 {
 		t.Fatalf("bob's goals = %+v", bobSnap.Goals)
 	}
+	// The assignments are written by the loop's queue, a moment after the snapshots go out.
 	var assigned int
-	e.db.QueryRow(e.ctx, `SELECT count(*) FROM player_goals`).Scan(&assigned)
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		e.db.QueryRow(e.ctx, `SELECT count(*) FROM player_goals`).Scan(&assigned)
+		if assigned == 2 {
+			break
+		}
+	}
 	if assigned != 2 {
 		t.Fatalf("individual goals assigned in the database = %d, want one per player", assigned)
 	}

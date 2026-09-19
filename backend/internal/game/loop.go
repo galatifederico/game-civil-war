@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"runtime/debug"
 	"sort"
 	"time"
 
@@ -46,6 +47,8 @@ type Loop struct {
 	writes  chan func(context.Context) error
 	now     func() time.Time
 	done    chan struct{}
+
+	stopWrites chan struct{} // closed when the loop stops: the writer drains the queue and ends
 }
 
 func NewLoop(world *World, store Persister) *Loop {
@@ -58,12 +61,24 @@ func NewLoop(world *World, store Persister) *Loop {
 		writes:  make(chan func(context.Context) error, 1024),
 		now:     time.Now,
 		done:    make(chan struct{}),
+
+		stopWrites: make(chan struct{}),
 	}
 }
 
+// Done is closed once the loop has stopped and every queued database write has been made.
+func (l *Loop) Done() <-chan struct{} { return l.done }
+
 func (l *Loop) Run(ctx context.Context) {
-	defer close(l.done)
-	go l.writeWorker(ctx)
+	writerDone := make(chan struct{})
+	go l.writeWorker(ctx, writerDone)
+	defer func() {
+		// Nothing queues writes any more: let the writer empty the queue before saying we are done,
+		// so whoever restarts this world reads everything that happened in it.
+		close(l.stopWrites)
+		<-writerDone
+		close(l.done)
+	}()
 	l.world.ScheduleRespawns(l.now())
 
 	ticker := time.NewTicker(tickInterval)
@@ -71,9 +86,9 @@ func (l *Loop) Run(ctx context.Context) {
 	for {
 		select {
 		case f := <-l.cmds:
-			f()
+			l.guarded(f)
 		case <-ticker.C:
-			l.tick()
+			l.guarded(l.tick)
 		case <-ctx.Done():
 			for c := range l.clients {
 				l.drop(c)
@@ -81,6 +96,17 @@ func (l *Loop) Run(ctx context.Context) {
 			return
 		}
 	}
+}
+
+// guarded runs one piece of work and survives a panic in it: one bad command must not take the
+// whole world (and everybody playing in it) down.
+func (l *Loop) guarded(f func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("world %s: recovered from panic: %v\n%s", l.world.ID, r, debug.Stack())
+		}
+	}()
+	f()
 }
 
 func (l *Loop) tick() {
@@ -101,15 +127,31 @@ func (l *Loop) tick() {
 	l.sync(append(res.Revived, res.Spawned...), false)
 }
 
-func (l *Loop) writeWorker(ctx context.Context) {
+// writeWorker makes the queued database writes in order. It keeps going after ctx is cancelled
+// (the writes are the world's last moments, so they must not fail with "context canceled") and
+// stops only when the loop asks it to and the queue is empty.
+func (l *Loop) writeWorker(ctx context.Context, done chan<- struct{}) {
+	defer close(done)
+	run := func(write func(context.Context) error) {
+		wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		if err := write(wctx); err != nil {
+			log.Printf("database write: %v", err)
+		}
+	}
 	for {
 		select {
 		case write := <-l.writes:
-			if err := write(ctx); err != nil {
-				log.Printf("database write: %v", err)
+			run(write)
+		case <-l.stopWrites:
+			for {
+				select {
+				case write := <-l.writes:
+					run(write)
+				default:
+					return
+				}
 			}
-		case <-ctx.Done():
-			return
 		}
 	}
 }
@@ -179,6 +221,19 @@ func (l *Loop) EnsureTeam(ctx context.Context, playerID, username, raceID string
 			l.world.Add(e)
 		}
 		l.sync(team, true)
+		return nil
+	})
+}
+
+// AssignGoal is the admin giving a player an individual goal: it replaces the one they had, and
+// the player sees it at once if they are connected.
+func (l *Loop) AssignGoal(playerID, goalID string) error {
+	return l.call(func() error {
+		if err := l.world.AssignGoal(playerID, goalID); err != nil {
+			return err
+		}
+		l.persist(func(ctx context.Context) error { return l.store.AssignGoal(ctx, playerID, goalID) })
+		l.sendGoals(playerID)
 		return nil
 	})
 }

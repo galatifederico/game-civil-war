@@ -47,4 +47,5 @@ run:
 	@mkdir -p .cache
 	docker run --rm --network host --env-file ../deploy/.env --user $(shell id -u):$(shell id -g) \
 		-e HOME=/tmp -e GOCACHE=/cache/build -e GOMODCACHE=/cache/mod -e GOTOOLCHAIN=auto \
+		-e ADMIN_WEB_DIR=/admin-web -v $(CURDIR)/../admin-web:/admin-web:ro \
 		-v $(CURDIR):/src -v $(CURDIR)/.cache:/cache -w /src $(GO_IMAGE) go run ./cmd/server

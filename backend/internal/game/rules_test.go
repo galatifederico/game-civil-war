@@ -142,3 +142,27 @@ func TestRulesChangeTheBehaviorOfTheBoard(t *testing.T) {
 		}
 	})
 }
+
+func TestRulesDiffKeepsOnlyWhatDiffers(t *testing.T) {
+	if got := string(DefaultRules().Diff()); got != "{}" {
+		t.Fatalf("the defaults have no differences, got %s", got)
+	}
+
+	r := DefaultRules()
+	r.MinorsPerTeam = 5
+	r.CooldownsMs.Attack = 900
+	r.TraitNames = []string{"soldi"}
+	got := string(r.Diff())
+	want := `{"cooldowns_ms":{"attack":900},"minors_per_team":5,"trait_names":["soldi"]}`
+	if got != want {
+		t.Fatalf("diff = %s, want %s", got, want)
+	}
+
+	back, err := ParseRules([]byte(got))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(back, r) {
+		t.Fatalf("the diff does not rebuild the rules:\n%+v\n%+v", back, r)
+	}
+}

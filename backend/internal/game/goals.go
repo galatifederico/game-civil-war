@@ -27,10 +27,16 @@ const (
 	GoalTalks         GoalKind = "talks"          // different NPCs spoken to
 )
 
+// GoalKinds lists every kind of goal (the admin app offers them in a menu).
+func GoalKinds() []GoalKind {
+	return []GoalKind{GoalPoints, GoalKills, GoalChampionKills, GoalPickups, GoalStructures, GoalUnits, GoalTalks}
+}
+
 func (k GoalKind) Valid() bool {
-	switch k {
-	case GoalPoints, GoalKills, GoalChampionKills, GoalPickups, GoalStructures, GoalUnits, GoalTalks:
-		return true
+	for _, known := range GoalKinds() {
+		if k == known {
+			return true
+		}
 	}
 	return false
 }

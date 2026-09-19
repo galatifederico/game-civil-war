@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 )
 
@@ -165,4 +166,48 @@ func ParseRules(raw []byte) (Rules, error) {
 		return Rules{}, fmt.Errorf("invalid rules: %w", err)
 	}
 	return r, nil
+}
+
+// Diff is the JSON of the rules that differ from the defaults, which is what a world stores
+// (so a later change of a default reaches every world that never set that value).
+func (r Rules) Diff() []byte {
+	return diffJSON(mustMap(DefaultRules()), mustMap(r))
+}
+
+func mustMap(r Rules) map[string]any {
+	raw, err := json.Marshal(r)
+	if err != nil {
+		panic(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		panic(err)
+	}
+	return m
+}
+
+func diffJSON(base, changed map[string]any) []byte {
+	out, err := json.Marshal(diffMaps(base, changed))
+	if err != nil {
+		panic(err)
+	}
+	return out
+}
+
+func diffMaps(base, changed map[string]any) map[string]any {
+	out := map[string]any{}
+	for key, v := range changed {
+		if sub, ok := v.(map[string]any); ok {
+			if baseSub, ok := base[key].(map[string]any); ok {
+				if d := diffMaps(baseSub, sub); len(d) > 0 {
+					out[key] = d
+				}
+				continue
+			}
+		}
+		if !reflect.DeepEqual(base[key], v) {
+			out[key] = v
+		}
+	}
+	return out
 }

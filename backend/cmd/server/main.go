@@ -47,7 +47,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           (&transport.Server{Store: st, Tokens: auth.NewTokens(cfg.JWTSecret, 30*24*time.Hour), Hub: worlds}).Router(),
+		Handler:           (&transport.Server{Store: st, Tokens: auth.NewTokens(cfg.JWTSecret, 30*24*time.Hour), Hub: worlds, AdminDir: cfg.AdminWebDir}).Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
@@ -61,5 +61,7 @@ func run() error {
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
+	// The worlds are stopping too (same context): let them finish saving before the database closes.
+	worlds.Wait(15 * time.Second)
 	return nil
 }

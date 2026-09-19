@@ -9,6 +9,7 @@ type Config struct {
 	Port        string
 	DatabaseURL string
 	JWTSecret   string
+	AdminWebDir string // folder of the admin web app; empty = not served
 }
 
 func Load() (Config, error) {
@@ -16,6 +17,7 @@ func Load() (Config, error) {
 		Port:        getenv("PORT", "8090"),
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 		JWTSecret:   os.Getenv("JWT_SECRET"),
+		AdminWebDir: os.Getenv("ADMIN_WEB_DIR"),
 	}
 	if cfg.DatabaseURL == "" {
 		return cfg, errors.New("DATABASE_URL is required")

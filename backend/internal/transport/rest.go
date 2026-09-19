@@ -18,6 +18,9 @@ type Server struct {
 	Store  *store.Store
 	Tokens *auth.Tokens
 	Hub    *hub.Hub
+
+	// AdminDir is the folder of the admin web app (admin-web/); empty means it is not served.
+	AdminDir string
 }
 
 func (s *Server) Router() http.Handler {
@@ -31,6 +34,7 @@ func (s *Server) Router() http.Handler {
 	mux.HandleFunc("POST /worlds", s.authed(s.createWorld))
 	mux.HandleFunc("POST /worlds/{id}/join", s.authed(s.joinWorld))
 	mux.HandleFunc("GET /ws", s.serveWS)
+	s.adminRoutes(mux)
 	return mux
 }
 
