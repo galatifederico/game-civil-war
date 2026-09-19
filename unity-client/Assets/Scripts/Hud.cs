@@ -246,24 +246,23 @@ public class Hud : MonoBehaviour
     // ---- fuori dal menu ----------------------------------------------------------------------
 
     // In alto, sempre: i punti della squadra e i soldi. I soldi sono quelli del campione (e' lui che
-    // riceve gli effetti degli oggetti sulle caratteristiche); non si mostrano se il mondo non ha
-    // la caratteristica "soldi".
+    // riceve gli effetti degli oggetti sulle caratteristiche); senza campione o senza la
+    // caratteristica "soldi" si mostra 0.
     void DrawStats(float center)
     {
         int points = 0;
         foreach (var s in scores)
             if (s.player_id == myPlayerId) points = s.points;
-        int? money = null;
+        int money = 0;
         var champion = BoardManager.Instance != null ? BoardManager.Instance.MyChampion() : null;
         if (champion != null)
             foreach (var trait in champion.Data.traits ?? new TraitData[0])
                 if (trait.name == "soldi") money = trait.value;
 
         const float boxWidth = 128f, gap = 8f;
-        float total = money.HasValue ? 2f * boxWidth + gap : boxWidth;
-        statsRect = new Rect(center - total / 2f, 8f, total, StatsHeight);
+        statsRect = new Rect(center - boxWidth - gap / 2f, 8f, 2f * boxWidth + gap, StatsHeight);
         DrawStat(new Rect(statsRect.x, statsRect.y, boxWidth, StatsHeight), null, "Punti", points);
-        if (money.HasValue) DrawStat(new Rect(statsRect.x + boxWidth + gap, statsRect.y, boxWidth, StatsHeight), "coin", "Soldi", money.Value);
+        DrawStat(new Rect(statsRect.x + boxWidth + gap, statsRect.y, boxWidth, StatsHeight), "coin", "Soldi", money);
     }
 
     void DrawStat(Rect r, string icon, string label, int value)
