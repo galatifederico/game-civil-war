@@ -109,8 +109,7 @@ public class Hud : MonoBehaviour
     {
         get
         {
-            var m = Input.mousePosition;
-            var p = new Vector2(m.x, Screen.height - m.y);
+            var p = Ui.Pointer;
             if (logoutVisible && logoutRect.Contains(p)) return true;
             if (boardNames.Length > 1 && tabsRect.Contains(p)) return true;
             return Time.time < eventUntil && eventRect.Contains(p);
@@ -119,6 +118,7 @@ public class Hud : MonoBehaviour
 
     void OnGUI()
     {
+        Ui.Begin();
         EnsureStyles();
         toasts.RemoveAll(t => t.Until < Time.time);
 
@@ -164,15 +164,16 @@ public class Hud : MonoBehaviour
 
         if (logoutVisible)
         {
-            logoutRect = new Rect(Screen.width - 92f, Screen.height - 42f, 80f, 30f);
+            logoutRect = new Rect(Ui.Width - 92f, Ui.Height - Ui.BottomInset - 42f, 80f, 30f);
             if (GUI.Button(logoutRect, "Esci", buttonStyle)) LogoutClicked?.Invoke();
         }
 
         if (boardNames.Length > 1)
         {
-            const float tabWidth = 110f, tabHeight = 28f;
+            const float tabHeight = 28f;
+            float tabWidth = Mathf.Min(110f, (Ui.Width - 16f) / boardNames.Length);
             float total = boardNames.Length * tabWidth;
-            tabsRect = new Rect(Screen.width / 2f - total / 2f, 8f, total, tabHeight);
+            tabsRect = new Rect(Ui.Width / 2f - total / 2f, 8f, total, tabHeight);
             for (int i = 0; i < boardNames.Length; i++)
             {
                 var previous = GUI.backgroundColor;
@@ -184,11 +185,11 @@ public class Hud : MonoBehaviour
         }
 
         if (!string.IsNullOrEmpty(hint))
-            GUI.Label(new Rect(Screen.width / 2f - 220f, boardNames.Length > 1 ? 42f : 8f, 440f, 26f), hint, hintStyle);
+            GUI.Label(new Rect(Ui.Width / 2f - 220f, boardNames.Length > 1 ? 42f : 8f, 440f, 26f), hint, hintStyle);
 
         if (Time.time < eventUntil)
         {
-            eventRect = new Rect(EventRectTemplate.x, Screen.height - EventRectTemplate.height - 12f, EventRectTemplate.width, EventRectTemplate.height);
+            eventRect = new Rect(EventRectTemplate.x, Ui.Height - Ui.BottomInset - EventRectTemplate.height - 12f, EventRectTemplate.width, EventRectTemplate.height);
             GUI.Box(eventRect, GUIContent.none, boxStyle);
             GUI.Label(new Rect(eventRect.x + 12f, eventRect.y + 8f, eventRect.width - 24f, 24f), eventTitle, eventTitleStyle);
             GUI.Label(new Rect(eventRect.x + 12f, eventRect.y + 36f, eventRect.width - 24f, eventRect.height - 44f), eventText, eventTextStyle);

@@ -45,11 +45,13 @@ public class LoginScreen : MonoBehaviour
         if (!Visible) return;
         EnsureStyles();
 
-        float height = registerMode ? 420f : 380f;
-        var rect = new Rect((Screen.width - Width) / 2f, (Screen.height - height) / 2f, Width, height);
+        Ui.Begin();
+        float width = Mathf.Min(Width, Ui.Width - 16f);
+        float height = Mathf.Min(registerMode ? 420f : 380f, Ui.Height - 16f);
+        var rect = new Rect((Ui.Width - width) / 2f, Mathf.Max(8f, (Ui.Height - height) / 2f), width, height);
         GUI.Box(rect, GUIContent.none, boxStyle);
 
-        GUILayout.BeginArea(new Rect(rect.x + 20f, rect.y + 16f, Width - 40f, height - 32f));
+        GUILayout.BeginArea(new Rect(rect.x + 20f, rect.y + 16f, width - 40f, height - 32f));
         GUILayout.Label("The Game", titleStyle);
         GUILayout.Space(8f);
 

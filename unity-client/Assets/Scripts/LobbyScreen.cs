@@ -52,11 +52,13 @@ public class LobbyScreen : MonoBehaviour
         if (!Visible) return;
         EnsureStyles();
 
-        float height = Mathf.Min(Screen.height - 40f, 520f);
-        var rect = new Rect((Screen.width - Width) / 2f, (Screen.height - height) / 2f, Width, height);
+        Ui.Begin();
+        float width = Mathf.Min(Width, Ui.Width - 16f);
+        float height = Mathf.Min(Ui.Height - 16f, 520f);
+        var rect = new Rect((Ui.Width - width) / 2f, (Ui.Height - height) / 2f, width, height);
         GUI.Box(rect, GUIContent.none, boxStyle);
 
-        GUILayout.BeginArea(new Rect(rect.x + 20f, rect.y + 16f, Width - 40f, height - 32f));
+        GUILayout.BeginArea(new Rect(rect.x + 20f, rect.y + 16f, width - 40f, height - 32f));
         GUILayout.Label($"Mondi - {net.Username}", titleStyle);
         GUILayout.Space(6f);
 

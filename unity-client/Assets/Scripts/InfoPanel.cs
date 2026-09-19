@@ -36,8 +36,7 @@ public class InfoPanel : MonoBehaviour
         get
         {
             if (piece == null) return false;
-            var m = Input.mousePosition;
-            return rect.Contains(new Vector2(m.x, Screen.height - m.y));
+            return rect.Contains(Ui.Pointer);
         }
     }
 
@@ -47,7 +46,11 @@ public class InfoPanel : MonoBehaviour
         actions = panelActions ?? new List<PanelAction>();
     }
 
-    public void Hide() => piece = null;
+    public void Hide()
+    {
+        piece = null;
+        Ui.BottomInset = 0f;
+    }
 
     // Le azioni cambiano lo stato del pannello: si eseguono fuori da OnGUI, tra un frame e l'altro.
     void Update()
@@ -61,15 +64,27 @@ public class InfoPanel : MonoBehaviour
     void OnGUI()
     {
         if (piece == null) return;
+        Ui.Begin();
         EnsureStyles();
 
         var data = piece.Data;
         string traits = TraitsText(data);
         float height = BaseHeight + actions.Count * ButtonHeight + (traits.Length > 0 ? 40f : 0f);
-        rect = new Rect(Screen.width - Width - Margin, Margin, Width, height);
+        if (Ui.Compact)
+        {
+            // In verticale il menu e' un pannello a tutta larghezza in fondo allo schermo.
+            height = Mathf.Min(height, Ui.Height * 0.55f);
+            rect = new Rect(Margin, Ui.Height - height - Margin, Ui.Width - 2f * Margin, height);
+            Ui.BottomInset = height + Margin;
+        }
+        else
+        {
+            rect = new Rect(Ui.Width - Width - Margin, Margin, Width, height);
+            Ui.BottomInset = 0f;
+        }
         GUI.Box(rect, GUIContent.none, boxStyle);
 
-        GUILayout.BeginArea(new Rect(rect.x + 12f, rect.y + 10f, Width - 24f, height - 20f));
+        GUILayout.BeginArea(new Rect(rect.x + 12f, rect.y + 10f, rect.width - 24f, height - 20f));
         GUILayout.Label(data.name, titleStyle);
         GUILayout.Label(piece.KindLabel, kindStyle);
         GUILayout.Space(6f);

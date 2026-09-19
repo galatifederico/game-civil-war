@@ -40,7 +40,8 @@ public class BoardManager : MonoBehaviour
     string rangeKey = "";
     ItemData[] inventory = new ItemData[0];
     string myPlayerId;
-    float fittedAspect;
+    Vector2Int fittedScreen;
+    bool fittedCompact;
 
     public string CurrentBoardId => current?.id;
 
@@ -298,13 +299,17 @@ public class BoardManager : MonoBehaviour
 
     // Sui display larghi la fascia di destra e' riservata al menu della pedina: la board si inquadra
     // nello spazio che resta, cosi' non finisce mai sotto il menu.
+    // In verticale (telefono) il menu sta in basso: la board occupa la parte alta dello schermo.
     const float PanelStripWidth = 310f;
+    const float PanelSheetShare = 0.4f;
 
     void FitCamera()
     {
-        float width = Screen.width;
-        cam.rect = new Rect(0f, 0f, width > 700f ? (width - PanelStripWidth) / width : 1f, 1f);
-        fittedAspect = cam.aspect;
+        float width = Ui.Width;
+        if (Ui.Compact) cam.rect = new Rect(0f, PanelSheetShare, 1f, 1f - PanelSheetShare);
+        else cam.rect = new Rect(0f, 0f, width > 700f ? (width - PanelStripWidth) / width : 1f, 1f);
+        fittedScreen = new Vector2Int(Screen.width, Screen.height);
+        fittedCompact = Ui.Compact;
         var bounds = GridMath.Bounds(current.grid, current.width, current.height);
         cam.orthographicSize = Mathf.Max(bounds.height / 2f, bounds.width / 2f / cam.aspect) * 1.03f;
         cam.transform.position = new Vector3(bounds.center.x, bounds.center.y, -10f);
@@ -313,7 +318,7 @@ public class BoardManager : MonoBehaviour
     void LateUpdate()
     {
         if (current == null) return;
-        if (!Mathf.Approximately(fittedAspect, cam.aspect)) FitCamera();
+        if (fittedScreen.x != Screen.width || fittedScreen.y != Screen.height || fittedCompact != Ui.Compact) FitCamera();
         RefreshRange();
     }
 

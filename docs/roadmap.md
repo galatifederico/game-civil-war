@@ -21,9 +21,18 @@ the_game/
 - **M4 — Motore regole** ✅: razze, compatibilità e ereditarietà, tutte le vie di creazione pedine (vita del campione, oggetti dell'inventario, riproduzione, edifici), inventario gestito solo dal campione con effetti degli oggetti. Tutto è dato per mondo.
 - **M5 — Obiettivi, punteggio, condizioni di vittoria** ✅: obiettivi di mondo e individuali configurabili, assegnazione casuale o manuale.
 - **M6 — Admin web app** ✅ (`admin-web/`) e lobby mondi lato giocatore ✅.
-- **M7 — Hardening**: riconnessione/afk (riconnessione automatica del client ✅), grafica 2D isometrica pixel art vera, Cloudflare Tunnel.
+- **M7 — Hardening** ✅ (tranne ciò che richiede un account Cloudflare): riconnessione automatica ✅, AFK ✅, robustezza del loop ✅, limiti di frequenza ✅, grafica 2D isometrica pixel art ✅ (arrivata con M3), layout mobile ✅, Cloudflare Tunnel predisposto ma non provato.
 
 ## Stato attuale
+
+**M7 — hardening:**
+
+- **AFK** (`game/afk.go`, regola `afk` per mondo: `after_ms`, predefinito 10 minuti, 0 = mai; `shield`, predefinito sì): una squadra è attiva quando il giocatore si connette, si disconnette o manda un comando; dopo `after_ms` senza nulla è **assente** e, con lo scudo, le sue pedine non si possono attaccare (`target_afk`). Chi torna (un qualunque comando) perde subito lo scudo. La classifica mostra "(assente)" (`afk` nel messaggio `Score`, aggiornato a tutti quando cambia). Lo stato non è su DB: al riavvio del mondo tutti contano come attivi.
+- **Robustezza del loop**: un panic in un comando o nel tick viene registrato (con stack) e il mondo continua; alla fermata il loop **svuota la coda di scritture** con un contesto non annullato (prima le ultime scritture fallivano con "context canceled"), e il server all'arresto aspetta i loop (`Hub.Wait`, 15 s) prima di chiudere il database.
+- **Limiti**: ogni connessione di gioco può mandare 15 comandi/s (burst 30); oltre, i comandi sono ignorati con un errore `rate_limited`, e dopo 200 rifiuti di fila la connessione viene chiusa. Login e registrazione: 20 tentativi al minuto per indirizzo (HTTP 429). Dietro Cloudflare Tunnel `TRUST_PROXY=1` fa contare l'indirizzo vero (`CF-Connecting-IP`).
+- **Layout mobile** (client Unity, `Ui.cs`): l'interfaccia IMGUI si ridimensiona sui display ad alta densità (`GUI.matrix` da `Screen.dpi`, larghezza minima 400 unità) e in **verticale** il menu della pedina diventa un pannello in basso a tutta larghezza mentre la board occupa il 60% alto; Esci e notifiche si spostano sopra il pannello. Una seconda camera pulisce lo schermo fuori dal rettangolo della principale. Provato nell'editor con una Game view 540x960 (reflection su `GameViewSizes`) e con scala 1,35; **non provato su un telefono vero** né con tocchi reali (il tocco arriva come mouse: `Input.simulateMouseWithTouches`). Login e lobby si adattano alla larghezza, ma non sono stati visti in verticale.
+- **Deploy** (`docs/deploy.md`): `backend/Dockerfile` (immagine costruita e avviata con successo), profili compose `app` e `tunnel` (con `cloudflared`; la configurazione è validata ma il tunnel **non è mai stato avviato**: serve un account Cloudflare), Postgres e Redis pubblicati solo su `127.0.0.1`.
+- Non c'è ancora: verifica email, recupero password, revoca dei token, log di audit dell'admin, HTTPS proprio (lo dà il tunnel), Redis (avviato e non usato).
 
 **M6 — admin web app:**
 
@@ -83,23 +92,24 @@ the_game/
 - **Partenza delle squadre**: `spawnAnchor` le distribuisce (prime sei ai lati, poi al centro) così che all'inizio siano fuori vista l'una dall'altra (test dedicato su 24x24).
 - **Regole come dati** (tecnico.md: motore di regole configurabile per mondo): tutti i parametri di gioco (statistiche di campione e pedine, dimensione della squadra iniziale, respawn, cooldown, costo di creazione, punti per azione) stanno in `game.Rules`, con i valori predefiniti in `DefaultRules()`. Ogni mondo li sovrascrive nella colonna `worlds.rules` (JSON con solo le differenze, es. `{"minors_per_team": 8, "champion": {"speed": 4}}`). `ParseRules` rifiuta campi sconosciuti (refusi) e valori che romperebbero la simulazione, e il server non parte con regole sbagliate. Il client Unity non ha valori hardcoded: legge tutto dalle entità. È la base su cui l'editor admin (M6) scriverà.
 - **Persistenza**: posizioni, vita, oggetti raccolti, inventario, strutture, nuove pedine e punti su Postgres. Il cooldown è stato effimero.
-- **Riconnessione**: se il server cade o si riavvia il client riprova da solo con il token del login (8 tentativi a intervalli crescenti, stato "Connessione persa, riprovo (n/8)"); solo dopo, o con un token non valido, torna al login. Il pulsante "Esci" (in basso a destra) dimentica la sessione. L'AFK lato server non c'è ancora.
-- **Client Unity** (`unity-client/`): `GameController` crea tutto a runtime (nessun setup nella scena); `NetworkClient` (REST via UnityWebRequest + `ClientWebSocket`), `BoardManager` (snapshot/delta, click, azioni, territorio colorato), `Piece`, `InfoPanel` (scheda + pulsanti azione con motivo del blocco), `LoginScreen`, `Hud` (classifica, inventario, notifiche/dialoghi), tutti in IMGUI senza dipendenze da UGUI. Rendering con primitive 3D viste dall'alto: è un placeholder, la grafica vera arriva in M7.
+- **Riconnessione**: se il server cade o si riavvia il client riprova da solo con il token del login (8 tentativi a intervalli crescenti, stato "Connessione persa, riprovo (n/8)"); solo dopo, o con un token non valido, torna al login. Il pulsante "Esci" (in basso a destra) dimentica la sessione.
+- **Client Unity** (`unity-client/`): `GameController` crea tutto a runtime (nessun setup nella scena); `NetworkClient` (REST via UnityWebRequest + `ClientWebSocket`), `BoardManager` (snapshot/delta, click, azioni, territorio colorato), `Piece`, `InfoPanel` (scheda + pulsanti azione con motivo del blocco), `LoginScreen`, `Hud` (classifica, inventario, notifiche/dialoghi), tutti in IMGUI senza dipendenze da UGUI. (Il rendering è poi diventato 2D isometrico in pixel art: vedi M3.)
 - **Come si gioca**: clic su una tua pedina la seleziona (poi una casella vuota la sposta). Con una pedina selezionata, clic su un NPC / oggetto / pedina nemica apre la sua scheda con "Parla" / "Raccogli" e "Sposta" / "Attacca" ("Sposta" e "Costruisci" chiedono poi di cliccare la casella di destinazione). Clic sulla pedina selezionata (scheda con "Costruisci avamposto") e poi su una casella libera costruisce.
 
 **Non ancora fatto / da sapere:**
 
-- Test: `make -C backend test` (regole e loop, senza DB) e `make -C backend test-integration` (REST + WebSocket su Postgres reale, database temporaneo per ogni esecuzione). Il client Unity non ha test automatici: si verifica a mano o via MCP.
-- Il click reale del mouse non è stato provato dall'automazione: si è simulato `OnMouseDown` e l'esecuzione dei pulsanti. I pannelli ignorano i click che cadono su di sé (`BlocksPointer`).
-- `Board.VisibleTo` è O(entità × pedine): va bene per pochi giocatori, da ottimizzare (indice spaziale) se le pedine crescono molto. La board di 24x24 regge bene 6 squadre fuori vista; per 6-15 giocatori serve una board più grande (parametro di mondo, M6).
-- Il territorio è solo visivo (casella colorata): il perimetro, il suo valore in punti e la conquista contesa non sono definiti. Gli oggetti non si possono ancora spostare né usare; l'inventario si vede ma non si gestisce (solo il campione potrà, come da design).
-- Redis è avviato ma il backend non lo usa ancora. La grafica isometrica pixel art e il layout mobile (verticale) non sono iniziati.
+- Test: `make -C backend test` (regole e loop, senza DB) e `make -C backend test-integration` (REST + WebSocket + admin su Postgres reale, database temporaneo per ogni esecuzione). Il client Unity e l'app admin non hanno test automatici: si verificano a mano, via MCP (Unity) o con Chrome headless (admin).
+- Il click reale del mouse (e il tocco) non sono stati provati dall'automazione: si è simulato `ClickCell`/`OnMouseDown` e l'esecuzione dei pulsanti. I pannelli ignorano i click che cadono su di sé (`BlocksPointer`).
+- `Board.VisibleTo` è O(entità × pedine): va bene per pochi giocatori, da ottimizzare (indice spaziale) se le pedine crescono molto. La board di 24x24 regge bene 6 squadre fuori vista; per 6-15 giocatori l'admin può ora fare una board più grande dall'app admin.
+- Il territorio è solo visivo (casella colorata): il perimetro, il suo valore in punti e la conquista contesa non sono definiti. Le caratteristiche estese (soldi, alcol...) sono dati senza effetto sul gioco: i docs non dicono cosa facciano.
+- Redis è avviato ma il backend non lo usa: lo stato caldo sta in memoria nel loop (un mondo per goroutine), Postgres è la fonte di verità. Ha senso solo se un mondo dovrà girare su più processi.
 - Se il server viene fermato mentre un cooldown è in corso, il cooldown si azzera al riavvio (è effimero).
+- Modificare un mondo dall'admin lo riavvia: i giocatori connessi vengono scollegati e si riconnettono da soli (entro i tentativi del client: 8, a intervalli crescenti).
 
 ## Prossimi passi consigliati
 
-1. Provare il gioco con più giocatori reali (due istanze del client) per verificare bilanciamento di danno, punti e costo di creazione, e come si sente la nebbia.
-2. Altre regole di creazione (risorse raccolte, edifici, riproduzione tra pedine) e razze definite dall'admin: estendere `Rules` (o una tabella `races`) invece di aggiungere costanti. Le regole oggi sono per mondo e uguali per tutte le pedine dello stesso tipo.
-3. Uso degli oggetti dell'inventario da parte del campione (gli oggetti oggi si possono raccogliere e spostare, non usare).
-4. Redis per lo stato caldo quando le pedine per giocatore crescono davvero.
-5. M3 (multi-board, griglie miste) e il resto di M4 (razze, riproduzione), poi grafica e layout mobile.
+1. Provare il gioco con più giocatori reali (due istanze del client, meglio un telefono) per verificare bilanciamento di danno, punti e costo di creazione, come si sente la nebbia e il layout verticale.
+2. Provare davvero il deploy con Cloudflare Tunnel (`docs/deploy.md`) e, se il gioco esce dagli amici fidati, aggiungere verifica email, recupero password e revoca dei token.
+3. Decidere cosa fanno le caratteristiche estese (soldi, alcol, alpha, thc, beatitudine, mana) e come si conquista il territorio: sono le due parti di design ancora aperte.
+4. Build mobile del client Unity (iOS/Android): il codice è pronto per i tocchi e la scala, ma non è mai stata fatta una build.
+5. Cancellazione di un mondo e azzeramento degli obiettivi di mondo dall'app admin.

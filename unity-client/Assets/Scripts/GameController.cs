@@ -145,6 +145,15 @@ public class GameController : MonoBehaviour
         cam.backgroundColor = new Color(0.1f, 0.1f, 0.12f);
         camGO.transform.position = new Vector3(0f, 0f, -10f);
         camGO.transform.rotation = Quaternion.identity;
+
+        // La camera principale disegna solo nel suo rettangolo (il resto e' del menu): una seconda
+        // camera che non vede nulla pulisce l'intero schermo, altrimenti fuori resterebbe spazzatura.
+        var back = new GameObject("Background Camera").AddComponent<Camera>();
+        back.transform.SetParent(camGO.transform, false);
+        back.clearFlags = CameraClearFlags.SolidColor;
+        back.backgroundColor = cam.backgroundColor;
+        back.cullingMask = 0;
+        back.depth = cam.depth - 1f;
         return cam;
     }
 }
