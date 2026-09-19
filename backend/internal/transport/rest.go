@@ -1,7 +1,6 @@
 package transport
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -11,13 +10,14 @@ import (
 
 	"thegame/backend/internal/auth"
 	"thegame/backend/internal/game"
+	"thegame/backend/internal/hub"
 	"thegame/backend/internal/store"
 )
 
 type Server struct {
 	Store  *store.Store
 	Tokens *auth.Tokens
-	Loop   *game.Loop
+	Hub    *hub.Hub
 }
 
 func (s *Server) Router() http.Handler {
@@ -27,6 +27,9 @@ func (s *Server) Router() http.Handler {
 	})
 	mux.HandleFunc("POST /auth/register", s.register)
 	mux.HandleFunc("POST /auth/login", s.login)
+	mux.HandleFunc("GET /worlds", s.authed(s.listWorlds))
+	mux.HandleFunc("POST /worlds", s.authed(s.createWorld))
+	mux.HandleFunc("POST /worlds/{id}/join", s.authed(s.joinWorld))
 	mux.HandleFunc("GET /ws", s.serveWS)
 	return mux
 }
@@ -76,7 +79,12 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
-	s.finishAuth(w, r.Context(), player, http.StatusCreated)
+	// The first player to register administers the world the database was seeded with.
+	if err := s.Store.ClaimOwnerlessWorlds(r.Context(), player.ID); err != nil {
+		internalError(w, err)
+		return
+	}
+	s.finishAuth(w, player, http.StatusCreated)
 }
 
 // dummyHash keeps login timing similar whether or not the email exists.
@@ -101,11 +109,86 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "credenziali errate")
 		return
 	}
-	s.finishAuth(w, r.Context(), player, http.StatusOK)
+	s.finishAuth(w, player, http.StatusOK)
 }
 
-func (s *Server) finishAuth(w http.ResponseWriter, ctx context.Context, p store.Player, status int) {
-	if err := s.Loop.EnsureTeam(ctx, p.ID, p.Username); err != nil {
+// finishAuth answers a successful login or registration with a token. Joining a world (and
+// getting a team there) is a separate step: the lobby.
+func (s *Server) finishAuth(w http.ResponseWriter, p store.Player, status int) {
+	token, err := s.Tokens.Issue(p.ID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, status, authResponse{Token: token, PlayerID: p.ID, Username: p.Username})
+}
+
+// authed runs a handler for a request that carries a valid "Authorization: Bearer <token>".
+func (s *Server) authed(next func(http.ResponseWriter, *http.Request, store.Player)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "accesso richiesto")
+			return
+		}
+		playerID, err := s.Tokens.Parse(token)
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "sessione non valida o scaduta")
+			return
+		}
+		player, err := s.Store.PlayerByID(r.Context(), playerID)
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "sessione non valida o scaduta")
+			return
+		}
+		next(w, r, player)
+	}
+}
+
+type worldEntry struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Boards      int    `json:"boards"`
+	Players     int    `json:"players"`
+	Joined      bool   `json:"joined"`
+	Admin       bool   `json:"admin"`
+}
+
+func (s *Server) listWorlds(w http.ResponseWriter, r *http.Request, p store.Player) {
+	worlds, err := s.Store.ListWorlds(r.Context())
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	joined, err := s.Store.Memberships(r.Context(), p.ID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	out := make([]worldEntry, 0, len(worlds))
+	for _, info := range worlds {
+		out = append(out, worldEntry{
+			ID: info.ID, Name: info.Name, Description: info.Description, Boards: info.Boards, Players: info.Players,
+			Joined: joined[info.ID], Admin: info.OwnerID == p.ID,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"worlds": out})
+}
+
+// joinWorld enrols the player in a world and, the first time, gives them their team there.
+func (s *Server) joinWorld(w http.ResponseWriter, r *http.Request, p store.Player) {
+	id := r.PathValue("id")
+	loop, ok := s.Hub.Loop(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "mondo non trovato")
+		return
+	}
+	if err := s.Store.Join(r.Context(), id, p.ID); err != nil {
+		internalError(w, err)
+		return
+	}
+	if err := loop.EnsureTeam(r.Context(), p.ID, p.Username); err != nil {
 		if _, isRule := err.(*game.Error); isRule {
 			writeError(w, http.StatusServiceUnavailable, err.Error())
 			return
@@ -113,12 +196,34 @@ func (s *Server) finishAuth(w http.ResponseWriter, ctx context.Context, p store.
 		internalError(w, err)
 		return
 	}
-	token, err := s.Tokens.Issue(p.ID)
+	writeJSON(w, http.StatusOK, map[string]string{"world_id": id})
+}
+
+// createWorld makes a new world with the caller as its admin. Its boards and rules are then
+// edited from the admin app.
+func (s *Server) createWorld(w http.ResponseWriter, r *http.Request, p store.Player) {
+	var in struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	in.Name = strings.TrimSpace(in.Name)
+	if n := utf8.RuneCountInString(in.Name); n < 2 || n > 40 {
+		writeError(w, http.StatusBadRequest, "il nome del mondo deve avere da 2 a 40 caratteri")
+		return
+	}
+	id, err := s.Store.CreateWorld(r.Context(), in.Name, strings.TrimSpace(in.Description), p.ID)
 	if err != nil {
 		internalError(w, err)
 		return
 	}
-	writeJSON(w, status, authResponse{Token: token, PlayerID: p.ID, Username: p.Username})
+	if err := s.Hub.Load(r.Context(), id); err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
 }
 
 func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {

@@ -20,9 +20,12 @@ public class NetworkClient : MonoBehaviour
     public string Username { get; private set; }
     public bool Connected => ws != null && ws.State == WebSocketState.Open;
     public bool HasSession => !string.IsNullOrEmpty(sessionToken);
+    public bool InWorld => !string.IsNullOrEmpty(sessionWorld);
+    public string WorldId => sessionWorld;
 
-    // Il token ottenuto col login: serve a riconnettersi senza chiedere di nuovo le credenziali.
-    string sessionUrl, sessionToken;
+    // Il token ottenuto col login e il mondo scelto nella lobby: servono a riconnettersi senza
+    // chiedere di nuovo le credenziali.
+    string sessionUrl, sessionToken, sessionWorld;
 
     readonly ConcurrentQueue<Action> mainThread = new ConcurrentQueue<Action>();
     readonly SemaphoreSlim sendLock = new SemaphoreSlim(1, 1);
@@ -36,27 +39,58 @@ public class NetworkClient : MonoBehaviour
 
     void OnDestroy() => Close();
 
-    public void Authenticate(string baseUrl, bool register, string email, string username, string password, Action<string> onError)
+    // Login o registrazione: ottiene il token. Poi si sceglie un mondo dalla lobby.
+    public void Authenticate(string baseUrl, bool register, string email, string username, string password,
+        Action onSuccess, Action<string> onError)
     {
         var body = JsonUtility.ToJson(new AuthRequest { email = email, username = username, password = password });
         var url = baseUrl.TrimEnd('/') + (register ? "/auth/register" : "/auth/login");
-        StartCoroutine(AuthRoutine(url, body, response =>
+        StartCoroutine(Request<AuthResponse>("POST", url, body, null, response =>
         {
+            if (string.IsNullOrEmpty(response?.token))
+            {
+                onError("Risposta del server non valida");
+                return;
+            }
             PlayerId = response.player_id;
             Username = response.username;
             sessionUrl = baseUrl;
             sessionToken = response.token;
-            Connect(baseUrl, response.token);
+            onSuccess?.Invoke();
         }, onError));
     }
 
-    IEnumerator AuthRoutine(string url, string json, Action<AuthResponse> onOk, Action<string> onError)
+    public void FetchWorlds(Action<WorldEntry[]> onOk, Action<string> onError)
     {
-        using (var req = new UnityWebRequest(url, "POST"))
+        StartCoroutine(Request<WorldList>("GET", sessionUrl.TrimEnd('/') + "/worlds", null, sessionToken,
+            list => onOk(list?.worlds ?? new WorldEntry[0]), onError));
+    }
+
+    // Si iscrive al mondo (la prima volta il server crea la squadra) e poi ci entra.
+    public void JoinAndEnter(string worldId, Action<string> onError)
+    {
+        StartCoroutine(Request<IdResponse>("POST", sessionUrl.TrimEnd('/') + "/worlds/" + worldId + "/join", "{}", sessionToken,
+            _ => Enter(worldId), onError));
+    }
+
+    public void CreateWorld(string name, string description, Action<string> onCreated, Action<string> onError)
+    {
+        var body = JsonUtility.ToJson(new CreateWorldRequest { name = name, description = description });
+        StartCoroutine(Request<IdResponse>("POST", sessionUrl.TrimEnd('/') + "/worlds", body, sessionToken,
+            r => onCreated(r.id), onError));
+    }
+
+    IEnumerator Request<T>(string method, string url, string json, string token, Action<T> onOk, Action<string> onError) where T : class
+    {
+        using (var req = new UnityWebRequest(url, method))
         {
-            req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
+            if (json != null)
+            {
+                req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
+                req.SetRequestHeader("Content-Type", "application/json");
+            }
             req.downloadHandler = new DownloadHandlerBuffer();
-            req.SetRequestHeader("Content-Type", "application/json");
+            if (token != null) req.SetRequestHeader("Authorization", "Bearer " + token);
             yield return req.SendWebRequest();
 
             if (req.result == UnityWebRequest.Result.ConnectionError)
@@ -64,17 +98,25 @@ public class NetworkClient : MonoBehaviour
                 onError("Server non raggiungibile");
                 yield break;
             }
-            var response = JsonUtility.FromJson<AuthResponse>(req.downloadHandler.text);
-            if (req.responseCode >= 400 || response == null || string.IsNullOrEmpty(response.token))
+            var text = req.downloadHandler.text;
+            if (req.responseCode >= 400)
             {
-                onError(string.IsNullOrEmpty(response?.error) ? "Errore del server" : response.error);
+                var err = JsonUtility.FromJson<ErrorResponse>(text);
+                onError(string.IsNullOrEmpty(err?.error) ? $"Errore del server ({req.responseCode})" : err.error);
                 yield break;
             }
-            onOk(response);
+            onOk(JsonUtility.FromJson<T>(text));
         }
     }
 
-    void Connect(string baseUrl, string token)
+    // Apre il WebSocket sul mondo scelto.
+    public void Enter(string worldId)
+    {
+        sessionWorld = worldId;
+        Connect(sessionUrl, sessionToken, worldId);
+    }
+
+    void Connect(string baseUrl, string token, string worldId)
     {
         Close();
         cts = new CancellationTokenSource();
@@ -83,17 +125,25 @@ public class NetworkClient : MonoBehaviour
             Scheme = baseUrl.StartsWith("https") ? "wss" : "ws",
             Path = "/ws",
         }.Uri;
-        _ = RunConnection(uri, token, cts.Token);
+        _ = RunConnection(uri, token, worldId, cts.Token);
     }
 
     public void Reconnect()
     {
-        if (HasSession) Connect(sessionUrl, sessionToken);
+        if (HasSession && InWorld) Connect(sessionUrl, sessionToken, sessionWorld);
+    }
+
+    // Lascia il mondo ma resta collegato all'account (si torna alla lobby).
+    public void LeaveWorld()
+    {
+        sessionWorld = null;
+        Close();
     }
 
     public void Logout()
     {
         sessionToken = null;
+        sessionWorld = null;
         Close();
     }
 
@@ -104,7 +154,7 @@ public class NetworkClient : MonoBehaviour
         ws = null;
     }
 
-    async Task RunConnection(Uri uri, string token, CancellationToken ct)
+    async Task RunConnection(Uri uri, string token, string worldId, CancellationToken ct)
     {
         string reason = null;
         try
@@ -113,7 +163,7 @@ public class NetworkClient : MonoBehaviour
             {
                 ws = socket;
                 await socket.ConnectAsync(uri, ct);
-                await SendRaw(JsonUtility.ToJson(new ClientMessage { type = "auth", token = token }), ct);
+                await SendRaw(JsonUtility.ToJson(new ClientMessage { type = "auth", token = token, world_id = worldId }), ct);
 
                 var buffer = new byte[16 * 1024];
                 using (var message = new MemoryStream())

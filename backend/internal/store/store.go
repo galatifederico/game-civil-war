@@ -116,15 +116,14 @@ func (s *Store) player(ctx context.Context, query string, arg any) (Player, erro
 	return p, err
 }
 
-// LoadWorld loads the first world with its rules, boards, gateways and everything on the boards,
-// plus the players and their points and inventories.
-func (s *Store) LoadWorld(ctx context.Context) (*game.World, error) {
-	var id, name string
+// LoadWorld loads a world with its rules, boards, gateways and everything on the boards, plus the
+// players that joined it with their points and inventories.
+func (s *Store) LoadWorld(ctx context.Context, id string) (*game.World, error) {
+	var name string
 	var rulesJSON []byte
-	err := s.pool.QueryRow(ctx, `SELECT id::text, name, rules FROM worlds ORDER BY created_at LIMIT 1`).
-		Scan(&id, &name, &rulesJSON)
+	err := s.pool.QueryRow(ctx, `SELECT name, rules FROM worlds WHERE id = $1::uuid`, id).Scan(&name, &rulesJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, errors.New("no world in the database")
+		return nil, fmt.Errorf("world %s not found", id)
 	}
 	if err != nil {
 		return nil, err
@@ -222,7 +221,8 @@ func (s *Store) LoadWorld(ctx context.Context) (*game.World, error) {
 		return nil, err
 	}
 
-	err = s.each(ctx, `SELECT id::text, username, points FROM players`, nil, func(rows pgx.Rows) error {
+	err = s.each(ctx, `SELECT p.id::text, p.username, m.points FROM memberships m
+		JOIN players p ON p.id = m.player_id WHERE m.world_id = $1::uuid`, []any{id}, func(rows pgx.Rows) error {
 		var pid, username string
 		var points int
 		if err := rows.Scan(&pid, &username, &points); err != nil {
@@ -235,7 +235,8 @@ func (s *Store) LoadWorld(ctx context.Context) (*game.World, error) {
 		return nil, err
 	}
 
-	err = s.each(ctx, `SELECT player_id::text, name, description FROM inventory_items ORDER BY acquired_at`, nil,
+	err = s.each(ctx, `SELECT player_id::text, name, description FROM inventory_items
+		WHERE world_id = $1::uuid ORDER BY acquired_at`, []any{id},
 		func(rows pgx.Rows) error {
 			var pid string
 			var item game.Item
@@ -309,13 +310,116 @@ func (s *Store) DeleteItem(ctx context.Context, id string) error {
 	return err
 }
 
-func (s *Store) AddInventory(ctx context.Context, playerID string, item game.Item) error {
-	_, err := s.pool.Exec(ctx, `INSERT INTO inventory_items (player_id, name, description) VALUES ($1::uuid, $2, $3)`,
-		playerID, item.Name, item.Description)
+func (s *Store) AddInventory(ctx context.Context, worldID, playerID string, item game.Item) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO inventory_items (world_id, player_id, name, description)
+		VALUES ($1::uuid, $2::uuid, $3, $4)`, worldID, playerID, item.Name, item.Description)
 	return err
 }
 
-func (s *Store) AddPoints(ctx context.Context, playerID string, delta int) error {
-	_, err := s.pool.Exec(ctx, `UPDATE players SET points = points + $2 WHERE id::text = $1`, playerID, delta)
+func (s *Store) AddPoints(ctx context.Context, worldID, playerID string, delta int) error {
+	_, err := s.pool.Exec(ctx, `UPDATE memberships SET points = points + $3
+		WHERE world_id = $1::uuid AND player_id = $2::uuid`, worldID, playerID, delta)
 	return err
+}
+
+// WorldInfo is what the lobby shows about a world.
+type WorldInfo struct {
+	ID          string
+	Name        string
+	Description string
+	OwnerID     string
+	Boards      int
+	Players     int
+}
+
+func (s *Store) WorldIDs(ctx context.Context) ([]string, error) {
+	var ids []string
+	err := s.each(ctx, `SELECT id::text FROM worlds ORDER BY created_at`, nil, func(rows pgx.Rows) error {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		ids = append(ids, id)
+		return nil
+	})
+	return ids, err
+}
+
+func (s *Store) ListWorlds(ctx context.Context) ([]WorldInfo, error) {
+	var out []WorldInfo
+	err := s.each(ctx, `SELECT w.id::text, w.name, w.description, COALESCE(w.owner_id::text, ''),
+		(SELECT count(*) FROM boards b WHERE b.world_id = w.id),
+		(SELECT count(*) FROM memberships m WHERE m.world_id = w.id)
+		FROM worlds w ORDER BY w.created_at`, nil, func(rows pgx.Rows) error {
+		var w WorldInfo
+		if err := rows.Scan(&w.ID, &w.Name, &w.Description, &w.OwnerID, &w.Boards, &w.Players); err != nil {
+			return err
+		}
+		out = append(out, w)
+		return nil
+	})
+	return out, err
+}
+
+// World returns one world's lobby entry.
+func (s *Store) World(ctx context.Context, id string) (WorldInfo, error) {
+	var w WorldInfo
+	err := s.pool.QueryRow(ctx, `SELECT w.id::text, w.name, w.description, COALESCE(w.owner_id::text, ''),
+		(SELECT count(*) FROM boards b WHERE b.world_id = w.id),
+		(SELECT count(*) FROM memberships m WHERE m.world_id = w.id)
+		FROM worlds w WHERE w.id::text = $1`, id).Scan(&w.ID, &w.Name, &w.Description, &w.OwnerID, &w.Boards, &w.Players)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return WorldInfo{}, ErrNotFound
+	}
+	return w, err
+}
+
+// Memberships lists the ids of the worlds a player has joined.
+func (s *Store) Memberships(ctx context.Context, playerID string) (map[string]bool, error) {
+	out := map[string]bool{}
+	err := s.each(ctx, `SELECT world_id::text FROM memberships WHERE player_id::text = $1`, []any{playerID}, func(rows pgx.Rows) error {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		out[id] = true
+		return nil
+	})
+	return out, err
+}
+
+func (s *Store) IsMember(ctx context.Context, worldID, playerID string) (bool, error) {
+	var ok bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM memberships WHERE world_id::text = $1 AND player_id::text = $2)`,
+		worldID, playerID).Scan(&ok)
+	return ok, err
+}
+
+// Join adds a player to a world; joining twice is harmless.
+func (s *Store) Join(ctx context.Context, worldID, playerID string) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO memberships (player_id, world_id) VALUES ($2::uuid, $1::uuid)
+		ON CONFLICT DO NOTHING`, worldID, playerID)
+	return err
+}
+
+// ClaimOwnerlessWorlds makes the player the admin of every world that has none yet (so the first
+// player to register administers the seeded world).
+func (s *Store) ClaimOwnerlessWorlds(ctx context.Context, playerID string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE worlds SET owner_id = $1::uuid WHERE owner_id IS NULL`, playerID)
+	return err
+}
+
+// CreateWorld makes a new world with a single empty 24x24 board; its admin then shapes it.
+func (s *Store) CreateWorld(ctx context.Context, name, description, ownerID string) (string, error) {
+	var id string
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `INSERT INTO worlds (name, description, owner_id) VALUES ($1, $2, $3::uuid) RETURNING id::text`,
+			name, description, ownerID).Scan(&id); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO boards (world_id, name, width, height, grid_kind, position)
+			VALUES ($1::uuid, 'Piazza', 24, 24, 'square', 0)`, id)
+		return err
+	})
+	return id, err
 }

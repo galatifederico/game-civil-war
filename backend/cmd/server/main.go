@@ -12,7 +12,7 @@ import (
 
 	"thegame/backend/internal/auth"
 	"thegame/backend/internal/config"
-	"thegame/backend/internal/game"
+	"thegame/backend/internal/hub"
 	"thegame/backend/internal/store"
 	"thegame/backend/internal/transport"
 )
@@ -39,18 +39,15 @@ func run() error {
 	if err := st.Migrate(ctx); err != nil {
 		return err
 	}
-	world, err := st.LoadWorld(ctx)
-	if err != nil {
+	worlds := hub.New(ctx, st)
+	if err := worlds.LoadAll(ctx); err != nil {
 		return err
 	}
-	log.Printf("world %q loaded with %d boards", world.Name, len(world.Boards()))
-
-	loop := game.NewLoop(world, st)
-	go loop.Run(ctx)
+	log.Printf("%d worlds loaded", worlds.Count())
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           (&transport.Server{Store: st, Tokens: auth.NewTokens(cfg.JWTSecret, 30*24*time.Hour), Loop: loop}).Router(),
+		Handler:           (&transport.Server{Store: st, Tokens: auth.NewTokens(cfg.JWTSecret, 30*24*time.Hour), Hub: worlds}).Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {

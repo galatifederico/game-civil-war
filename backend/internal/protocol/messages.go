@@ -72,6 +72,7 @@ type Score struct {
 type ClientMessage struct {
 	Type     string `json:"type"`
 	Token    string `json:"token"`
+	WorldID  string `json:"world_id"` // with "auth": the world to play in
 	UnitID   string `json:"unit_id"`
 	TargetID string `json:"target_id"`
 	X        int    `json:"x"`

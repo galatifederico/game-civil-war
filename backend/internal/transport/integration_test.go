@@ -20,6 +20,7 @@ import (
 
 	"thegame/backend/internal/auth"
 	"thegame/backend/internal/game"
+	"thegame/backend/internal/hub"
 	"thegame/backend/internal/protocol"
 	"thegame/backend/internal/store"
 )
@@ -28,12 +29,14 @@ import (
 // databases (see `make test-integration`). Each test run works on its own throwaway database.
 
 type env struct {
-	t      *testing.T
-	ctx    context.Context
-	dsn    string
-	db     *pgx.Conn
-	store  *store.Store
-	server *httptest.Server
+	t       *testing.T
+	ctx     context.Context
+	dsn     string
+	db      *pgx.Conn
+	store   *store.Store
+	hub     *hub.Hub
+	server  *httptest.Server
+	worldID string // the seeded world
 }
 
 // newEnv is a database with the schema and the seed, plus a running server. setup runs extra SQL
@@ -99,17 +102,21 @@ func newDB(t *testing.T, setup ...string) *env {
 			t.Fatal(err)
 		}
 	}
+	if err := e.db.QueryRow(ctx, `SELECT id::text FROM worlds ORDER BY created_at LIMIT 1`).Scan(&e.worldID); err != nil {
+		t.Fatal(err)
+	}
 	return e
 }
 
 func (e *env) startServer() {
-	board, err := e.store.LoadWorld(e.ctx)
-	if err != nil {
+	if err := e.db.QueryRow(e.ctx, `SELECT id::text FROM worlds ORDER BY created_at LIMIT 1`).Scan(&e.worldID); err != nil {
 		e.t.Fatal(err)
 	}
-	loop := game.NewLoop(board, e.store)
-	go loop.Run(e.ctx)
-	srv := &Server{Store: e.store, Tokens: auth.NewTokens("test-secret-test-secret", time.Hour), Loop: loop}
+	e.hub = hub.New(e.ctx, e.store)
+	if err := e.hub.LoadAll(e.ctx); err != nil {
+		e.t.Fatal(err)
+	}
+	srv := &Server{Store: e.store, Tokens: auth.NewTokens("test-secret-test-secret", time.Hour), Hub: e.hub}
 	e.server = httptest.NewServer(srv.Router())
 	e.t.Cleanup(e.server.Close)
 }
@@ -126,6 +133,47 @@ func (e *env) post(path string, body map[string]string) (int, map[string]string)
 	return resp.StatusCode, out
 }
 
+// request calls the REST API with an optional bearer token and returns the status and JSON body.
+func (e *env) request(method, path, token string, body any) (int, map[string]any) {
+	var reader *bytes.Reader
+	if body != nil {
+		b, _ := json.Marshal(body)
+		reader = bytes.NewReader(b)
+	} else {
+		reader = bytes.NewReader(nil)
+	}
+	req, err := http.NewRequest(method, e.server.URL+path, reader)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	out := map[string]any{}
+	json.NewDecoder(resp.Body).Decode(&out)
+	return resp.StatusCode, out
+}
+
+// join enrols a player in a world through the lobby, which also creates their team there.
+func (e *env) join(token, worldID string) {
+	e.t.Helper()
+	if status, out := e.request("POST", "/worlds/"+worldID+"/join", token, nil); status != http.StatusOK {
+		e.t.Fatalf("join %s: status %d %v", worldID, status, out)
+	}
+}
+
+// player registers an account and joins the seeded world.
+func (e *env) player(email, username string) (token, id string) {
+	token, id = e.register(email, username)
+	e.join(token, e.worldID)
+	return token, id
+}
+
 func (e *env) register(email, username string) (token, id string) {
 	status, out := e.post("/auth/register", map[string]string{"email": email, "username": username, "password": "password123"})
 	if status != http.StatusCreated {
@@ -140,7 +188,10 @@ type wsClient struct {
 	msgs chan protocol.ServerMessage
 }
 
-func (e *env) dial(token string) *wsClient {
+// dial connects to the seeded world; dialWorld to a given one.
+func (e *env) dial(token string) *wsClient { return e.dialWorld(token, e.worldID) }
+
+func (e *env) dialWorld(token, worldID string) *wsClient {
 	wsURL := "ws" + strings.TrimPrefix(e.server.URL, "http") + "/ws"
 	conn, _, err := websocket.Dial(e.ctx, wsURL, nil)
 	if err != nil {
@@ -161,7 +212,7 @@ func (e *env) dial(token string) *wsClient {
 		}
 	}()
 	e.t.Cleanup(func() { conn.CloseNow() })
-	c.send(protocol.ClientMessage{Type: protocol.TypeAuth, Token: token})
+	c.send(protocol.ClientMessage{Type: protocol.TypeAuth, Token: token, WorldID: worldID})
 	return c
 }
 
@@ -256,13 +307,23 @@ func TestAuthEndpoints(t *testing.T) {
 		})
 	}
 
-	t.Run("login does not create a second team", func(t *testing.T) {
-		var units int
-		if err := e.db.QueryRow(e.ctx, `SELECT count(*) FROM units WHERE player_id IS NOT NULL`).Scan(&units); err != nil {
-			t.Fatal(err)
+	t.Run("registering and logging in give no team, joining a world does, once", func(t *testing.T) {
+		count := func() int {
+			var units int
+			if err := e.db.QueryRow(e.ctx, `SELECT count(*) FROM units WHERE player_id IS NOT NULL`).Scan(&units); err != nil {
+				t.Fatal(err)
+			}
+			return units
 		}
-		if units != 1+game.DefaultRules().MinorsPerTeam {
-			t.Fatalf("units owned by players = %d, want one team of %d", units, 1+game.DefaultRules().MinorsPerTeam)
+		if got := count(); got != 0 {
+			t.Fatalf("units owned by players after registering = %d, want none", got)
+		}
+		_, out := e.post("/auth/login", map[string]string{"email": "a@test.io", "password": "password123"})
+		token := out["token"]
+		e.join(token, e.worldID)
+		e.join(token, e.worldID)
+		if got, want := count(), 1+game.DefaultRules().MinorsPerTeam; got != want {
+			t.Fatalf("units owned by players = %d, want exactly one team of %d", got, want)
 		}
 	})
 }
@@ -282,7 +343,7 @@ func TestWebSocketRejectsBadToken(t *testing.T) {
 
 func TestGameplayAndPersistence(t *testing.T) {
 	e := newEnv(t)
-	tokA, idA := e.register("a@test.io", "Alice")
+	tokA, idA := e.player("a@test.io", "Alice")
 	a := e.dial(tokA)
 	snap := a.expect("snapshot", ofType(protocol.TypeSnapshot))
 	if snap.YourPlayerID != idA || len(snap.Boards) != 3 || snap.Boards[0].Width == 0 {
@@ -304,7 +365,7 @@ func TestGameplayAndPersistence(t *testing.T) {
 
 	// A second player joins far away: Alice learns about the new scoreboard entry, but with
 	// fog of war she does not see Bob's team, and Bob does not see hers.
-	tokB, idB := e.register("b@test.io", "Bob")
+	tokB, idB := e.player("b@test.io", "Bob")
 	b := e.dial(tokB)
 	bobSnap := b.expect("bob snapshot", ofType(protocol.TypeSnapshot))
 	joined := a.expect("scoreboard update", func(m protocol.ServerMessage) bool { return m.Type == protocol.TypeDelta && len(m.Scores) == 2 })
@@ -396,7 +457,7 @@ func TestGameplayAndPersistence(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		var points, inventory, structures, items int
-		e.db.QueryRow(e.ctx, `SELECT points FROM players WHERE id::text = $1`, idA).Scan(&points)
+		e.db.QueryRow(e.ctx, `SELECT points FROM memberships WHERE world_id::text = $1 AND player_id::text = $2`, e.worldID, idA).Scan(&points)
 		e.db.QueryRow(e.ctx, `SELECT count(*) FROM inventory_items WHERE player_id::text = $1`, idA).Scan(&inventory)
 		e.db.QueryRow(e.ctx, `SELECT count(*) FROM structures`).Scan(&structures)
 		e.db.QueryRow(e.ctx, `SELECT count(*) FROM board_items WHERE name = 'Test Item'`).Scan(&items)
@@ -410,7 +471,7 @@ func TestGameplayAndPersistence(t *testing.T) {
 	}
 
 	// A "restarted" server loads the same world back.
-	board, err := e.store.LoadWorld(e.ctx)
+	board, err := e.store.LoadWorld(e.ctx, e.worldID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -431,7 +492,7 @@ func TestGameplayAndPersistence(t *testing.T) {
 
 func TestWorldRulesComeFromTheDatabase(t *testing.T) {
 	e := newEnv(t, `UPDATE worlds SET rules = '{"minors_per_team": 3, "minor": {"speed": 6}, "champion": {"vision": 9}}'`)
-	token, id := e.register("a@test.io", "Alice")
+	token, id := e.player("a@test.io", "Alice")
 	snap := e.dial(token).expect("snapshot", ofType(protocol.TypeSnapshot))
 
 	def := game.DefaultRules()
@@ -465,7 +526,7 @@ func TestInvalidWorldRulesAreRefusedWhenLoading(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newDB(t, fmt.Sprintf(`UPDATE worlds SET rules = '%s'`, rules))
-			if _, err := e.store.LoadWorld(e.ctx); err == nil || !strings.Contains(err.Error(), "world rules") {
+			if _, err := e.store.LoadWorld(e.ctx, e.worldID); err == nil || !strings.Contains(err.Error(), "world rules") {
 				t.Fatalf("expected a world rules error, got %v", err)
 			}
 		})
@@ -474,7 +535,7 @@ func TestInvalidWorldRulesAreRefusedWhenLoading(t *testing.T) {
 
 func TestMultiBoardWorldFromTheDatabase(t *testing.T) {
 	e := newEnv(t)
-	world, err := e.store.LoadWorld(e.ctx)
+	world, err := e.store.LoadWorld(e.ctx, e.worldID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -499,7 +560,7 @@ func TestMultiBoardWorldFromTheDatabase(t *testing.T) {
 	}
 
 	// The gateways reach the client in the snapshot.
-	token, _ := e.register("a@test.io", "Alice")
+	token, _ := e.player("a@test.io", "Alice")
 	snap := e.dial(token).expect("snapshot", ofType(protocol.TypeSnapshot))
 	if len(snap.Boards) != 3 || len(snap.Boards[0].Gateways) != 4 || snap.Boards[2].Grid != "hex" {
 		t.Fatalf("snapshot boards = %+v", snap.Boards)
@@ -521,7 +582,7 @@ func TestMultiBoardWorldFromTheDatabase(t *testing.T) {
 	if err := e.store.SaveUnit(e.ctx, npcID, hexID, 5, 5, 100); err != nil {
 		t.Fatal(err)
 	}
-	reloaded, err := e.store.LoadWorld(e.ctx)
+	reloaded, err := e.store.LoadWorld(e.ctx, e.worldID)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -24,7 +24,8 @@ make -C backend run                   # backend su http://localhost:8090 (Ctrl+C
 ```
 
 Poi in Unity Hub: **Add** -> cartella `unity-client/`, apri `Assets/Scenes/Main.unity` e premi Play.
-Nella schermata di accesso usa "Crea un account", oppure "Accedi" se ne hai già uno. Per provare
+Nella schermata di accesso usa "Crea un account", oppure "Accedi" se ne hai già uno; poi scegli un mondo
+nella lobby ("Unisciti" la prima volta crea la tua squadra) o creane uno nuovo. Per provare
 più giocatori insieme, apri più istanze dell'app (o una build) con account diversi.
 
 Test del backend: `make -C backend test` (regole e loop) e `make -C backend test-integration`

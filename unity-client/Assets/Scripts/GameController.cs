@@ -1,7 +1,7 @@
 using UnityEngine;
 
-// Crea camera, luce e componenti all'avvio (nessun setup manuale nella scena) e li collega:
-// login -> snapshot del server -> aggiornamenti in tempo reale.
+// Crea camera e componenti all'avvio (nessun setup manuale nella scena) e li collega:
+// login -> lobby dei mondi -> snapshot del server -> aggiornamenti in tempo reale.
 public class GameController : MonoBehaviour
 {
     const int MaxReconnectAttempts = 8;
@@ -12,6 +12,7 @@ public class GameController : MonoBehaviour
     InfoPanel panel;
     Hud hud;
     LoginScreen login;
+    LobbyScreen lobby;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -28,13 +29,21 @@ public class GameController : MonoBehaviour
         panel = gameObject.AddComponent<InfoPanel>();
         board = gameObject.AddComponent<BoardManager>();
         login = gameObject.AddComponent<LoginScreen>();
+        lobby = gameObject.AddComponent<LobbyScreen>();
 
         board.Init(net, panel, hud, cam);
         login.Init(net);
+        lobby.Init(net);
         panel.Closed += board.ClearSelection;
         net.MessageReceived += OnMessage;
         net.Disconnected += OnDisconnected;
-        hud.LogoutClicked += Logout;
+        hud.LogoutClicked += LeaveWorld;
+        login.LoggedIn += () =>
+        {
+            login.Hide();
+            lobby.Open("");
+        };
+        lobby.LoggedOut += Logout;
     }
 
     void OnMessage(ServerMessage message)
@@ -45,6 +54,7 @@ public class GameController : MonoBehaviour
                 reconnectAttempts = 0;
                 board.LoadSnapshot(message);
                 login.Hide();
+                lobby.Hide();
                 hud.SetLogoutVisible(true);
                 hud.SetStatus(net.Username);
                 hud.SetScores(message.scores, message.your_player_id);
@@ -67,13 +77,13 @@ public class GameController : MonoBehaviour
     }
 
     // Se il server cade o si riavvia si riprova da soli con il token gia' ottenuto, a intervalli
-    // crescenti; solo dopo troppi tentativi (o con un token non piu' valido) si torna al login.
+    // crescenti; solo dopo troppi tentativi torna alla lobby (o al login se la sessione non c'e' piu').
     void OnDisconnected(string reason)
     {
         board.Clear();
         panel.Hide();
         hud.Clear();
-        if (net.HasSession && reconnectAttempts < MaxReconnectAttempts)
+        if (net.HasSession && net.InWorld && reconnectAttempts < MaxReconnectAttempts)
         {
             reconnectAttempts++;
             hud.SetStatus($"Connessione persa, riprovo ({reconnectAttempts}/{MaxReconnectAttempts})...");
@@ -81,8 +91,8 @@ public class GameController : MonoBehaviour
             return;
         }
         reconnectAttempts = 0;
-        net.Logout();
-        login.Show(reason);
+        net.LeaveWorld();
+        lobby.Open(reason);
     }
 
     System.Collections.IEnumerator ReconnectAfter(float seconds)
@@ -91,14 +101,22 @@ public class GameController : MonoBehaviour
         net.Reconnect();
     }
 
-    void Logout()
+    // "Esci" in gioco: si lascia il mondo e si torna alla lobby, restando collegati all'account.
+    void LeaveWorld()
     {
         StopAllCoroutines();
         reconnectAttempts = 0;
-        net.Logout();
+        net.LeaveWorld();
         board.Clear();
         panel.Hide();
         hud.Clear();
+        lobby.Open("");
+    }
+
+    void Logout()
+    {
+        net.Logout();
+        lobby.Hide();
         login.Show("");
     }
 

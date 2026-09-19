@@ -16,6 +16,8 @@ public class LoginScreen : MonoBehaviour
 
     public bool Visible { get; private set; } = true;
 
+    public event System.Action LoggedIn;
+
     public void Init(NetworkClient network)
     {
         net = network;
@@ -85,7 +87,11 @@ public class LoginScreen : MonoBehaviour
         PlayerPrefs.SetString(PrefServer, serverUrl);
         PlayerPrefs.SetString(PrefEmail, email);
         PlayerPrefs.SetString(PrefUsername, username);
-        net.Authenticate(serverUrl, registerMode, email, username, password, error => Show(error));
+        net.Authenticate(serverUrl, registerMode, email, username, password, () =>
+        {
+            password = "";
+            LoggedIn?.Invoke();
+        }, error => Show(error));
     }
 
     void EnsureStyles()

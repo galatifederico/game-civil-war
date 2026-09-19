@@ -20,10 +20,18 @@ the_game/
 - **M3 — Multi-board e griglie miste** ✅: board contigue di un'unica mappa collegate da passaggi, board esagonale di prova, astrazione `Grid`.
 - **M4 — Motore regole**: ✅ fondamenta fatte (parametri del mondo come dati, vedi "Stato attuale"); da fare razze, compatibilità, altre regole di creazione pedine, riproduzione, inventario condiviso (solo campione).
 - **M5 — Obiettivi, punteggio, condizioni di vittoria.**
-- **M6 — Admin web app** (`admin-web/`) e lobby mondi lato giocatore.
+- **M6 — Admin web app** (`admin-web/`) e lobby mondi lato giocatore. Lobby e mondi multipli ✅; admin web app da fare.
 - **M7 — Hardening**: riconnessione/afk (riconnessione automatica del client ✅), grafica 2D isometrica pixel art vera, Cloudflare Tunnel.
 
 ## Stato attuale
+
+**Mondi multipli e lobby (parte giocatore di M6):**
+
+- Un account (login unico) può iscriversi a più mondi, con una squadra, punti e inventario **per mondo** (`memberships`, `inventory_items.world_id`). La registrazione e il login non creano più la squadra: la crea l'iscrizione a un mondo (`POST /worlds/{id}/join`, idempotente).
+- `internal/hub`: un `game.Loop` (una goroutine, un mondo) per ogni mondo del database, caricati all'avvio; un mondo nuovo si carica al volo. I mondi non condividono nulla.
+- REST (Bearer token): `GET /worlds` (id, nome, descrizione, board, giocatori, `joined`, `admin`), `POST /worlds` (crea un mondo con una board vuota 24x24; chi lo crea ne è l'admin), `POST /worlds/{id}/join`. Il WebSocket vuole `world_id` nel messaggio `auth` e rifiuta chi non si è iscritto o un mondo sconosciuto.
+- L'admin di un mondo è `worlds.owner_id` (può anche giocarci). Il primo giocatore che si registra amministra il mondo di prova (nel DB già esistente lo è `demo`).
+- Client Unity: dopo il login si vede la **lobby** (elenco, "Unisciti/Gioca", "Nuovo mondo", "Aggiorna", "Esci dall'account"); "Esci" in gioco riporta alla lobby; la riconnessione automatica vale solo dentro un mondo.
 
 **M3 (multi-board e griglie miste), fatta dopo M2:**
 

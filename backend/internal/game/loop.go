@@ -18,8 +18,8 @@ type Persister interface {
 	InsertStructure(ctx context.Context, s *Entity) error
 	SaveItemPosition(ctx context.Context, id string, x, y int) error
 	DeleteItem(ctx context.Context, id string) error
-	AddInventory(ctx context.Context, playerID string, item Item) error
-	AddPoints(ctx context.Context, playerID string, delta int) error
+	AddInventory(ctx context.Context, worldID, playerID string, item Item) error
+	AddPoints(ctx context.Context, worldID, playerID string, delta int) error
 }
 
 // Client is a connected player. Send is closed by the loop when the client is dropped.
@@ -212,6 +212,7 @@ func (l *Loop) Act(c *Client, a Action) {
 
 // publish persists an action's outcome and tells the clients what changed.
 func (l *Loop) publish(playerID string, out *Outcome) {
+	worldID := l.world.ID
 	for _, e := range out.Dirty {
 		l.saveUnit(e)
 	}
@@ -234,11 +235,11 @@ func (l *Loop) publish(playerID string, out *Outcome) {
 	}
 	if out.Picked != nil {
 		item := *out.Picked
-		l.persist(func(ctx context.Context) error { return l.store.AddInventory(ctx, playerID, item) })
+		l.persist(func(ctx context.Context) error { return l.store.AddInventory(ctx, worldID, playerID, item) })
 	}
 	if out.Points != 0 {
 		points := out.Points
-		l.persist(func(ctx context.Context) error { return l.store.AddPoints(ctx, playerID, points) })
+		l.persist(func(ctx context.Context) error { return l.store.AddPoints(ctx, worldID, playerID, points) })
 	}
 
 	if len(out.Changed) > 0 || len(out.Removed) > 0 || out.Points != 0 {

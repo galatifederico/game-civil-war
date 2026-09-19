@@ -80,6 +80,7 @@ public class ClientMessage
 {
     public string type;
     public string token;
+    public string world_id;
     public string unit_id;
     public string target_id;
     public int x;
@@ -92,6 +93,44 @@ public class AuthRequest
     public string email;
     public string username;
     public string password;
+}
+
+[Serializable]
+public class ErrorResponse
+{
+    public string error;
+}
+
+[Serializable]
+public class WorldEntry
+{
+    public string id;
+    public string name;
+    public string description;
+    public int boards;
+    public int players;
+    public bool joined;
+    public bool admin;
+}
+
+[Serializable]
+public class WorldList
+{
+    public WorldEntry[] worlds;
+}
+
+[Serializable]
+public class CreateWorldRequest
+{
+    public string name;
+    public string description;
+}
+
+[Serializable]
+public class IdResponse
+{
+    public string id;
+    public string world_id;
 }
 
 [Serializable]
