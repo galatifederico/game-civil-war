@@ -144,9 +144,12 @@ public class NetworkClient : MonoBehaviour
         if (message != null) MessageReceived?.Invoke(message);
     }
 
-    public void SendMove(string unitId, int x, int y)
+    public void SendMove(string unitId, int x, int y) => SendCommand("move", unitId, null, x, y);
+
+    // type: attack, talk, pickup (con targetId) oppure build (con la casella x, y).
+    public void SendCommand(string type, string unitId, string targetId, int x = 0, int y = 0)
     {
-        var json = JsonUtility.ToJson(new ClientMessage { type = "move", unit_id = unitId, x = x, y = y });
+        var json = JsonUtility.ToJson(new ClientMessage { type = type, unit_id = unitId, target_id = targetId, x = x, y = y });
         var ct = cts?.Token ?? CancellationToken.None;
         _ = SendRawSafe(json, ct);
     }

@@ -1,6 +1,6 @@
 using UnityEngine;
 
-// Rappresentazione di un'entita' del server (pedina, NPC, oggetto). Non decide nulla:
+// Rappresentazione di un'entita' del server (pedina, NPC, oggetto, struttura). Non decide nulla:
 // applica lo stato ricevuto e scorre visivamente verso la casella indicata.
 public class Piece : MonoBehaviour
 {
@@ -12,20 +12,26 @@ public class Piece : MonoBehaviour
     Renderer rend;
     Color baseColor;
     Vector3 target;
-    float readyAt;
+    float actReadyAt, respawnAt, readyAt;
+    bool highlighted;
 
     public bool Movable => Mine && (Data.kind == Kinds.Champion || Data.kind == Kinds.Minor);
-    public bool IsUnit => Data.kind != Kinds.Item;
+    public bool IsUnit => Data.kind == Kinds.Champion || Data.kind == Kinds.Minor || Data.kind == Kinds.Npc;
+    public bool Defeated => IsUnit && Data.health <= 0;
     public float SecondsUntilReady => Mathf.Max(0f, readyAt - Time.time);
+    public float SecondsUntilActReady => Mathf.Max(0f, actReadyAt - Time.time);
+    public float SecondsUntilRespawn => Mathf.Max(0f, respawnAt - Time.time);
 
     public string KindLabel
     {
         get
         {
+            var team = Mine ? "la tua squadra" : "squadra avversaria";
             switch (Data.kind)
             {
-                case Kinds.Champion: return Mine ? "Champion - la tua squadra" : "Champion - squadra avversaria";
-                case Kinds.Minor: return Mine ? "Pedina - la tua squadra" : "Pedina - squadra avversaria";
+                case Kinds.Champion: return "Champion - " + team;
+                case Kinds.Minor: return "Pedina - " + team;
+                case Kinds.Structure: return "Struttura - " + team;
                 case Kinds.Npc: return "NPC - non controllabile";
                 default: return "Oggetto - non controllabile";
             }
@@ -35,7 +41,6 @@ public class Piece : MonoBehaviour
     public void Init(EntityData data, bool mine, Color color)
     {
         rend = GetComponent<Renderer>();
-        rend.material.color = color;
         baseColor = color;
         Mine = mine;
         Apply(data);
@@ -47,6 +52,9 @@ public class Piece : MonoBehaviour
         Data = data;
         target = BoardManager.CellToWorld(data.x, data.y, transform.position.y);
         readyAt = Time.time + data.ready_in_ms / 1000f;
+        actReadyAt = Time.time + data.act_ready_in_ms / 1000f;
+        respawnAt = Time.time + data.respawn_in_ms / 1000f;
+        RefreshColor();
     }
 
     void Update()
@@ -61,6 +69,14 @@ public class Piece : MonoBehaviour
 
     public void SetHighlight(bool on)
     {
-        rend.material.color = on ? Color.Lerp(baseColor, Color.white, 0.5f) : baseColor;
+        highlighted = on;
+        RefreshColor();
+    }
+
+    // Una pedina sconfitta resta sulla casella, in grigio scuro, finche' il server non la fa rinascere.
+    void RefreshColor()
+    {
+        var color = Defeated ? Color.Lerp(baseColor, new Color(0.1f, 0.1f, 0.1f), 0.8f) : baseColor;
+        rend.material.color = highlighted ? Color.Lerp(color, Color.white, 0.5f) : color;
     }
 }

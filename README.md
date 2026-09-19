@@ -4,10 +4,13 @@ Gioco multigiocatore online a griglia, mondo persistente. Concept e decisioni in
 [docs/main.md](docs/main.md), [docs/design.md](docs/design.md), [docs/tecnico.md](docs/tecnico.md);
 ordine di sviluppo e stato in [docs/roadmap.md](docs/roadmap.md).
 
-Oggi funziona la slice verticale M1: registrazione/login, una board 24x24 condivisa con NPC e
-oggetti, ogni giocatore ha la sua squadra (1 Champion + 12 pedine) e la muove; il server valida
-ogni mossa (proprietà, distanza in base alla velocità, cooldown, caselle occupate) e la salva su
-Postgres. Cliccando qualsiasi pedina si apre un menu con la descrizione.
+Oggi funzionano le milestone M1 e M2: registrazione/login, una board 24x24 condivisa con NPC e
+oggetti, ogni giocatore ha la sua squadra (1 Champion + 12 pedine). Le pedine si muovono,
+attaccano i nemici (chi va a zero vita rinasce dopo 10 secondi), parlano con gli NPC, raccolgono
+oggetti nell'inventario di squadra e costruiscono avamposti per conquistare caselle; ogni azione
+dà punti e c'è una classifica. Il server valida tutto (proprietà, portata, cooldown, caselle
+occupate) e salva su Postgres. Cliccando qualsiasi pedina si apre un menu con la descrizione e le
+azioni possibili.
 
 ## Avvio rapido
 

@@ -2,22 +2,32 @@ using System.Collections.Generic;
 using UnityEngine;
 
 // Mostra la board e le pedine che il server descrive (snapshot + delta) e traduce i click
-// in comandi: la pedina si muove solo quando il server conferma.
+// in comandi: nulla cambia finche' il server non conferma.
+//
+// Click su una tua pedina: la seleziona (poi una casella vuota la sposta). Click su una pedina
+// non tua, un NPC o un oggetto: ne mostra la scheda e, se hai una pedina selezionata, le azioni
+// che quella pedina puo' fare sul bersaglio (attacca, parla, raccogli).
 public class BoardManager : MonoBehaviour
 {
     public const float CellSize = 1f;
     const float BoardTop = 0.05f;
+    static readonly Color LightSquare = new Color(0.85f, 0.85f, 0.75f);
+    static readonly Color DarkSquare = new Color(0.35f, 0.25f, 0.2f);
+    static readonly Color MyTerritory = new Color(0.3f, 0.85f, 1f);
 
     public static BoardManager Instance { get; private set; }
 
     NetworkClient net;
     InfoPanel panel;
+    Hud hud;
     Camera cam;
 
     readonly Dictionary<string, Piece> pieces = new Dictionary<string, Piece>();
     readonly List<GameObject> squareObjects = new List<GameObject>();
+    Square[,] grid;
     Material lightMaterial, darkMaterial;
     Piece selected;
+    bool buildMode;
     string myPlayerId;
     int width, height;
     float fittedAspect;
@@ -26,12 +36,15 @@ public class BoardManager : MonoBehaviour
 
     void Awake() => Instance = this;
 
-    public void Init(NetworkClient network, InfoPanel infoPanel, Camera camera)
+    public void Init(NetworkClient network, InfoPanel infoPanel, Hud hud, Camera camera)
     {
         net = network;
         panel = infoPanel;
+        this.hud = hud;
         cam = camera;
     }
+
+    bool PointerBlocked => panel.BlocksPointer || hud.BlocksPointer;
 
     public void LoadSnapshot(ServerMessage snapshot)
     {
@@ -55,6 +68,7 @@ public class BoardManager : MonoBehaviour
         {
             if (!pieces.TryGetValue(id, out var piece)) continue;
             if (piece == selected) ClearSelection();
+            if (panel.Current == piece) panel.Hide();
             pieces.Remove(id);
             Destroy(piece.gameObject);
         }
@@ -73,9 +87,10 @@ public class BoardManager : MonoBehaviour
     {
         if (lightMaterial == null)
         {
-            lightMaterial = NewMaterial(new Color(0.85f, 0.85f, 0.75f));
-            darkMaterial = NewMaterial(new Color(0.35f, 0.25f, 0.2f));
+            lightMaterial = NewMaterial(LightSquare);
+            darkMaterial = NewMaterial(DarkSquare);
         }
+        grid = new Square[width, height];
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
@@ -89,6 +104,7 @@ public class BoardManager : MonoBehaviour
                 var square = cube.AddComponent<Square>();
                 square.X = x;
                 square.Z = y;
+                grid[x, y] = square;
                 squareObjects.Add(cube);
             }
         }
@@ -102,6 +118,13 @@ public class BoardManager : MonoBehaviour
         Destroy(probe);
         material.SetFloat("_Glossiness", 0f);
         return material;
+    }
+
+    // Il territorio si vede: la casella sotto una struttura prende il colore della squadra.
+    void TintSquare(int x, int y, Color owner)
+    {
+        var baseColor = (x + y) % 2 == 0 ? LightSquare : DarkSquare;
+        grid[x, y].GetComponent<Renderer>().material.color = Color.Lerp(baseColor, owner, 0.55f);
     }
 
     void FitCamera()
@@ -130,6 +153,8 @@ public class BoardManager : MonoBehaviour
         var piece = go.AddComponent<Piece>();
         piece.Init(e, mine, color);
         pieces[e.id] = piece;
+
+        if (e.kind == Kinds.Structure) TintSquare(e.x, e.y, color);
     }
 
     static void Look(EntityData e, bool mine, out PrimitiveType shape, out Vector3 scale, out float halfHeight, out Color color)
@@ -147,6 +172,10 @@ public class BoardManager : MonoBehaviour
             case Kinds.Npc:
                 shape = PrimitiveType.Sphere; scale = new Vector3(0.6f, 0.6f, 0.6f); halfHeight = 0.5f;
                 color = new Color(0.7f, 0.3f, 0.85f);
+                break;
+            case Kinds.Structure:
+                shape = PrimitiveType.Cube; scale = new Vector3(0.75f, 0.9f, 0.75f); halfHeight = 0.5f;
+                color = mine ? MyTerritory : OwnerColor(e.owner_id, 0.7f);
                 break;
             default:
                 shape = PrimitiveType.Cube; scale = new Vector3(0.55f, 0.4f, 0.55f); halfHeight = 0.5f;
@@ -168,7 +197,7 @@ public class BoardManager : MonoBehaviour
 
     public void OnPieceClicked(Piece piece)
     {
-        if (panel.BlocksPointer) return;
+        if (PointerBlocked) return;
 
         if (piece == selected)
         {
@@ -177,22 +206,35 @@ public class BoardManager : MonoBehaviour
             return;
         }
 
-        ClearSelection();
+        SetBuildMode(false);
         if (piece.Movable)
         {
+            ClearSelection();
             selected = piece;
             piece.SetHighlight(true);
         }
-        panel.Show(piece);
+        else if (selected == null || piece.Mine)
+        {
+            ClearSelection();
+        }
+        // Altrimenti la pedina selezionata resta tale: il clic indica un bersaglio per le sue azioni.
+        panel.Show(piece, ActionsFor(piece));
     }
 
     public void OnSquareClicked(Square square)
     {
-        if (panel.BlocksPointer) return;
+        if (PointerBlocked) return;
 
         if (selected == null)
         {
             panel.Hide();
+            return;
+        }
+        if (buildMode)
+        {
+            net.SendCommand("build", selected.Data.id, null, square.X, square.Z);
+            SetBuildMode(false);
+            panel.Show(selected, ActionsFor(selected));
             return;
         }
         net.SendMove(selected.Data.id, square.X, square.Z);
@@ -200,7 +242,78 @@ public class BoardManager : MonoBehaviour
 
     public void ClearSelection()
     {
+        SetBuildMode(false);
         if (selected != null) selected.SetHighlight(false);
         selected = null;
+    }
+
+    void SetBuildMode(bool on)
+    {
+        buildMode = on;
+        hud.SetHint(on ? "Costruzione: clicca una casella libera" : "");
+    }
+
+    List<PanelAction> ActionsFor(Piece piece)
+    {
+        var list = new List<PanelAction>();
+        var actor = selected;
+        if (actor == null) return list;
+
+        if (piece == actor)
+        {
+            list.Add(new PanelAction
+            {
+                Label = buildMode ? "Annulla costruzione" : "Costruisci avamposto",
+                Perform = () =>
+                {
+                    SetBuildMode(!buildMode);
+                    panel.Show(actor, ActionsFor(actor));
+                },
+                BlockedReason = () => BlockReason(actor, null, needsReady: true),
+            });
+            return list;
+        }
+        if (piece.Mine) return list;
+
+        switch (piece.Data.kind)
+        {
+            case Kinds.Npc:
+                list.Add(Command("Parla", "talk", actor, piece, needsReady: false));
+                break;
+            case Kinds.Item:
+                list.Add(Command("Raccogli", "pickup", actor, piece, needsReady: true));
+                break;
+            case Kinds.Champion:
+            case Kinds.Minor:
+                var attack = Command("Attacca", "attack", actor, piece, needsReady: true);
+                var inRange = attack.BlockedReason;
+                attack.BlockedReason = () => piece.Defeated ? "già fuori gioco" : inRange();
+                list.Add(attack);
+                break;
+        }
+        return list;
+    }
+
+    PanelAction Command(string label, string type, Piece actor, Piece target, bool needsReady)
+    {
+        return new PanelAction
+        {
+            Label = label,
+            Perform = () => net.SendCommand(type, actor.Data.id, target.Data.id),
+            BlockedReason = () => BlockReason(actor, target, needsReady),
+        };
+    }
+
+    // Anticipa gli errori piu' comuni; il server resta comunque l'unico a decidere.
+    static string BlockReason(Piece actor, Piece target, bool needsReady)
+    {
+        if (actor.Defeated) return "fuori gioco";
+        if (target != null)
+        {
+            int dist = Mathf.Max(Mathf.Abs(actor.Data.x - target.Data.x), Mathf.Abs(actor.Data.y - target.Data.y));
+            if (dist > actor.Data.vision) return "fuori portata";
+        }
+        if (needsReady && actor.SecondsUntilActReady > 0f) return $"pronta tra {actor.SecondsUntilActReady:0.0}s";
+        return null;
     }
 }

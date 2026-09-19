@@ -27,7 +27,7 @@ public class GameController : MonoBehaviour
         board = gameObject.AddComponent<BoardManager>();
         login = gameObject.AddComponent<LoginScreen>();
 
-        board.Init(net, panel, cam);
+        board.Init(net, panel, hud, cam);
         login.Init(net);
         panel.Closed += board.ClearSelection;
         net.MessageReceived += OnMessage;
@@ -42,9 +42,18 @@ public class GameController : MonoBehaviour
                 board.LoadSnapshot(message);
                 login.Hide();
                 hud.SetStatus($"{net.Username} - {message.board.name} {message.board.width}x{message.board.height}");
+                hud.SetScores(message.scores, message.your_player_id);
+                hud.SetInventory(message.inventory);
                 break;
             case "delta":
                 board.ApplyDelta(message);
+                if (message.scores != null && message.scores.Length > 0) hud.SetScores(message.scores, net.PlayerId);
+                break;
+            case "inventory":
+                hud.SetInventory(message.inventory);
+                break;
+            case "event":
+                hud.ShowEvent(message.title, message.message);
                 break;
             case "error":
                 hud.ShowToast(message.message);
@@ -56,7 +65,7 @@ public class GameController : MonoBehaviour
     {
         board.Clear();
         panel.Hide();
-        hud.SetStatus("");
+        hud.Clear();
         login.Show(reason);
     }
 

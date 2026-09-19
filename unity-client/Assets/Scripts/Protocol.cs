@@ -17,7 +17,25 @@ public class EntityData
     public int health;
     public int max_health;
     public int vision;
+    public int strength;
     public int ready_in_ms;
+    public int act_ready_in_ms;
+    public int respawn_in_ms;
+}
+
+[Serializable]
+public class ItemData
+{
+    public string name;
+    public string description;
+}
+
+[Serializable]
+public class ScoreData
+{
+    public string player_id;
+    public string username;
+    public int points;
 }
 
 [Serializable]
@@ -36,10 +54,13 @@ public class ServerMessage
     public string type;
     public string your_player_id;
     public string code;
+    public string title;
     public string message;
     public BoardData board;
     public EntityData[] entities;
     public string[] removed;
+    public ScoreData[] scores;
+    public ItemData[] inventory;
 }
 
 [Serializable]
@@ -48,6 +69,7 @@ public class ClientMessage
     public string type;
     public string token;
     public string unit_id;
+    public string target_id;
     public int x;
     public int y;
 }
@@ -75,4 +97,5 @@ public static class Kinds
     public const string Minor = "minor";
     public const string Npc = "npc";
     public const string Item = "item";
+    public const string Structure = "structure";
 }
