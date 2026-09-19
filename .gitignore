@@ -25,3 +25,6 @@ deploy/.env
 # OS/editor
 .DS_Store
 *.swp
+
+# Go build cache (backend via Docker)
+backend/.cache/
