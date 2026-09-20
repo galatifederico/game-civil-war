@@ -218,13 +218,13 @@ func (s *Store) LoadWorld(ctx context.Context, id string) (*game.World, error) {
 
 	err = s.each(ctx, `SELECT u.id::text, u.board_id::text, COALESCE(u.player_id::text, ''), u.kind, u.name, u.description,
 		u.x, u.y, u.speed, u.health, u.max_health, u.vision, u.strength, u.dialogue,
-		COALESCE(u.race_id::text, ''), u.traits
+		COALESCE(u.race_id::text, ''), u.traits, u.sprite
 		FROM units u JOIN boards b ON b.id = u.board_id WHERE b.world_id = $1::uuid`,
 		[]any{id}, func(rows pgx.Rows) error {
 			e := &game.Entity{}
 			var kind, dialogue string
 			if err := rows.Scan(&e.ID, &e.BoardID, &e.OwnerID, &kind, &e.Name, &e.Description,
-				&e.X, &e.Y, &e.Speed, &e.Health, &e.MaxHealth, &e.Vision, &e.Strength, &dialogue, &e.RaceID, &e.Traits); err != nil {
+				&e.X, &e.Y, &e.Speed, &e.Health, &e.MaxHealth, &e.Vision, &e.Strength, &dialogue, &e.RaceID, &e.Traits, &e.Sprite); err != nil {
 				return err
 			}
 			e.Kind = game.Kind(kind)

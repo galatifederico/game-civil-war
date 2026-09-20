@@ -60,14 +60,7 @@ public class InfoPanel : MonoBehaviour
 
         GUILayout.BeginHorizontal();
         var iconRect = GUILayoutUtility.GetRect(48f, 48f, GUILayout.Width(48f), GUILayout.Height(48f));
-        var sprite = piece.Icon;
-        if (sprite != null)
-        {
-            var previous = GUI.color;
-            GUI.color = piece.TeamColor;
-            GUI.DrawTexture(iconRect, sprite.texture, ScaleMode.ScaleToFit);
-            GUI.color = previous;
-        }
+        PixelArt.DrawSprite(iconRect, piece.Icon, piece.IconTint);
         GUILayout.BeginVertical();
         GUILayout.Label(data.name, titleStyle);
         GUILayout.Label(piece.Mine ? "La tua squadra" : piece.Data.kind == Kinds.Npc || piece.Data.kind == Kinds.Item ? "Non controllabile" : "Squadra avversaria", labelStyle);

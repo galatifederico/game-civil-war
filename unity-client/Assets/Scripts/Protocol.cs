@@ -17,6 +17,8 @@ public class EntityData
     public string board_id;
     public string race_id;
     public string race;
+    public string icon; // solo per gli oggetti: quale icona disegnare
+    public string sprite; // solo per gli NPC: quale sprite disegnare (vedi CharacterSprites)
     public TraitData[] traits;
     public string kind;
     public string owner_id;
@@ -88,6 +90,7 @@ public class BoardData
     public int width;
     public int height;
     public GatewayData[] gateways;
+    public string[] terrain; // una stringa per riga, un carattere per casella (vedi TerrainArt); assente = tutta erba
 }
 
 [Serializable]

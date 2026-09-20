@@ -104,9 +104,18 @@ Applicazione Next.js dell'utente (`npm run dev`, http://localhost:3000) che gene
 | Illustrazioni per lobby e login, ritratti | Kitbitz (vettoriale, non pixel art) o originali | CC0 |
 | Disegnare mappe a mano | Tiled | dopo il dato terreno |
 
-## Asset in uso
+## Pixellab (generatore di sprite, account dell'utente)
 
-Nessuno per ora (la grafica è ancora tutta disegnata in codice).
+Servizio a pagamento di sprite in pixel art; ha un **server MCP** (`https://api.pixellab.ai/mcp`, documentazione: https://api.pixellab.ai/mcp/docs, 94 strumenti: personaggi con 4/8 direzioni e animazioni, ritratti, tileset dall'alto, oggetti, pannelli UI, mappe). L'utente lo ha aggiunto alla propria configurazione locale di Claude Code (`claude mcp add pixellab https://api.pixellab.ai/mcp -t http -H "Authorization: Bearer <chiave>"`): **la chiave sta lì e non va mai scritta nel repo o nei docs**. Gli strumenti compaiono nelle sessioni avviate dopo l'aggiunta (o dopo `/mcp`); in una sessione che non li vede si può parlare con lo stesso server via HTTP (JSON-RPC MCP, header `Authorization` letto dalla configurazione) — è quello che si è fatto per i personaggi attuali.
+
+- **Piano**: trial con **40 generazioni** (rimaste 17 dopo i personaggi attuali). Costi: personaggio standard = 1 (4 direzioni), camminata da modello = 1 per direzione, `create_portrait_character` = 20, `create_ui_asset` = 20-40, personaggio "pro" = 20-40. Chiedere prima di spendere.
+- **Dimensione**: il parametro `size` è l'altezza del personaggio in pixel e la tela viene ingrandita (28x28 per `size=20`). Con caselle da 16 px va bene **`size=20`** (~23 px di altezza, 1,4 caselle); `size=32` esce alto due caselle.
+- **Come si è fatto**: `create_character` (humanoid, 4 direzioni, `view` "low top-down", contorno nero, ombreggiatura base) e `animate_character` con `template_animation_id` = `walking-4-frames`. Tempi: 1-4 minuti, a lavoro asincrono (massimo 8 lavori in coda). I PNG si scaricano dagli URL di `get_character` (serve un `User-Agent` da browser). I fotogrammi sono stati impacchettati in una tavola (`characters.bytes`, celle 28x28, piedi alla riga 25) con `characters-layout.json`.
+- **Licenza dei risultati**: dipende dai termini di Pixellab (**non verificati**); sono personaggi originali (nessuna proprietà intellettuale di terzi nella richiesta), ma va controllato prima di distribuire il gioco.
+
+## Asset in uso
 
 | Pacchetto | File usati | Dove | Licenza |
 |---|---|---|---|
+| Kenney, Tiny Town 1.1 | `Tilemap/tilemap_packed.png` (192x176, tile 16x16; usati: erba 0-2, alberi 3-5 e 15-16, sentiero 12-14 / 24-26 / 36-38, pietra 43, staccionate 59 e 80-82, muro 126) | `unity-client/Assets/Resources/Art/kenney-tiny-town.bytes` (+ `kenney-tiny-town-license.txt`); letti da `TileSheet.cs` | CC0 |
+| Pixellab (account dell'utente) | 7 personaggi generati (campione, pedina, mercante, guardia, saggio, fabbro, viandante) | `unity-client/Assets/Resources/Art/characters.bytes` e `characters-layout.json`; letti da `CharacterSprites.cs` | termini Pixellab (da verificare) |

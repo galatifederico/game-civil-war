@@ -120,6 +120,7 @@ type AdminNPC struct {
 	Dialogue    string         `json:"dialogue"` // one line per reply
 	RaceID      string         `json:"race_id"`
 	Traits      map[string]int `json:"traits"`
+	Sprite      string         `json:"sprite"` // "" = default (game.SpriteNames)
 }
 
 type AdminItem struct {
@@ -280,12 +281,12 @@ func (s *Store) Definition(ctx context.Context, id string) (WorldDefinition, err
 		return d, err
 	}
 	if err := s.each(ctx, `SELECT u.id::text, u.board_id::text, u.name, u.description, u.x, u.y, u.speed, u.max_health,
-		u.vision, u.strength, u.dialogue, COALESCE(u.race_id::text, ''), u.traits
+		u.vision, u.strength, u.dialogue, COALESCE(u.race_id::text, ''), u.traits, u.sprite
 		FROM units u JOIN boards b ON b.id = u.board_id
 		WHERE b.world_id = $1::uuid AND u.kind = 'npc' ORDER BY b.position, u.name, u.created_at`, []any{id}, func(rows pgx.Rows) error {
 		var n AdminNPC
 		if err := rows.Scan(&n.ID, &n.BoardID, &n.Name, &n.Description, &n.X, &n.Y, &n.Speed, &n.Health,
-			&n.Vision, &n.Strength, &n.Dialogue, &n.RaceID, &n.Traits); err != nil {
+			&n.Vision, &n.Strength, &n.Dialogue, &n.RaceID, &n.Traits, &n.Sprite); err != nil {
 			return err
 		}
 		n.Traits = nonNil(n.Traits)
@@ -827,6 +828,9 @@ func NPCsChange(worldID string, npcs []AdminNPC) Change {
 			if n.Speed < 0 || n.Health < 1 || n.Vision < 0 || n.Strength < 0 {
 				return invalid("NPC %q: vita almeno 1, gli altri valori non negativi", name)
 			}
+			if !game.ValidSprite(n.Sprite) {
+				return invalid("NPC %q: sprite %q sconosciuto", name, n.Sprite)
+			}
 			if n.RaceID != "" && !races[n.RaceID] {
 				return invalid("NPC %q: razza inesistente", name)
 			}
@@ -835,18 +839,18 @@ func NPCsChange(worldID string, npcs []AdminNPC) Change {
 			}
 			if n.ID == "" {
 				_, err = tx.Exec(ctx, `INSERT INTO units (board_id, kind, name, description, x, y, speed, health, max_health,
-					vision, strength, dialogue, race_id, traits)
-					VALUES ($1::uuid, 'npc', $2, $3, $4, $5, $6, $7, $7, $8, $9, $10, NULLIF($11, '')::uuid, $12)`,
-					n.BoardID, name, n.Description, n.X, n.Y, n.Speed, n.Health, n.Vision, n.Strength, n.Dialogue, n.RaceID, nonNil(n.Traits))
+					vision, strength, dialogue, race_id, traits, sprite)
+					VALUES ($1::uuid, 'npc', $2, $3, $4, $5, $6, $7, $7, $8, $9, $10, NULLIF($11, '')::uuid, $12, $13)`,
+					n.BoardID, name, n.Description, n.X, n.Y, n.Speed, n.Health, n.Vision, n.Strength, n.Dialogue, n.RaceID, nonNil(n.Traits), n.Sprite)
 			} else {
 				if !existing[n.ID] {
 					return invalid("NPC sconosciuto: %s", n.ID)
 				}
 				kept[n.ID] = true
 				_, err = tx.Exec(ctx, `UPDATE units SET board_id = $2::uuid, name = $3, description = $4, x = $5, y = $6, speed = $7,
-					health = $8, max_health = $8, vision = $9, strength = $10, dialogue = $11, race_id = NULLIF($12, '')::uuid, traits = $13
+					health = $8, max_health = $8, vision = $9, strength = $10, dialogue = $11, race_id = NULLIF($12, '')::uuid, traits = $13, sprite = $14
 					WHERE id = $1::uuid`,
-					n.ID, n.BoardID, name, n.Description, n.X, n.Y, n.Speed, n.Health, n.Vision, n.Strength, n.Dialogue, n.RaceID, nonNil(n.Traits))
+					n.ID, n.BoardID, name, n.Description, n.X, n.Y, n.Speed, n.Health, n.Vision, n.Strength, n.Dialogue, n.RaceID, nonNil(n.Traits), n.Sprite)
 			}
 			if err != nil {
 				return invalidIfUnique(err, "NPC %q: la casella (%d, %d) è già occupata", name, n.X, n.Y)

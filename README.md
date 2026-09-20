@@ -5,11 +5,11 @@ Gioco multigiocatore online a griglia, mondo persistente. Concept e decisioni in
 ordine di sviluppo e stato in [docs/roadmap.md](docs/roadmap.md).
 
 Stato: le milestone M0-M7 di [docs/roadmap.md](docs/roadmap.md) sono fatte (il deploy su internet è predisposto ma non
-provato). Registrazione e login, una lobby di mondi persistenti (ognuno con le sue regole, board quadrate ed
+provato). Registrazione e login, una lobby di mondi persistenti (ognuno con le sue regole, board quadrate
 collegate da passaggi, razze, NPC, oggetti e obiettivi), squadre di 1 campione + 12 pedine che si
 muovono, attaccano, parlano, raccolgono, costruiscono e si riproducono, nebbia di guerra, classifica, obiettivi
 individuali e di mondo, gestione dei giocatori assenti. Il server è autoritativo (valida tutto e salva su
-Postgres); il client Unity è "dumb" e disegna in 2D isometrico pixel art, anche in verticale su telefono. Ogni
+Postgres); il client Unity è "dumb" e disegna in pixel art vista dall'alto (stile Pokémon), anche in verticale su telefono. Ogni
 mondo si modifica da un'app web di amministrazione.
 
 ## Avvio rapido

@@ -489,8 +489,12 @@ func (l *Loop) dtos(entities []*Entity) []protocol.Entity {
 	untilMs := func(t time.Time) int { return max(0, int(t.Sub(now).Milliseconds())) }
 	out := make([]protocol.Entity, 0, len(entities))
 	for _, e := range entities {
+		icon := ""
+		if e.Kind == KindItem {
+			icon = ResolveIcon(e.Icon, e.Effect)
+		}
 		out = append(out, protocol.Entity{
-			ID: e.ID, BoardID: e.BoardID, RaceID: e.RaceID, Race: l.raceName(e.RaceID), Traits: l.traitDTOs(e.Traits), Kind: string(e.Kind), OwnerID: e.OwnerID, Name: e.Name, Description: e.Description,
+			Icon: icon, Sprite: e.Sprite, ID: e.ID, BoardID: e.BoardID, RaceID: e.RaceID, Race: l.raceName(e.RaceID), Traits: l.traitDTOs(e.Traits), Kind: string(e.Kind), OwnerID: e.OwnerID, Name: e.Name, Description: e.Description,
 			X: e.X, Y: e.Y, Speed: e.Speed, Health: e.Health, MaxHealth: e.MaxHealth,
 			Vision: e.Vision, Strength: e.Strength,
 			ReadyInMs: untilMs(e.ReadyAt), ActReadyInMs: untilMs(e.ActReadyAt), RespawnInMs: untilMs(e.RespawnAt),

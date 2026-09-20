@@ -327,7 +327,7 @@ const LISTS = {
   },
   npcs: {
     title: 'NPC', path: '/npcs', map: 'entities',
-    blank: () => ({ id: '', board_id: state.def.boards[0].id, name: 'Nuovo NPC', description: '', x: 0, y: 0, speed: 0, health: 100, vision: 3, strength: 10, dialogue: '', race_id: '', traits: {} }),
+    blank: () => ({ id: '', board_id: state.def.boards[0].id, name: 'Nuovo NPC', description: '', x: 0, y: 0, speed: 0, health: 100, vision: 3, strength: 10, dialogue: '', race_id: '', traits: {}, sprite: '' }),
     help: 'Gli NPC non li controlla nessuno. Il dialogo ha una battuta per riga: ne risponde una a caso a ogni conversazione. Seleziona una riga e clicca sulla mappa per spostarla.',
     cols: [
       { key: 'name', label: 'Nome', kind: 'text' },
@@ -339,6 +339,7 @@ const LISTS = {
       { key: 'dialogue', label: 'Dialogo (una battuta per riga)', kind: 'area' },
       { key: 'race_id', label: 'Razza', kind: 'select', options: () => raceOptions(true) },
       { key: 'traits', label: 'Caratteristiche', kind: 'traits' },
+      { key: 'sprite', label: 'Sprite', kind: 'select', options: () => [['', '(predefinito)']].concat(state.def.sprites.map((k) => [k, k])) },
     ],
   },
   items: {

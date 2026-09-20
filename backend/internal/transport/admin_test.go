@@ -383,6 +383,24 @@ func TestAdminRacesGoalsNPCsAndItems(t *testing.T) {
 		}
 	}
 
+	// Every NPC has a sprite; a made-up one is refused and a known one is saved.
+	sprites := map[string]string{}
+	for _, n := range d.NPCs {
+		sprites[n.Name] = n.Sprite
+	}
+	if sprites["Mercante"] != "merchant" || sprites["Guardia"] != "guard" || sprites["Fabbro"] != "blacksmith" {
+		t.Fatalf("seeded NPC sprites = %v", sprites)
+	}
+	withSprite := append([]store.AdminNPC(nil), d.NPCs...)
+	withSprite[0].Sprite = "dragon"
+	e.save(owner, "npcs", withSprite, http.StatusBadRequest)
+	withSprite[0].Sprite = "guard"
+	e.save(owner, "npcs", withSprite, http.StatusOK)
+	if got := e.definition(owner).NPCs[0].Sprite; got != "guard" {
+		t.Fatalf("the sprite was not saved: %q", got)
+	}
+	d = e.definition(owner)
+
 	// Two NPCs can swap places in one save.
 	a, b := d.NPCs[0], d.NPCs[1]
 	if a.BoardID == b.BoardID {

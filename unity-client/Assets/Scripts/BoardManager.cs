@@ -10,10 +10,7 @@ using UnityEngine;
 // che quella pedina puo' fare sul bersaglio (attacca, parla, raccogli, sposta).
 public class BoardManager : MonoBehaviour
 {
-    static readonly Color LightTile = new Color(0.86f, 0.84f, 0.74f);
-    static readonly Color DarkTile = new Color(0.55f, 0.42f, 0.34f);
     static readonly Color MyTerritory = new Color(0.3f, 0.85f, 1f);
-    static readonly Color PortalTint = new Color(0.8f, 0.55f, 1f);
     static readonly Color RangeTint = new Color(0.4f, 0.9f, 1f);
 
     public static BoardManager Instance { get; private set; }
@@ -30,6 +27,7 @@ public class BoardManager : MonoBehaviour
     readonly Dictionary<string, Piece> pieces = new Dictionary<string, Piece>();
     readonly List<GameObject> tileObjects = new List<GameObject>();
     SpriteRenderer[,] tiles;
+    List<SpriteRenderer>[,] decor; // alberi, cespugli, staccionate...: si scuriscono con la nebbia come il suolo
     bool[,] visibleCells, hasTint, inRange, isGateway;
     Color[,] tint;
 
@@ -43,8 +41,6 @@ public class BoardManager : MonoBehaviour
     bool fittedCompact;
 
     public string CurrentBoardId => current?.id;
-
-    public string GridOf(string boardId) => boards.TryGetValue(boardId ?? "", out var b) ? b.grid : GridMath.Square;
 
     // Piu' in basso sullo schermo = piu' vicino = disegnato sopra; il margine lascia posto agli strati.
     public static int SortOrder(float worldY) => -Mathf.RoundToInt(worldY * 100f) * 4;
@@ -195,13 +191,18 @@ public class BoardManager : MonoBehaviour
         foreach (var t in tileObjects) Destroy(t);
         tileObjects.Clear();
         tiles = null;
+        decor = null;
     }
+
+    // Il suolo sta sotto a tutto; alberi, muri e pedine si ordinano per altezza sullo schermo.
+    const int GroundOrder = -32000;
 
     void BuildTiles()
     {
         DestroyTiles();
         int w = current.width, h = current.height;
         tiles = new SpriteRenderer[w, h];
+        decor = new List<SpriteRenderer>[w, h];
         visibleCells = new bool[w, h];
         hasTint = new bool[w, h];
         inRange = new bool[w, h];
@@ -209,18 +210,18 @@ public class BoardManager : MonoBehaviour
         tint = new Color[w, h];
         foreach (var g in current.gateways ?? new GatewayData[0]) isGateway[g.x, g.y] = true;
 
-        var sprite = PixelArt.Tile(current.grid);
+        var rows = current.terrain;
         for (int x = 0; x < w; x++)
         {
             for (int y = 0; y < h; y++)
             {
                 var go = new GameObject($"Tile_{x}_{y}");
                 go.transform.SetParent(transform);
-                var centre = GridMath.CellToWorld(current.grid, x, y);
+                var centre = GridMath.CellToWorld(x, y);
                 go.transform.position = centre;
                 var r = go.AddComponent<SpriteRenderer>();
-                r.sprite = sprite;
-                r.sortingOrder = SortOrder(centre.y);
+                r.sprite = TileSheet.Tile(TerrainArt.Ground(rows, x, y));
+                r.sortingOrder = GroundOrder;
                 tiles[x, y] = r;
                 tileObjects.Add(go);
 
@@ -230,24 +231,46 @@ public class BoardManager : MonoBehaviour
                     marker.transform.SetParent(go.transform, false);
                     var mr = marker.AddComponent<SpriteRenderer>();
                     mr.sprite = PixelArt.Portal;
-                    mr.sortingOrder = r.sortingOrder + 1;
+                    mr.sortingOrder = GroundOrder + 1;
+                    (decor[x, y] = decor[x, y] ?? new List<SpriteRenderer>()).Add(mr);
+                }
+                if (TerrainArt.Decoration(rows, x, y, out int baseTile, out int topTile, out _))
+                {
+                    var list = decor[x, y] = decor[x, y] ?? new List<SpriteRenderer>();
+                    int order = SortOrder(centre.y + GridMath.FeetOffset);
+                    list.Add(AddDecor(go.transform, baseTile, Vector3.zero, order));
+                    // La cima di un albero sporge sulla casella sopra, ma sta dietro a chi ci cammina davanti.
+                    if (topTile >= 0) list.Add(AddDecor(go.transform, topTile, new Vector3(0f, 1f, 0f), order + 1));
                 }
                 PaintTile(x, y);
             }
         }
     }
 
+    static SpriteRenderer AddDecor(Transform parent, int tile, Vector3 offset, int order)
+    {
+        var go = new GameObject("Decor");
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = offset;
+        var r = go.AddComponent<SpriteRenderer>();
+        r.sprite = TileSheet.Tile(tile);
+        r.sortingOrder = order;
+        return r;
+    }
+
     bool InBounds(int x, int y) => current != null && x >= 0 && y >= 0 && x < current.width && y < current.height;
 
+    // Il colore moltiplica il tile: bianco = com'e', piu' scuro = nebbia, una punta di colore = territorio o portata.
     void PaintTile(int x, int y)
     {
-        var color = (x + y) % 2 == 0 ? LightTile : DarkTile;
-        if (isGateway[x, y]) color = Color.Lerp(color, PortalTint, 0.6f);
-        if (hasTint[x, y]) color = Color.Lerp(color, tint[x, y], 0.55f);
-        if (inRange[x, y]) color = Color.Lerp(color, RangeTint, 0.4f);
-        if (!visibleCells[x, y]) color *= 0.4f;
+        var color = Color.white;
+        if (hasTint[x, y]) color = Color.Lerp(color, tint[x, y], 0.45f);
+        if (inRange[x, y]) color = Color.Lerp(color, RangeTint, 0.35f);
+        if (!visibleCells[x, y]) color *= 0.45f;
         color.a = 1f;
         tiles[x, y].color = color;
+        if (decor[x, y] != null)
+            foreach (var d in decor[x, y]) d.color = color;
     }
 
     // Il territorio si vede: la casella sotto una struttura prende il colore della squadra.
@@ -271,7 +294,7 @@ public class BoardManager : MonoBehaviour
             int r = p.Data.vision;
             for (int x = Mathf.Max(0, p.Data.x - r); x <= Mathf.Min(current.width - 1, p.Data.x + r); x++)
                 for (int y = Mathf.Max(0, p.Data.y - r); y <= Mathf.Min(current.height - 1, p.Data.y + r); y++)
-                    if (GridMath.Distance(current.grid, p.Data.x, p.Data.y, x, y) <= r) now[x, y] = true;
+                    if (GridMath.Distance(p.Data.x, p.Data.y, x, y) <= r) now[x, y] = true;
         }
         for (int x = 0; x < current.width; x++)
         {
@@ -296,7 +319,7 @@ public class BoardManager : MonoBehaviour
         {
             for (int y = 0; y < current.height; y++)
             {
-                bool now = show && GridMath.Distance(current.grid, selected.Data.x, selected.Data.y, x, y) <= selected.Data.vision;
+                bool now = show && GridMath.Distance(selected.Data.x, selected.Data.y, x, y) <= selected.Data.vision;
                 if (now == inRange[x, y]) continue;
                 inRange[x, y] = now;
                 PaintTile(x, y);
@@ -306,7 +329,7 @@ public class BoardManager : MonoBehaviour
 
     // ---- Camera: tutto lo schermo, con zoom e trascinamento ---------------------------------------
 
-    const float MinOrthoSize = 2.2f;     // massimo zoom: circa una decina di caselle in altezza
+    const float MinOrthoSize = 3f;       // massimo zoom: circa sei caselle in altezza
     const float MaxZoomOutSlack = 1.25f; // si puo' allontanare un po' oltre la board intera
     const float DragThresholdPixels = 8f;
 
@@ -315,28 +338,37 @@ public class BoardManager : MonoBehaviour
     Vector2 pressPosition, lastMouse;
     bool pressing, pressBlocked, dragged;
 
-    // La mappa occupa tutto lo schermo; il menu le sta sopra a destra, quindi la board intera si
-    // inquadra nello spazio che il menu lascia libero. Da li' in poi si puo' zoomare e spostare.
-    void FitCamera()
+    const float StartOrthoSize = 6f; // vista iniziale: circa dodici caselle in altezza, attorno al campione
+
+    // La mappa occupa tutto lo schermo; il menu le sta sopra a destra, quindi si inquadra lo spazio
+    // che il menu lascia libero. All'inizio la vista e' ravvicinata sul campione (come nei giochi a
+    // caselle); con wholeBoard si vede la board intera. Da li' si puo' zoomare e spostare.
+    void FitCamera(bool wholeBoard = false)
     {
         cam.rect = new Rect(0f, 0f, 1f, 1f);
         fittedScreen = new Vector2Int(Screen.width, Screen.height);
         fittedCompact = Ui.Compact;
-        boardBounds = GridMath.Bounds(current.grid, current.width, current.height);
+        boardBounds = GridMath.Bounds(current.width, current.height);
 
         float rightPixels = hud.OccupiedRightPixels;
         float freeAspect = Mathf.Max(0.2f, (Screen.width - rightPixels) / Screen.height);
         fitSize = Mathf.Max(boardBounds.height / 2f, boardBounds.width / 2f / freeAspect) * 1.03f;
-        cam.orthographicSize = fitSize;
-        float worldPerPixel = 2f * fitSize / Screen.height;
-        cam.transform.position = new Vector3(boardBounds.center.x + rightPixels / 2f * worldPerPixel, boardBounds.center.y, -10f);
+        float size = wholeBoard ? fitSize : Mathf.Min(fitSize, StartOrthoSize);
+        cam.orthographicSize = size;
+
+        var focus = (Vector3)boardBounds.center;
+        var champion = MyChampion();
+        if (!wholeBoard && champion != null && champion.Data.board_id == current.id) focus = champion.transform.position;
+        float worldPerPixel = 2f * size / Screen.height;
+        cam.transform.position = new Vector3(focus.x + rightPixels / 2f * worldPerPixel, focus.y, -10f);
+        MoveCamera(Vector3.zero);
     }
 
     // factor < 1 avvicina, > 1 allontana, 0 = torna a inquadrare la board intera.
     void ZoomFromButton(float factor)
     {
         if (current == null) return;
-        if (factor <= 0f) FitCamera();
+        if (factor <= 0f) FitCamera(wholeBoard: true);
         else ZoomAt(new Vector2(Screen.width / 2f, Screen.height / 2f), factor);
     }
 
@@ -413,7 +445,7 @@ public class BoardManager : MonoBehaviour
             pressing = false;
             if (!pressBlocked && !dragged)
             {
-                var cell = GridMath.WorldToCell(current.grid, cam.ScreenToWorldPoint(mouse));
+                var cell = GridMath.WorldToCell(cam.ScreenToWorldPoint(mouse));
                 ClickCell(cell.x, cell.y);
             }
         }
@@ -675,7 +707,7 @@ public class BoardManager : MonoBehaviour
         if (target != null)
         {
             if (target.Data.board_id != actor.Data.board_id) return "su un'altra board";
-            int dist = GridMath.Distance(GridOf(actor.Data.board_id), actor.Data.x, actor.Data.y, target.Data.x, target.Data.y);
+            int dist = GridMath.Distance(actor.Data.x, actor.Data.y, target.Data.x, target.Data.y);
             if (dist > actor.Data.vision) return "fuori portata";
         }
         if (needsReady && actor.SecondsUntilActReady > 0f) return $"pronta tra {actor.SecondsUntilActReady:0.0}s";

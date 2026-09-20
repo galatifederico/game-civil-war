@@ -49,6 +49,7 @@ type Entity struct {
 	Traits      map[string]int // the extended characteristics (soldi, alcol...)
 	Effect      Effect         // items only: what using one does
 	Icon        string         // items only: the inventory icon ("" = automatic)
+	Sprite      string         // NPCs only: how the client draws it ("" = default)
 
 	// Ephemeral real-time state, not persisted.
 	ReadyAt    time.Time // next moment the unit can move

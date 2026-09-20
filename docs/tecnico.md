@@ -17,7 +17,7 @@ iOS/Android, non browser né desktop. Per ora nessuna pubblicazione su store: di
 **Nota:** Android permette il sideload di un APK gratuitamente senza vincoli. iOS invece richiede comunque una forma di firma dell'app anche per uso privato (account Apple Developer gratuito con resign ogni 7 giorni, oppure Apple Developer Program a pagamento per TestFlight/durata più lunga) — da chiarire se il gruppo di amici include utenti iOS o solo Android.
 
 ### Client: Unity
-Unity (C#) è stato scelto per la parte client (rendering, tilemap isometriche, input, build mobile iOS/Android). Il client vive in `unity-client/`.
+Unity (C#) è stato scelto per la parte client (rendering a caselle viste dall'alto, input, build mobile iOS/Android). Il client vive in `unity-client/`.
 
 **Nota architetturale:** il networking ufficiale di Unity (es. Netcode for GameObjects) non è adatto a un server autoritativo persistente custom su larga scala — Unity verrà usato solo come client "dumb" che comunica via WebSocket con il backend Go (es. `System.Net.WebSockets.ClientWebSocket`).
 

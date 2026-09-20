@@ -495,10 +495,7 @@ public class Hud : MonoBehaviour
             const float cardWidth = 70f;
             if (GUI.Button(new Rect(rect.x, rect.y, rect.width - cardWidth - 4f, rect.height), GUIContent.none, rowStyle)) board.Locate(unit);
             var d = unit.Data;
-            var previous = GUI.color;
-            GUI.color = unit.TeamColor;
-            GUI.DrawTexture(new Rect(rect.x + 6f, rect.y + 6f, 32f, 32f), unit.Icon.texture, ScaleMode.ScaleToFit);
-            GUI.color = previous;
+            PixelArt.DrawSprite(new Rect(rect.x + 6f, rect.y + 6f, 32f, 32f), unit.Icon, unit.IconTint);
             float textWidth = rect.width - cardWidth - 56f;
             GUI.Label(new Rect(rect.x + 44f, rect.y + 3f, textWidth, 20f), d.name + (d.kind == Kinds.Champion ? "  (campione)" : ""), rowTitleStyle);
             string life = unit.Defeated ? "fuori gioco" : $"vita {d.health}/{d.max_health}";

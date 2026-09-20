@@ -2,26 +2,35 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-// Grafica 2D isometrica in pixel art, disegnata in codice: nessun asset esterno da importare.
+// Sprite in pixel art disegnati in codice (pedine, ombre, anelli, icone degli oggetti); il terreno
+// e' in TileSheet.cs, con i tile di Kenney.
 // Gli sprite sono in scala di grigi (bianco = colore pieno) e si colorano con SpriteRenderer.color,
 // cosi' lo stesso disegno serve a tutte le squadre. Le texture usano il filtro Point (niente sfocatura).
 public static class PixelArt
 {
-    public const int PixelsPerUnit = 32;
+    // Un'unita' di scena e' una casella, larga 16 pixel come i tile del terreno.
+    public const int PixelsPerUnit = 16;
 
-    static Sprite squareTile, hexTile, shadow, ring, portal;
+    static Sprite shadow, teamBase, ring, portal;
     static readonly Dictionary<string, Sprite> pieces = new Dictionary<string, Sprite>();
 
-    // Blocco di terreno visto in isometrica: 32 px di larghezza = 1 unita' = una casella.
-    public static Sprite Tile(string grid)
+    // Disegna uno sprite nell'interfaccia (IMGUI): la sua parte della texture, non tutta la tavola.
+    public static void DrawSprite(Rect rect, Sprite sprite, Color tint)
     {
-        if (grid == GridMath.Hex) return hexTile ??= BuildSlab(32, 19, 4, HexHalfHeight);
-        return squareTile ??= BuildSlab(32, 16, 4, dx => Mathf.Abs(dx) <= 16f ? 8f * (1f - Mathf.Abs(dx) / 16f) : -1f);
+        if (sprite == null) return;
+        var t = sprite.texture;
+        var r = sprite.textureRect;
+        var previous = GUI.color;
+        GUI.color = tint;
+        GUI.DrawTextureWithTexCoords(rect, t, new Rect(r.x / t.width, r.y / t.height, r.width / t.width, r.height / t.height));
+        GUI.color = previous;
     }
 
     public static Sprite Shadow => shadow ??= BuildEllipse(12, 5, false, new Color(0f, 0f, 0f, 0.35f));
-    public static Sprite Ring => ring ??= BuildEllipse(18, 8, true, new Color(1f, 0.92f, 0.25f, 1f));
-    public static Sprite Portal => portal ??= BuildEllipse(20, 9, true, new Color(0.85f, 0.55f, 1f, 1f));
+    // La base colorata sotto i piedi: dice a quale squadra appartiene una pedina.
+    public static Sprite TeamBase => teamBase ??= BuildEllipse(14, 6, false, Color.white);
+    public static Sprite Ring => ring ??= BuildEllipse(16, 8, true, new Color(1f, 0.92f, 0.25f, 1f));
+    public static Sprite Portal => portal ??= BuildEllipse(14, 7, true, new Color(0.85f, 0.55f, 1f, 1f));
 
     public static Sprite Piece(string kind)
     {
@@ -45,11 +54,25 @@ public static class PixelArt
     // usare (game.ItemIcons); una chiave sconosciuta ripiega sulla scatola.
     static readonly Dictionary<string, Texture2D> itemIcons = new Dictionary<string, Texture2D>();
 
+    static readonly Dictionary<string, Sprite> itemSprites = new Dictionary<string, Sprite>();
+
+    // L'icona di un oggetto come sprite, per l'oggetto a terra: a colori veri, con i piedi in basso.
+    public static Sprite ItemSprite(string key)
+    {
+        var tex = ItemIcon(key);
+        if (!itemSprites.TryGetValue(tex.name, out var sprite))
+            sprite = itemSprites[tex.name] = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0f), PixelsPerUnit);
+        return sprite;
+    }
+
     public static Texture2D ItemIcon(string key)
     {
         if (string.IsNullOrEmpty(key) || !IconArt.ContainsKey(key)) key = "box";
         if (!itemIcons.TryGetValue(key, out var tex))
+        {
             tex = itemIcons[key] = FromColorRows(IconArt[key]);
+            tex.name = key;
+        }
         return tex;
     }
 
@@ -318,12 +341,6 @@ public static class PixelArt
         ".XXXXXXXXXX.",
     };
 
-    static float HexHalfHeight(float dx)
-    {
-        const float circumRadius = 18.5f;   // 32 px di larghezza / (sqrt(3) x 0.5 di schiacciamento)
-        return Mathf.Abs(dx) <= 16f ? (circumRadius - Mathf.Abs(dx) / 1.7320508f) * 0.5f : -1f;
-    }
-
     static Texture2D NewTexture(int w, int h)
     {
         return new Texture2D(w, h, TextureFormat.RGBA32, false)
@@ -339,50 +356,6 @@ public static class PixelArt
         tex.SetPixels32(pixels);
         tex.Apply();
         return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), pivot, PixelsPerUnit);
-    }
-
-    // Un blocco: faccia superiore (rombo o esagono schiacciato) piu' uno spessore in basso.
-    // halfHeight(dx) e' la meta' dell'altezza della faccia superiore alla distanza dx dal centro
-    // (negativa fuori dalla forma). Il perno e' al centro della faccia superiore.
-    static Sprite BuildSlab(int w, int topHeight, int thickness, Func<float, float> halfHeight)
-    {
-        int h = topHeight + thickness;
-        float cy = thickness + topHeight / 2f;
-        var top = new bool[w, h];
-        for (int px = 0; px < w; px++)
-        {
-            float hh = halfHeight(px + 0.5f - w / 2f);
-            if (hh < 0f) continue;
-            for (int py = 0; py < h; py++)
-            {
-                float y = py + 0.5f;
-                if (y >= cy - hh && y <= cy + hh) top[px, py] = true;
-            }
-        }
-
-        var pixels = new Color32[w * h];
-        for (int px = 0; px < w; px++)
-        {
-            int lowest = -1;
-            for (int py = 0; py < h; py++)
-            {
-                if (!top[px, py]) continue;
-                if (lowest < 0) lowest = py;
-                bool edge = px == 0 || py == 0 || px == w - 1 || py == h - 1
-                    || !top[px - 1, py] || !top[px + 1, py] || !top[px, py - 1] || !top[px, py + 1];
-                pixels[py * w + px] = Gray(edge ? 0.82f : 1f);
-            }
-            if (lowest < 0) continue;
-            // Lo spessore: piu' scuro a sinistra, un po' meno a destra, come una luce da destra.
-            for (int k = 1; k <= thickness; k++)
-            {
-                int py = lowest - k;
-                if (py < 0) break;
-                float shade = px < w / 2 ? 0.52f : 0.68f;
-                pixels[py * w + px] = Gray(k == thickness ? shade * 0.8f : shade);
-            }
-        }
-        return Finish(NewTexture(w, h), pixels, new Vector2(0.5f, cy / h));
     }
 
     static Color32 Gray(float v)

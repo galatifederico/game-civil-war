@@ -7,8 +7,8 @@ Concept originale: [main.md](main.md). Questo documento raccoglie le decisioni d
 ### Ritmo di gioco: Tempo reale
 Il gioco si svolge in tempo reale: le pedine possono agire quando i giocatori vogliono e i cooldown (es. velocità) scorrono in base al tempo reale, non a turni.
 
-### Stile visivo: 2D isometrico, pixel art
-La board e le pedine sono rappresentate in 2D isometrico (vista a 3/4) in stile pixel art. È una combinazione pratica per un progetto di questa portata: Unity supporta bene i tilemap isometrici 2D e il rendering pixel-perfect (filtro Point sugli sprite, nessuna sfocatura), e lo stile pixel art è più veloce da produrre/estendere nel tempo (anche con asset pack open source, se utile) rispetto a un 2D vettoriale/flat più curato.
+### Stile visivo: pixel art vista dall'alto (stile Pokémon)
+**Cambiato il 2026-09-20**: prima era 2D isometrico; ora è la vista dall'alto a 3/4 dei giochi Pokémon (generazioni 3-5), a caselle quadrate da 16 px, con personaggi che camminano in 4 direzioni (vedi [risorse-grafiche.md](risorse-grafiche.md)). Il resto di questo paragrafo vale ancora: il pixel art è pratico per un progetto di questa portata: È una combinazione pratica per un progetto di questa portata: Unity supporta bene i tilemap isometrici 2D e il rendering pixel-perfect (filtro Point sugli sprite, nessuna sfocatura), e lo stile pixel art è più veloce da produrre/estendere nel tempo (anche con asset pack open source, se utile) rispetto a un 2D vettoriale/flat più curato.
 
 **Da definire più avanti (non bloccante):** risoluzione base degli sprite (es. 16x16 o 32x32 px per pedina — più piccola è più veloce da produrre ma meno dettagliata) e palette colori coerente col tono satirico/urbano scelto.
 
