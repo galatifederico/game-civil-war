@@ -218,6 +218,8 @@ type Board struct {
 	Width  int
 	Height int
 	Grid   Grid
+
+	terrain map[Point]string // cells that are not grass (terrain.go)
 }
 
 func (b *Board) InBounds(p Point) bool {
@@ -347,9 +349,12 @@ func (w *World) Gateways(boardID string) []Gateway {
 	return out
 }
 
-// blocked is true where nothing can be put: an occupied cell or a gateway.
+// blocked is true where nothing can be put: an occupied cell, a gateway or blocking terrain.
 func (w *World) blocked(c Cell) bool {
 	if _, taken := w.cells[c]; taken {
+		return true
+	}
+	if b := w.boards[c.Board]; b != nil && b.BlocksAt(Point{c.X, c.Y}) {
 		return true
 	}
 	_, gateway := w.links[c]
@@ -478,12 +483,18 @@ func (w *World) Move(playerID, unitID string, to Point, now time.Time) (*Entity,
 	if _, taken := w.cells[dest]; taken && !isGateway {
 		return nil, ErrOccupied
 	}
+	if board.BlocksAt(to) && !isGateway {
+		return nil, ErrBlockedTerrain
+	}
 	dist := board.Grid.Distance(from, to)
 	if e.Speed <= 0 || dist > e.Speed {
 		return nil, ErrTooFar
 	}
 	if isGateway {
 		if _, taken := w.cells[link]; taken {
+			return nil, ErrGatewayBlocked
+		}
+		if lb := w.boards[link.Board]; lb != nil && lb.BlocksAt(Point{link.X, link.Y}) {
 			return nil, ErrGatewayBlocked
 		}
 		dest = link

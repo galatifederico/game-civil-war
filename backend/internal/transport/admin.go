@@ -28,6 +28,7 @@ func (s *Server) adminRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /admin/api/worlds/{id}/rules", s.adminWorld(s.adminRules))
 	mux.HandleFunc("PUT /admin/api/worlds/{id}/boards", s.adminWorld(adminList(s, store.BoardsChange)))
 	mux.HandleFunc("PUT /admin/api/worlds/{id}/links", s.adminWorld(adminList(s, store.LinksChange)))
+	mux.HandleFunc("PUT /admin/api/worlds/{id}/terrain", s.adminWorld(adminList(s, store.TerrainChange)))
 	mux.HandleFunc("PUT /admin/api/worlds/{id}/races", s.adminWorld(adminList(s, store.RacesChange)))
 	mux.HandleFunc("PUT /admin/api/worlds/{id}/compat", s.adminWorld(adminList(s, store.CompatChange)))
 	mux.HandleFunc("PUT /admin/api/worlds/{id}/goals", s.adminWorld(adminList(s, store.GoalsChange)))
@@ -61,10 +62,11 @@ func (s *Server) adminWorld(next func(http.ResponseWriter, *http.Request, string
 // filled in (to show what can be set) and the menu values the app offers.
 type adminWorldView struct {
 	store.WorldDefinition
-	DefaultRules   game.Rules `json:"default_rules"`
-	EffectiveRules game.Rules `json:"effective_rules"`
-	GoalKinds      []string   `json:"goal_kinds"`
-	ItemIcons      []string   `json:"item_icons"`
+	DefaultRules   game.Rules         `json:"default_rules"`
+	EffectiveRules game.Rules         `json:"effective_rules"`
+	GoalKinds      []string           `json:"goal_kinds"`
+	ItemIcons      []string           `json:"item_icons"`
+	TerrainKinds   []game.TerrainInfo `json:"terrain_kinds"`
 }
 
 func (s *Server) adminGet(w http.ResponseWriter, r *http.Request, id string) {
@@ -80,6 +82,7 @@ func (s *Server) adminGet(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	view := adminWorldView{WorldDefinition: def, DefaultRules: game.DefaultRules(), EffectiveRules: eff}
 	view.ItemIcons = game.ItemIcons
+	view.TerrainKinds = game.TerrainKinds()
 	for _, k := range game.GoalKinds() {
 		view.GoalKinds = append(view.GoalKinds, string(k))
 	}

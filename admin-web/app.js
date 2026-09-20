@@ -148,6 +148,7 @@ const TABS = [
   ['world', 'Mondo'],
   ['rules', 'Regole'],
   ['boards', 'Board'],
+  ['terrain', 'Terreno'],
   ['links', 'Passaggi'],
   ['races', 'Razze'],
   ['compat', 'Compatibilità'],
@@ -164,9 +165,10 @@ function renderTabs() {
 
 function renderPanel() {
   const panel = $('panel');
-  const renderer = { world: renderWorld, rules: renderRules, players: renderPlayers }[state.tab];
+  const renderer = { world: renderWorld, rules: renderRules, players: renderPlayers, terrain: renderTerrain }[state.tab];
   panel.replaceChildren(...(renderer ? renderer() : [renderList(state.tab)]));
   drawMap(); // no-op unless this tab has a map
+  drawTerrain(); // same for the terrain painter
 }
 
 // Saving restarts the world so that it picks the change up: players reconnect on their own.
@@ -517,6 +519,79 @@ function clickMap(e, canvas) {
   }
   notice('Casella (' + x + ', ' + y + ') su ' + board.name + '. Ricordati di salvare.');
   renderPanel();
+}
+
+// --- terrain tab: paint the cells of a board ---
+
+const TERRAIN_COLORS = { '.': '#7bc96f', ',': '#e8d44d', '=': '#c98f5a', ':': '#a9b0b8', T: '#2e7d32', B: '#5aa85a', F: '#8b5a2b', '#': '#5b6270' };
+const paint = { boardId: null, glyph: 'T', cell: 18, drawing: false };
+
+function terrainRows(boardId) {
+  if (!state.draft.terrain) state.draft.terrain = clone(state.def.terrain);
+  return state.draft.terrain.find((t) => t.board_id === boardId).rows;
+}
+
+function renderTerrain() {
+  if (!paint.boardId || !state.def.boards.some((b) => b.id === paint.boardId)) paint.boardId = state.def.boards[0].id;
+  const canvas = el('canvas', { id: 'terrainMap' });
+  const stop = () => { paint.drawing = false; };
+  canvas.addEventListener('mousedown', (e) => { paint.drawing = true; paintAt(e, canvas); });
+  canvas.addEventListener('mousemove', (e) => { if (paint.drawing) paintAt(e, canvas); });
+  canvas.addEventListener('mouseup', stop);
+  canvas.addEventListener('mouseleave', stop);
+  const palette = state.def.terrain_kinds.map((k) => {
+    const swatch = el('span', { class: 'dot' });
+    swatch.style.background = TERRAIN_COLORS[k.glyph];
+    return el('button', { class: k.glyph === paint.glyph ? '' : 'ghost', onclick: () => { paint.glyph = k.glyph; renderPanel(); } },
+      swatch, k.name + (k.blocks ? ' (blocca)' : ''));
+  });
+  return [
+    el('h2', {}, 'Terreno'),
+    el('p', { class: 'muted' }, 'Ogni casella è erba se non scegli altro. Alberi, cespugli, staccionate e muri bloccano: nessuno ci può stare, quindi non si possono mettere sotto pedine, oggetti, strutture o passaggi. Scegli un tipo e dipingi trascinando sulla mappa; i puntini mostrano NPC (giallo), oggetti (azzurro) e passaggi (viola). Le altre board si salvano insieme.'),
+    el('label', { style: 'max-width:240px' }, 'Board',
+      el('select', { onchange: (e) => { paint.boardId = e.target.value; renderPanel(); } },
+        ...state.def.boards.map((b) => el('option', { value: b.id, selected: b.id === paint.boardId }, b.name)))),
+    el('div', { class: 'actions' }, ...palette),
+    el('div', { class: 'mapbox' }, canvas),
+    el('div', { class: 'actions' },
+      el('button', { onclick: () => save('/terrain', { items: state.draft.terrain || state.def.terrain }) }, 'Salva terreno'),
+      el('button', { class: 'ghost', onclick: () => { delete state.draft.terrain; renderPanel(); notice(''); } }, 'Annulla modifiche')),
+  ];
+}
+
+function drawTerrain() {
+  const canvas = $('terrainMap');
+  if (!canvas) return;
+  const board = state.def.boards.find((b) => b.id === paint.boardId);
+  const rows = terrainRows(board.id);
+  const c = paint.cell;
+  canvas.width = board.width * c + 1;
+  canvas.height = board.height * c + 1;
+  const ctx = canvas.getContext('2d');
+  rows.forEach((row, y) => [...row].forEach((glyph, x) => {
+    ctx.fillStyle = TERRAIN_COLORS[glyph] || '#f0f';
+    ctx.fillRect(x * c, y * c, c - 1, c - 1);
+  }));
+  const dot = (x, y, color) => { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x * c + c / 2, y * c + c / 2, c / 4, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#000'; ctx.stroke(); };
+  state.def.npcs.filter((n) => n.board_id === board.id).forEach((n) => dot(n.x, n.y, '#ffd84a'));
+  state.def.items.filter((n) => n.board_id === board.id).forEach((n) => dot(n.x, n.y, '#6fb3ff'));
+  state.def.links.forEach((l) => {
+    if (l.from_board === board.id) dot(l.from_x, l.from_y, '#c084fc');
+    if (l.to_board === board.id) dot(l.to_x, l.to_y, '#c084fc');
+  });
+}
+
+function paintAt(e, canvas) {
+  const board = state.def.boards.find((b) => b.id === paint.boardId);
+  const rect = canvas.getBoundingClientRect();
+  const scale = canvas.width / rect.width;
+  const x = Math.floor((e.clientX - rect.left) * scale / paint.cell);
+  const y = Math.floor((e.clientY - rect.top) * scale / paint.cell);
+  if (x < 0 || y < 0 || x >= board.width || y >= board.height) return;
+  const rows = terrainRows(board.id);
+  if (rows[y][x] === paint.glyph) return;
+  rows[y] = rows[y].slice(0, x) + paint.glyph + rows[y].slice(x + 1);
+  drawTerrain();
 }
 
 // --- players tab ---

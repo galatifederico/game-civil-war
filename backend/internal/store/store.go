@@ -158,6 +158,22 @@ func (s *Store) LoadWorld(ctx context.Context, id string) (*game.World, error) {
 		return nil, errors.New("the world has no boards")
 	}
 
+	err = s.each(ctx, `SELECT t.board_id::text, t.x, t.y, t.tile FROM board_terrain t
+		JOIN boards b ON b.id = t.board_id WHERE b.world_id = $1::uuid`, []any{id}, func(rows pgx.Rows) error {
+		var boardID, tile string
+		var p game.Point
+		if err := rows.Scan(&boardID, &p.X, &p.Y, &tile); err != nil {
+			return err
+		}
+		if b := world.Board(boardID); b != nil {
+			b.SetTerrain(p, tile)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	err = s.each(ctx, `SELECT id::text, name, description, speed, health, vision, strength,
 		bonus_speed, bonus_health, bonus_vision, bonus_strength, traits_min, traits_bonus
 		FROM races WHERE world_id = $1::uuid ORDER BY position, name`,

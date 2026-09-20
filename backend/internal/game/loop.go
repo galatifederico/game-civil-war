@@ -475,7 +475,7 @@ func (l *Loop) boardDTOs() []protocol.Board {
 	boards := l.world.Boards()
 	out := make([]protocol.Board, 0, len(boards))
 	for _, b := range boards {
-		dto := protocol.Board{ID: b.ID, Name: b.Name, Width: b.Width, Height: b.Height, Grid: b.Grid.Kind()}
+		dto := protocol.Board{ID: b.ID, Name: b.Name, Width: b.Width, Height: b.Height, Grid: b.Grid.Kind(), Terrain: b.TerrainRows()}
 		for _, g := range l.world.Gateways(b.ID) {
 			dto.Gateways = append(dto.Gateways, protocol.Gateway{X: g.At.X, Y: g.At.Y, ToBoard: g.To.Board, ToX: g.To.X, ToY: g.To.Y})
 		}

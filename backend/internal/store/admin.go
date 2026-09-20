@@ -133,6 +133,13 @@ type AdminItem struct {
 	Icon        string      `json:"icon"` // "" = automatic
 }
 
+// AdminTerrain is the terrain of one board: one string per row (top first), one glyph per cell
+// (game.TerrainKinds). Every board of the world is listed, plain grass included.
+type AdminTerrain struct {
+	BoardID string   `json:"board_id"`
+	Rows    []string `json:"rows"`
+}
+
 type AdminPlayer struct {
 	ID            string `json:"id"`
 	Username      string `json:"username"`
@@ -155,6 +162,7 @@ type WorldDefinition struct {
 	Rules       json.RawMessage `json:"rules"` // only what differs from the defaults
 	Boards      []AdminBoard    `json:"boards"`
 	Links       []AdminLink     `json:"links"`
+	Terrain     []AdminTerrain  `json:"terrain"`
 	Races       []AdminRace     `json:"races"`
 	Compat      []AdminCompat   `json:"compat"`
 	Goals       []AdminGoal     `json:"goals"`
@@ -166,7 +174,7 @@ type WorldDefinition struct {
 // Definition reads a world for the admin app.
 func (s *Store) Definition(ctx context.Context, id string) (WorldDefinition, error) {
 	d := WorldDefinition{
-		ID: id, Boards: []AdminBoard{}, Links: []AdminLink{}, Races: []AdminRace{}, Compat: []AdminCompat{},
+		ID: id, Boards: []AdminBoard{}, Links: []AdminLink{}, Terrain: []AdminTerrain{}, Races: []AdminRace{}, Compat: []AdminCompat{},
 		Goals: []AdminGoal{}, NPCs: []AdminNPC{}, Items: []AdminItem{}, Players: []AdminPlayer{},
 	}
 	err := s.pool.QueryRow(ctx, `SELECT name, description, rules FROM worlds WHERE id = $1::uuid`, id).
@@ -188,6 +196,40 @@ func (s *Store) Definition(ctx context.Context, id string) (WorldDefinition, err
 		return nil
 	}); err != nil {
 		return d, err
+	}
+	{
+		cells := map[string]map[game.Point]byte{}
+		if err := s.each(ctx, `SELECT t.board_id::text, t.x, t.y, t.tile FROM board_terrain t
+			JOIN boards b ON b.id = t.board_id WHERE b.world_id = $1::uuid`, []any{id}, func(rows pgx.Rows) error {
+			var boardID, tile string
+			var p game.Point
+			if err := rows.Scan(&boardID, &p.X, &p.Y, &tile); err != nil {
+				return err
+			}
+			if glyph, ok := game.TerrainGlyph(tile); ok {
+				if cells[boardID] == nil {
+					cells[boardID] = map[game.Point]byte{}
+				}
+				cells[boardID][p] = glyph
+			}
+			return nil
+		}); err != nil {
+			return d, err
+		}
+		for _, b := range d.Boards {
+			rows := make([]string, b.Height)
+			for y := range rows {
+				row := make([]byte, b.Width)
+				for x := range row {
+					row[x] = '.'
+					if g, ok := cells[b.ID][game.Point{X: x, Y: y}]; ok {
+						row[x] = g
+					}
+				}
+				rows[y] = string(row)
+			}
+			d.Terrain = append(d.Terrain, AdminTerrain{BoardID: b.ID, Rows: rows})
+		}
 	}
 	if err := s.each(ctx, `SELECT l.from_board_id::text, l.from_x, l.from_y, l.to_board_id::text, l.to_x, l.to_y
 		FROM board_links l JOIN boards b ON b.id = l.from_board_id WHERE b.world_id = $1::uuid
@@ -493,6 +535,11 @@ func BoardsChange(worldID string, boards []AdminBoard) Change {
 			}
 		}
 
+		// Terrain outside a board that got smaller is simply dropped.
+		if _, err := tx.Exec(ctx, `DELETE FROM board_terrain t USING boards b WHERE b.id = t.board_id
+			AND b.world_id = $1::uuid AND (t.x >= b.width OR t.y >= b.height)`, worldID); err != nil {
+			return err
+		}
 		// Nothing may end up outside a board that got smaller.
 		var name string
 		err = tx.QueryRow(ctx, `SELECT b.name FROM boards b WHERE b.world_id = $1::uuid AND (
@@ -549,7 +596,7 @@ func LinksChange(worldID string, links []AdminLink) Change {
 				return err
 			}
 		}
-		return nil
+		return noBlockingTerrainOnThings(ctx, tx, worldID)
 	}
 }
 
@@ -812,7 +859,10 @@ func NPCsChange(worldID string, npcs []AdminNPC) Change {
 				}
 			}
 		}
-		return noTwoOnACell(ctx, tx, worldID)
+		if err := noTwoOnACell(ctx, tx, worldID); err != nil {
+			return err
+		}
+		return noBlockingTerrainOnThings(ctx, tx, worldID)
 	}
 }
 
@@ -889,7 +939,10 @@ func ItemsChange(worldID string, items []AdminItem) Change {
 				}
 			}
 		}
-		return noTwoOnACell(ctx, tx, worldID)
+		if err := noTwoOnACell(ctx, tx, worldID); err != nil {
+			return err
+		}
+		return noBlockingTerrainOnThings(ctx, tx, worldID)
 	}
 }
 
@@ -900,4 +953,85 @@ func invalidIfUnique(err error, format string, args ...any) error {
 		return invalid(format, args...)
 	}
 	return err
+}
+
+// TerrainChange replaces the terrain of the boards it lists. Blocking terrain cannot go where
+// something already is (a unit, an item, a structure) or where a passage starts or ends.
+func TerrainChange(worldID string, boards []AdminTerrain) Change {
+	return func(ctx context.Context, tx pgx.Tx) error {
+		dims, err := worldBoards(ctx, tx, worldID)
+		if err != nil {
+			return err
+		}
+		seen := map[string]bool{}
+		for _, t := range boards {
+			d, ok := dims[t.BoardID]
+			if !ok {
+				return invalid("terreno: board inesistente")
+			}
+			if seen[t.BoardID] {
+				return invalid("terreno: la stessa board compare due volte")
+			}
+			seen[t.BoardID] = true
+			if len(t.Rows) != d.h {
+				return invalid("terreno: la board ha %d righe, non %d", d.h, len(t.Rows))
+			}
+			type cell struct {
+				x, y int
+				name string
+			}
+			var cells []cell
+			for y, row := range t.Rows {
+				if len(row) != d.w {
+					return invalid("terreno: la riga %d ha %d caselle, non %d", y+1, len(row), d.w)
+				}
+				for x := 0; x < len(row); x++ {
+					name, ok := game.TerrainName(row[x])
+					if !ok {
+						return invalid("terreno: carattere sconosciuto %q alla casella (%d, %d)", string(row[x]), x, y)
+					}
+					if name != "grass" {
+						cells = append(cells, cell{x, y, name})
+					}
+				}
+			}
+			if _, err := tx.Exec(ctx, `DELETE FROM board_terrain WHERE board_id = $1::uuid`, t.BoardID); err != nil {
+				return err
+			}
+			for _, c := range cells {
+				if _, err := tx.Exec(ctx, `INSERT INTO board_terrain (board_id, x, y, tile) VALUES ($1::uuid, $2, $3, $4)`,
+					t.BoardID, c.x, c.y, c.name); err != nil {
+					return err
+				}
+			}
+		}
+		return noBlockingTerrainOnThings(ctx, tx, worldID)
+	}
+}
+
+// noBlockingTerrainOnThings rejects a world where blocking terrain sits under a unit, an item, a
+// structure or an end of a passage.
+func noBlockingTerrainOnThings(ctx context.Context, tx pgx.Tx, worldID string) error {
+	var name string
+	var x, y int
+	blocking := []string{}
+	for _, k := range game.TerrainKinds() {
+		if k.Blocks {
+			blocking = append(blocking, k.Name)
+		}
+	}
+	err := tx.QueryRow(ctx, `SELECT b.name, t.x, t.y FROM board_terrain t JOIN boards b ON b.id = t.board_id
+		WHERE b.world_id = $1::uuid AND t.tile = ANY($2) AND (
+			EXISTS (SELECT 1 FROM units u WHERE u.board_id = t.board_id AND u.x = t.x AND u.y = t.y)
+			OR EXISTS (SELECT 1 FROM board_items i WHERE i.board_id = t.board_id AND i.x = t.x AND i.y = t.y)
+			OR EXISTS (SELECT 1 FROM structures s WHERE s.board_id = t.board_id AND s.x = t.x AND s.y = t.y)
+			OR EXISTS (SELECT 1 FROM board_links l WHERE (l.from_board_id = t.board_id AND l.from_x = t.x AND l.from_y = t.y)
+				OR (l.to_board_id = t.board_id AND l.to_x = t.x AND l.to_y = t.y))) LIMIT 1`, worldID, blocking).Scan(&name, &x, &y)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return invalid("la casella (%d, %d) della board %q è occupata (pedina, oggetto, struttura o passaggio) e non può avere un terreno che blocca", x, y, name)
 }

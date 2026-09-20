@@ -18,6 +18,7 @@ var (
 	ErrOutOfBounds     = &Error{"out_of_bounds", "casella fuori dalla board"}
 	ErrSameCell        = &Error{"same_cell", "la pedina è già in questa casella"}
 	ErrOccupied        = &Error{"occupied", "la casella è occupata"}
+	ErrBlockedTerrain  = &Error{"blocked_terrain", "la casella non è percorribile"}
 	ErrTooFar          = &Error{"too_far", "la casella è troppo lontana"}
 	ErrBoardFull       = &Error{"board_full", "non c'è spazio sulla board"}
 	ErrUnknownAction   = &Error{"unknown_action", "azione sconosciuta"}

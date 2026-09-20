@@ -66,8 +66,11 @@ type Board struct {
 	Name     string    `json:"name"`
 	Width    int       `json:"width"`
 	Height   int       `json:"height"`
-	Grid     string    `json:"grid"` // "square" or "hex"
+	Grid     string    `json:"grid"` // "square"
 	Gateways []Gateway `json:"gateways,omitempty"`
+	// Terrain has one string per row (top first), one glyph per cell (game.TerrainKinds); absent
+	// when the whole board is grass.
+	Terrain []string `json:"terrain,omitempty"`
 }
 
 type Item struct {
