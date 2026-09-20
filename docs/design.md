@@ -13,7 +13,7 @@ La board e le pedine sono rappresentate in 2D isometrico (vista a 3/4) in stile 
 **Da definire più avanti (non bloccante):** risoluzione base degli sprite (es. 16x16 o 32x32 px per pedina — più piccola è più veloce da produrre ma meno dettagliata) e palette colori coerente col tono satirico/urbano scelto.
 
 ### Struttura della board: griglia libera/mista
-La forma della griglia non è fissa: può variare da board a board (es. alcune quadrate, altre esagonali) a seconda del tipo di board/mondo. Massima flessibilità per chi configura i mondi, a costo di maggiore complessità di design e implementazione (pathfinding e calcolo del raggio d'azione dovranno essere generici rispetto al tipo di griglia).
+La griglia è **quadrata** (8 vicini). L'idea iniziale di una forma variabile da board a board (quadrate ed esagonali) è stata **abbandonata il 2026-09-20**: la grafica passa a una vista dall'alto stile Pokémon a caselle quadrate. Il codice chiede comunque la distanza e i vicini alla griglia della board, quindi una forma diversa in futuro non richiederebbe di riscrivere le regole.
 
 ### Tipo di mondo: persistente
 Il gioco non è organizzato in sessioni/match chiusi, ma è un mondo sempre attivo in cui i giocatori entrano ed escono liberamente, coerente con la visione "open world su una board" del concept originale. Implica stato persistente lato server, bilanciamento continuo e gestione dei giocatori inattivi (afk).

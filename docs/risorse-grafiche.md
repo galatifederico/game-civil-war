@@ -15,7 +15,7 @@ Riferimento: la grafica dei giochi **Pokémon (generazioni 3-5)**, vista in due 
 **Cosa cambia rispetto a oggi** (il client è isometrico 2:1 a 32 px):
 
 - Il rendering passa da isometrico a **dall'alto ortogonale**: `GridMath` (cella ↔ scena) diventa una semplice griglia, la selezione delle caselle e l'ordinamento in profondità si semplificano (ordine per y, come oggi). Non cambia niente lato server.
-- **Board esagonali**: non hanno un equivalente dall'alto in pixel art nei pacchetti CC0 visti. Consiglio di **mantenere la logica esagonale** (6 vicini, distanza esagonale) e di **disegnarla con righe sfalsate** di caselle quadrate (a "mattoni"): si vede subito che è un'altra griglia e nessuna regola cambia. L'alternativa è togliere le board esagonali dal gioco.
+- **Board esagonali: eliminate** (decisione dell'utente, 2026-09-20). Tutte le board sono quadrate; la migrazione `0009` ha trasformato l'Alveare del mondo di prova.
 - Serve il dato **terreno per casella** (erba, sentiero, acqua, alberi, muri...) nel mondo e nell'app admin; senza, ogni board resterebbe una distesa uniforme.
 - Serve un **riquadro di dialogo** con nome e ritratto (oggi i dialoghi con gli NPC sono un messaggio nel menu) e **cornici di pannello** per il menu.
 - Le pedine possono restare tinte per squadra solo se lo sprite è in grigi o ha zone da colorare; con sprite già colorati si distingue la squadra con un anello/bandierina sotto la pedina.
@@ -40,7 +40,7 @@ Riferimento: la grafica dei giochi **Pokémon (generazioni 3-5)**, vista in due 
 
 ## Cosa deve poter mostrare il client (vincoli)
 
-- Vista **isometrica 2:1**: casella quadrata = rombo di 32 px di larghezza (`PixelArt.PixelsPerUnit = 32`, `GridMath.TileWidth = 1`), casella **esagonale** = esagono schiacciato con lo stesso rapporto. Un pacchetto senza esagoni non copre le board `hex` (l'Alveare del mondo di prova).
+- (Prima del refactor) vista **isometrica 2:1**: casella quadrata = rombo di 32 px di larghezza (`PixelArt.PixelsPerUnit = 32`, `GridMath.TileWidth = 1`). Ora: caselle quadrate dall'alto, da 16 px.
 - Le pedine sono sprite in **scala di grigi colorati per squadra** (`SpriteRenderer.color`): un asset a colori fissi non si tinge bene, va bene per terreno, oggetti, NPC e icone.
 - Ordinamento per profondità in base alla y (`BoardManager.SortOrder`), quindi gli sprite alti (muri, alberi) funzionano con il pivot ai piedi.
 - Oggi non esiste un **tipo di terreno** per casella: ogni board è una scacchiera chiara/scura. Usare tile diversi (erba, acqua, pietra...) richiede un dato in più nel mondo (per esempio `board_cells`) e la sua modifica nell'app admin.
@@ -66,7 +66,6 @@ Pacchetti visti, con il link diretto alla pagina (`https://kenney.nl/assets/<nom
 Note per l'uso:
 
 - **Non c'è un pacchetto isometrico in pixel art a 32 px** tra quelli visti: gli isometrici di Kenney sono in stile 3D/cartoon ad alta risoluzione (256 o 111 px per tile), quelli in pixel art sono dall'alto. Con la direzione scelta (vista dall'alto stile Pokémon, sezione sopra) i pacchetti isometrici non servono.
-- Non ho trovato in Kenney esagoni isometrici 2D (i pacchetti con "hex" che conosco sono 3D: da verificare prima di contarci).
 - I pacchetti si scaricano come ZIP dalla pagina del pacchetto (link "Download"); i pochi file che servono si copiano nella cartella del progetto.
 
 ## 2. Kitbitz — https://kitbitz.art (CC0)
@@ -81,7 +80,7 @@ Libreria di **2.043 illustrazioni disegnate a mano** (dichiarato: non generate d
 
 ## 3. Tiled — https://www.mapeditor.org (open source)
 
-Editor di mappe a caselle, gratuito. L'editor è sotto **GPL-2.0** (con parti BSD/Apache nel repository); le mappe che si producono sono dell'autore. Gestisce mappe **ortogonali, isometriche ed esagonali** (le tre griglie che ci servono), livelli di caselle e di oggetti, automapping, ed esporta in **TMX** (formato nativo), **JSON**, Lua e altri.
+Editor di mappe a caselle, gratuito. L'editor è sotto **GPL-2.0** (con parti BSD/Apache nel repository); le mappe che si producono sono dell'autore. Gestisce mappe **ortogonali** (quella che ci serve), isometriche ed esagonali, livelli di caselle e di oggetti, automapping, ed esporta in **TMX** (formato nativo), **JSON**, Lua e altri.
 
 - Nel nostro caso le board sono definite nel database e modificate dall'app admin (`admin-web/`), non caricate da file. Tiled servirebbe come **strumento per disegnare** il terreno di una board e poi **importarlo** (un convertitore TMX/JSON → `board_cells` + NPC + oggetti + passaggi). Prima serve il dato "terreno per casella" (vedi vincoli).
 - **Unity**: la pagina non parla di integrazione; i pacchetti di importazione TMX per Unity (per esempio SuperTiled2Unity) sono di terzi e **non li ho verificati**. Il client non usa le Tilemap di Unity (le caselle sono sprite creati a runtime), quindi la strada più semplice sarebbe importare il JSON di Tiled **nel backend**, non in Unity.

@@ -451,7 +451,7 @@ func BoardsChange(worldID string, boards []AdminBoard) Change {
 				return invalid("board %q: le dimensioni devono essere da 1 a %d", name, maxBoardSide)
 			}
 			if _, err := game.NewGrid(b.Grid); err != nil {
-				return invalid("board %q: griglia %q sconosciuta (square o hex)", name, b.Grid)
+				return invalid("board %q: griglia %q sconosciuta (esiste solo square)", name, b.Grid)
 			}
 			if b.ID == "" {
 				_, err = tx.Exec(ctx, `INSERT INTO boards (world_id, name, width, height, grid_kind, position)

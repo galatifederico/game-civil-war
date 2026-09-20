@@ -552,7 +552,7 @@ func TestMultiBoardWorldFromTheDatabase(t *testing.T) {
 	if strings.Join(names, ",") != "Piazza,Bosco,Alveare" {
 		t.Fatalf("boards = %v, want Piazza first (the spawn board), then Bosco and Alveare", names)
 	}
-	if kinds["Piazza"] != "square" || kinds["Bosco"] != "square" || kinds["Alveare"] != "hex" {
+	if kinds["Piazza"] != "square" || kinds["Bosco"] != "square" || kinds["Alveare"] != "square" {
 		t.Fatalf("grids = %v", kinds)
 	}
 	for _, b := range boards {
@@ -564,7 +564,7 @@ func TestMultiBoardWorldFromTheDatabase(t *testing.T) {
 	// The gateways reach the client in the snapshot.
 	token, _ := e.player("a@test.io", "Alice")
 	snap := e.dial(token).expect("snapshot", ofType(protocol.TypeSnapshot))
-	if len(snap.Boards) != 3 || len(snap.Boards[0].Gateways) != 4 || snap.Boards[2].Grid != "hex" {
+	if len(snap.Boards) != 3 || len(snap.Boards[0].Gateways) != 4 || snap.Boards[2].Grid != "square" {
 		t.Fatalf("snapshot boards = %+v", snap.Boards)
 	}
 	if g := snap.Boards[0].Gateways[0]; g.X != 23 || g.ToBoard != snap.Boards[1].ID || g.ToX != 1 {
@@ -572,16 +572,16 @@ func TestMultiBoardWorldFromTheDatabase(t *testing.T) {
 	}
 
 	// A unit that changes board keeps it after the world is reloaded.
-	var npcID, hexID string
+	var npcID, alveareID string
 	if err := e.db.QueryRow(e.ctx, `SELECT id::text FROM units WHERE name = 'Boscaiolo'`).Scan(&npcID); err != nil {
 		t.Fatal(err)
 	}
 	for _, b := range boards {
 		if b.Name == "Alveare" {
-			hexID = b.ID
+			alveareID = b.ID
 		}
 	}
-	if err := e.store.SaveUnit(e.ctx, game.Entity{ID: npcID, BoardID: hexID, X: 5, Y: 5, Health: 100, Strength: 10}); err != nil {
+	if err := e.store.SaveUnit(e.ctx, game.Entity{ID: npcID, BoardID: alveareID, X: 5, Y: 5, Health: 100, Strength: 10}); err != nil {
 		t.Fatal(err)
 	}
 	reloaded, err := e.store.LoadWorld(e.ctx, e.worldID)
@@ -589,7 +589,7 @@ func TestMultiBoardWorldFromTheDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, en := range reloaded.All() {
-		if en.ID == npcID && (en.BoardID != hexID || en.X != 5) {
+		if en.ID == npcID && (en.BoardID != alveareID || en.X != 5) {
 			t.Fatalf("unit reloaded on board %s at %d, want the Alveare", en.BoardID, en.X)
 		}
 	}

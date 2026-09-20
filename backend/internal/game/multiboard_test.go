@@ -5,12 +5,12 @@ import (
 	"time"
 )
 
-// twoBoards: a square board "A" (10x10) and a hex board "B" (8x8), joined at row 5:
+// twoBoards: two square boards, "A" (10x10) and "B" (8x8), joined at row 5:
 // stepping on A(9,5) leads to B(1,5), and stepping on B(0,5) leads back to A(8,5).
 func twoBoards(entities ...*Entity) *World {
 	w := NewWorld("w", "test")
 	w.AddBoard(&Board{ID: "A", Name: "A", Width: 10, Height: 10, Grid: squareGrid{}})
-	w.AddBoard(&Board{ID: "B", Name: "B", Width: 8, Height: 8, Grid: hexGrid{}})
+	w.AddBoard(&Board{ID: "B", Name: "B", Width: 8, Height: 8, Grid: squareGrid{}})
 	w.AddLink(Cell{"A", 9, 5}, Cell{"B", 1, 5})
 	w.AddLink(Cell{"B", 0, 5}, Cell{"A", 8, 5})
 	for _, e := range entities {
@@ -48,7 +48,7 @@ func TestGatewayCarriesAUnitToTheOtherBoard(t *testing.T) {
 		t.Fatalf("cooldown = %v, want %v (two steps at speed 3)", e.ReadyAt.Sub(t0), want)
 	}
 
-	// And back: B(0,5) is one step west of B(1,5), on a hex row.
+	// And back: B(0,5) is one step west of B(1,5).
 	e, err = w.Move("p1", "u", Point{0, 5}, t0.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +104,7 @@ func TestNothingCanBePutOnAGateway(t *testing.T) {
 func TestTeamsNeverStartOnAGateway(t *testing.T) {
 	w := NewWorld("w", "test")
 	w.AddBoard(&Board{ID: "A", Name: "A", Width: 24, Height: 24, Grid: squareGrid{}})
-	w.AddBoard(&Board{ID: "B", Name: "B", Width: 8, Height: 8, Grid: hexGrid{}})
+	w.AddBoard(&Board{ID: "B", Name: "B", Width: 8, Height: 8, Grid: squareGrid{}})
 	for y := 0; y < 24; y++ { // a wall of gateways all around the anchor of the first team
 		for x := 0; x < 10; x++ {
 			w.AddLink(Cell{"A", x, y}, Cell{"B", 1, 1})
@@ -152,25 +152,14 @@ func TestRangeAndVisionStopAtTheBoardEdge(t *testing.T) {
 	}
 }
 
-func TestHexBoardUsesHexDistances(t *testing.T) {
-	// On a hex grid (0,0) and (2,2) are 3 steps apart; on a square grid they would be 2.
-	w := twoBoards(&Entity{ID: "u", OwnerID: "p1", BoardID: "B", Kind: KindMinor, X: 0, Y: 0, Speed: 2, Health: 10, MaxHealth: 10, Vision: 2})
-	if _, err := w.Move("p1", "u", Point{2, 2}, t0); err != ErrTooFar {
-		t.Fatalf("moving 3 hex steps with speed 2: got %v", err)
-	}
-	if _, err := w.Move("p1", "u", Point{1, 2}, t0); err != nil {
-		t.Fatalf("moving 2 hex steps with speed 2: %v", err)
-	}
-}
-
-func TestCreatedUnitsOnHexBoardsLandOnARealNeighbour(t *testing.T) {
+func TestCreatedUnitsLandOnARealNeighbour(t *testing.T) {
 	w := twoBoards(&Entity{ID: "champ", OwnerID: "p1", BoardID: "B", Kind: KindChampion, X: 4, Y: 3, Speed: 3, Health: 200, MaxHealth: 200, Vision: 5})
 	out, err := w.Do("p1", Action{Kind: ActionCreate, UnitID: "champ"}, t0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	u := out.Created[0]
-	if u.BoardID != "B" || (hexGrid{}).Distance(Point{4, 3}, u.Point()) != 1 {
-		t.Fatalf("new unit at %s%v, want a hex neighbour of (4,3) on B", u.BoardID, u.Point())
+	if u.BoardID != "B" || (squareGrid{}).Distance(Point{4, 3}, u.Point()) != 1 {
+		t.Fatalf("new unit at %s%v, want a neighbour of (4,3) on B", u.BoardID, u.Point())
 	}
 }

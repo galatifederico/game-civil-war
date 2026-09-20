@@ -268,12 +268,11 @@ const raceOptions = (withNone) => (withNone ? [['', '(nessuna)']] : []).concat(s
 const LISTS = {
   boards: {
     title: 'Board', path: '/boards', blank: () => ({ id: '', name: 'Nuova board', width: 16, height: 16, grid: 'square' }),
-    help: 'Ogni board è una zona del mondo. Le griglie sono "square" (quadrata) o "hex" (esagonale). Una board non si può cancellare se ci sono pedine o strutture dei giocatori; se la rimpicciolisci, niente deve restare fuori.',
+    help: 'Ogni board è una zona del mondo, a caselle quadrate. Una board non si può cancellare se ci sono pedine o strutture dei giocatori; se la rimpicciolisci, niente deve restare fuori.',
     cols: [
       { key: 'name', label: 'Nome', kind: 'text' },
       { key: 'width', label: 'Larghezza', kind: 'number' },
       { key: 'height', label: 'Altezza', kind: 'number' },
-      { key: 'grid', label: 'Griglia', kind: 'select', options: () => [['square', 'square'], ['hex', 'hex']] },
     ],
   },
   links: {
@@ -459,11 +458,10 @@ function currentBoard() {
   return state.def.boards.find((b) => b.id === mapView.boardId);
 }
 
-// Cell centre on the canvas. Square grids are plain rows; hex grids are "odd-r" (odd rows shifted).
+// Cell centre on the canvas: plain rows and columns.
 function cellCenter(board, x, y) {
   const c = mapView.cell;
-  const shift = board.grid === 'hex' && y % 2 === 1 ? c / 2 : 0;
-  return [x * c + c / 2 + shift, y * c + c / 2];
+  return [x * c + c / 2, y * c + c / 2];
 }
 
 function drawMap() {
@@ -473,7 +471,7 @@ function drawMap() {
   const select = $('mapBoard');
   if (select) select.value = board.id;
   const c = mapView.cell;
-  canvas.width = board.width * c + (board.grid === 'hex' ? c / 2 : 0) + 1;
+  canvas.width = board.width * c + 1;
   canvas.height = board.height * c + 1;
   const ctx = canvas.getContext('2d');
   ctx.strokeStyle = '#262a36';
@@ -509,7 +507,7 @@ function clickMap(e, canvas) {
   const px = (e.clientX - rect.left) * scale;
   const py = (e.clientY - rect.top) * scale;
   const y = Math.floor(py / mapView.cell);
-  const x = Math.floor((px - (board.grid === 'hex' && y % 2 === 1 ? mapView.cell / 2 : 0)) / mapView.cell);
+  const x = Math.floor(px / mapView.cell);
   if (x < 0 || y < 0 || x >= board.width || y >= board.height) return;
   const row = state.draft[sel.list][sel.index];
   if (sel.list === 'links') {

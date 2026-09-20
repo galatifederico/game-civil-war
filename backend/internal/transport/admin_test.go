@@ -206,7 +206,9 @@ func TestAdminBoardsAndPassages(t *testing.T) {
 	d := e.definition(owner)
 
 	// A new board, then a passage to it.
-	boards := append(d.Boards, store.AdminBoard{Name: "Grotta", Width: 8, Height: 8, Grid: "hex"})
+	// Hexagonal boards no longer exist.
+	e.save(owner, "boards", append(d.Boards, store.AdminBoard{Name: "Esagono", Width: 8, Height: 8, Grid: "hex"}), http.StatusBadRequest)
+	boards := append(d.Boards, store.AdminBoard{Name: "Grotta", Width: 8, Height: 8, Grid: "square"})
 	e.save(owner, "boards", boards, http.StatusOK)
 	d = e.definition(owner)
 	var grotta, piazza string
@@ -214,7 +216,7 @@ func TestAdminBoardsAndPassages(t *testing.T) {
 		switch b.Name {
 		case "Grotta":
 			grotta = b.ID
-			if b.Grid != "hex" || b.Width != 8 {
+			if b.Grid != "square" || b.Width != 8 {
 				t.Fatalf("new board = %+v", b)
 			}
 		case "Piazza":
