@@ -25,6 +25,8 @@ the_game/
 
 ## Stato attuale
 
+**Avvio del server in background (2026-09-24):** `make -C backend run` costruisce l'immagine `thegame-backend:dev` (`backend/Dockerfile`, con l'app admin dentro) e avvia il container `thegame-server` **in background** con `--network host`, l'ambiente di `deploy/.env`, e aspetta (fino a 60 s) che `/healthz` risponda; se il container si ferma (per esempio porta occupata) mostra gli ultimi log ed esce con errore. `make stop` ferma il server con `docker stop -t 20` (il server ha il tempo di scrivere su database le ultime modifiche), ferma anche i vecchi container senza nome `go run ./cmd/server` lasciati dalla versione precedente e **verifica che la porta sia libera**. `make restart` = stop + run, con le stesse verifiche. `make logs` segue i log. Nomi e porta si cambiano con `IMAGE=`, `CONTAINER=`, `PORT=`. Provato: avvio, secondo `run` con il server già acceso (rifiutato con un messaggio), restart, stop, stop a server già fermo, e avvio con la porta occupata da un altro processo (errore con i log). Compromesso rispetto a prima: ogni avvio ricostruisce l'immagine (pochi secondi con la cache), invece di `go run` sul sorgente montato.
+
 **Console admin: menu laterale, razze e caratteristiche (2026-09-24):**
 
 - **Menu laterale collassabile** (`«` / `»`; da collassato restano le icone; la scelta si ricorda e sotto i 700 px parte collassato) al posto delle schede in alto. Sezioni: Mondo, Regole, **Caratteristiche**, **Razze**, Compatibilità, Board, Terreno, Passaggi, Obiettivi, NPC, Oggetti, Giocatori.

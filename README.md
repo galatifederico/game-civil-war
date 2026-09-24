@@ -19,7 +19,16 @@ Servono Docker (per Postgres, Redis e per compilare il backend Go) e Unity 6.
 ```bash
 cp deploy/.env.example deploy/.env    # solo la prima volta; cambia JWT_SECRET
 make -C backend up db                 # Postgres + Redis, crea il database the_game
-make -C backend run                   # backend su http://localhost:8090 (Ctrl+C per fermarlo)
+make -C backend run                   # costruisce l'immagine e avvia il backend in background su http://localhost:8090
+```
+
+Il backend gira come container `thegame-server` (immagine `thegame-backend:dev`, costruita da `backend/Dockerfile`).
+`make -C backend run` aspetta che risponda e ti dice se qualcosa non va; poi:
+
+```bash
+make -C backend restart               # ferma, ricostruisce e riavvia (dopo aver cambiato il codice)
+make -C backend stop                  # ferma il server e verifica che la porta sia libera
+make -C backend logs                  # segue i log (Ctrl+C esce, il server resta acceso)
 ```
 
 Poi in Unity Hub: **Add** -> cartella `unity-client/`, apri `Assets/Scenes/Main.unity` e premi Play.
