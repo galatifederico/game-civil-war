@@ -11,7 +11,8 @@ using UnityEngine;
 public class BoardManager : MonoBehaviour
 {
     static readonly Color MyTerritory = new Color(0.3f, 0.85f, 1f);
-    static readonly Color RangeTint = new Color(0.4f, 0.9f, 1f);
+    static readonly Color RangeTint = new Color(0.4f, 0.65f, 1f); // la vista: fin dove arrivano le azioni
+    static readonly Color MoveTint = new Color(1f, 0.9f, 0.3f);   // dove la pedina puo' andare
 
     public static BoardManager Instance { get; private set; }
 
@@ -28,7 +29,7 @@ public class BoardManager : MonoBehaviour
     readonly List<GameObject> tileObjects = new List<GameObject>();
     SpriteRenderer[,] tiles;
     List<SpriteRenderer>[,] decor; // alberi, cespugli, staccionate...: si scuriscono con la nebbia come il suolo
-    bool[,] visibleCells, hasTint, inRange, isGateway;
+    bool[,] visibleCells, hasTint, inRange, canMove, isGateway;
     Color[,] tint;
 
     enum ClickMode { Move, Build, PushItem, Breed }
@@ -112,6 +113,7 @@ public class BoardManager : MonoBehaviour
             Destroy(piece.gameObject);
         }
         RefreshFog(force: false);
+        rangeKey = ""; // gli spostamenti cambiano le caselle libere: si ricalcola l'area di movimento
     }
 
     public void Clear()
@@ -120,6 +122,7 @@ public class BoardManager : MonoBehaviour
         foreach (var p in pieces.Values) Destroy(p.gameObject);
         pieces.Clear();
         DestroyTiles();
+        AreaMap.ClearCache();
         boards.Clear();
         boardOrder.Clear();
         current = null;
@@ -206,6 +209,7 @@ public class BoardManager : MonoBehaviour
         visibleCells = new bool[w, h];
         hasTint = new bool[w, h];
         inRange = new bool[w, h];
+        canMove = new bool[w, h];
         isGateway = new bool[w, h];
         tint = new Color[w, h];
         foreach (var g in current.gateways ?? new GatewayData[0]) isGateway[g.x, g.y] = true;
@@ -265,7 +269,8 @@ public class BoardManager : MonoBehaviour
     {
         var color = Color.white;
         if (hasTint[x, y]) color = Color.Lerp(color, tint[x, y], 0.45f);
-        if (inRange[x, y]) color = Color.Lerp(color, RangeTint, 0.35f);
+        if (inRange[x, y]) color = Color.Lerp(color, RangeTint, 0.4f);
+        if (canMove[x, y]) color = Color.Lerp(color, MoveTint, 0.5f);
         if (!visibleCells[x, y]) color *= 0.45f;
         color.a = 1f;
         tiles[x, y].color = color;
@@ -307,24 +312,51 @@ public class BoardManager : MonoBehaviour
         }
     }
 
-    // La portata (la "vista") della pedina selezionata e' il raggio delle sue azioni: si evidenzia.
+    // Della pedina selezionata si vedono due aree: la portata (la "vista", raggio delle sue azioni,
+    // in azzurro) e dove puo' muoversi (in verde): le caselle entro la sua velocita' che non sono
+    // bloccate dal terreno ne' occupate. Come per il server, i passaggi si possono raggiungere.
     void RefreshRange()
     {
         if (current == null) return;
         bool show = selected != null && !selected.Defeated && selected.Data.board_id == current.id;
-        string key = show ? $"{current.id}:{selected.Data.x}:{selected.Data.y}:{selected.Data.vision}" : "";
+        string key = show ? $"{current.id}:{selected.Data.x}:{selected.Data.y}:{selected.Data.vision}:{selected.Data.speed}" : "";
         if (key == rangeKey) return;
         rangeKey = key;
+
+        HashSet<Vector2Int> occupied = null;
+        if (show)
+        {
+            occupied = new HashSet<Vector2Int>();
+            foreach (var p in pieces.Values)
+                if (p.gameObject.activeSelf && p.Data.board_id == current.id) occupied.Add(new Vector2Int(p.Data.x, p.Data.y));
+        }
         for (int x = 0; x < current.width; x++)
         {
             for (int y = 0; y < current.height; y++)
             {
-                bool now = show && GridMath.Distance(selected.Data.x, selected.Data.y, x, y) <= selected.Data.vision;
-                if (now == inRange[x, y]) continue;
-                inRange[x, y] = now;
+                int dist = show ? GridMath.Distance(selected.Data.x, selected.Data.y, x, y) : int.MaxValue;
+                bool inView = show && dist <= selected.Data.vision;
+                bool reachable = show && dist > 0 && dist <= selected.Data.speed
+                    && (isGateway[x, y] || (!TerrainBlocks(x, y) && !occupied.Contains(new Vector2Int(x, y))));
+                if (inView == inRange[x, y] && reachable == canMove[x, y]) continue;
+                inRange[x, y] = inView;
+                canMove[x, y] = reachable;
                 PaintTile(x, y);
             }
         }
+    }
+
+    bool TerrainBlocks(int x, int y)
+    {
+        switch (TerrainArt.At(current.terrain, x, y))
+        {
+            case TerrainArt.Tree:
+            case TerrainArt.Bush:
+            case TerrainArt.Fence:
+            case TerrainArt.Wall:
+                return true;
+        }
+        return false;
     }
 
     // ---- Camera: tutto lo schermo, con zoom e trascinamento ---------------------------------------
@@ -357,8 +389,13 @@ public class BoardManager : MonoBehaviour
         cam.orthographicSize = size;
 
         var focus = (Vector3)boardBounds.center;
+        // Si guarda il campione, se e' in quest'area; altrimenti una tua pedina; altrimenti il centro.
         var champion = MyChampion();
-        if (!wholeBoard && champion != null && champion.Data.board_id == current.id) focus = champion.transform.position;
+        Piece looked = champion != null && champion.Data.board_id == current.id ? champion : null;
+        if (looked == null)
+            foreach (var u in MyUnits())
+                if (u.Data.board_id == current.id) { looked = u; break; }
+        if (!wholeBoard && looked != null) focus = looked.transform.position;
         float worldPerPixel = 2f * size / Screen.height;
         cam.transform.position = new Vector3(focus.x + rightPixels / 2f * worldPerPixel, focus.y, -10f);
         MoveCamera(Vector3.zero);
@@ -569,6 +606,23 @@ public class BoardManager : MonoBehaviour
             return string.CompareOrdinal(a.Data.name, b.Data.name);
         });
         return list;
+    }
+
+    // Le aree del mondo, nell'ordine del server (la prima e' quella di partenza).
+    public List<BoardData> BoardsInOrder()
+    {
+        var list = new List<BoardData>();
+        foreach (var id in boardOrder) list.Add(boards[id]);
+        return list;
+    }
+
+    // Quante pedine della tua squadra stanno in un'area (anche quelle fuori gioco).
+    public int MyUnitsOn(string boardId)
+    {
+        int n = 0;
+        foreach (var p in pieces.Values)
+            if (p.Mine && p.IsUnit && p.Data.board_id == boardId) n++;
+        return n;
     }
 
     public string BoardName(string boardId) => boards.TryGetValue(boardId ?? "", out var b) ? b.name : "";

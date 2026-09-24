@@ -91,6 +91,12 @@ public class InfoPanel : MonoBehaviour
             }
         }
 
+        if (piece.Movable && !piece.Defeated)
+        {
+            GUILayout.Space(6f);
+            GUILayout.Label("Sulla mappa: azzurro = vista (raggio delle azioni), giallo = dove può muoversi.", labelStyle);
+        }
+
         if (piece.IsUnit)
         {
             GUILayout.Space(8f);
