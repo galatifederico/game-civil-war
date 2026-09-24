@@ -144,10 +144,12 @@ type Race struct {
 	Bonus       UnitStats // the most that can be added on top of Min, per characteristic
 	TraitsMin   map[string]int
 	TraitsBonus map[string]int
+	Bounds      map[string]BoundsOverride // characteristic -> what this race changes of the world's bounds
 }
 
-// roll gives a new unit's characteristics: the race's minimums plus a random part.
-func (r *Race) roll() (UnitStats, map[string]int) {
+// roll gives a new unit's characteristics: the race's minimums plus a random part, kept inside
+// the bounds (bounds says the limits of a characteristic for this race).
+func (r *Race) roll(bounds func(key string) Bounds) (UnitStats, map[string]int) {
 	bonus := func(most int) int {
 		if most <= 0 {
 			return 0
@@ -166,6 +168,13 @@ func (r *Race) roll() (UnitStats, map[string]int) {
 		if _, ok := traits[name]; !ok {
 			traits[name] = bonus(most)
 		}
+	}
+	stats.Speed = bounds("speed").Clamp(stats.Speed)
+	stats.Health = bounds("health").Clamp(stats.Health)
+	stats.Vision = bounds("vision").Clamp(stats.Vision)
+	stats.Strength = bounds("strength").Clamp(stats.Strength)
+	for name, v := range traits {
+		traits[name] = bounds(name).Clamp(v)
 	}
 	return stats, traits
 }
@@ -302,7 +311,7 @@ func (w *World) offspringRace(a, b string) (string, bool) {
 func (w *World) newMinor(ownerID, username, raceID string, at Cell, name string) *Entity {
 	stats, traits := w.Rules.Minor, map[string]int(nil)
 	if r := w.races[raceID]; r != nil {
-		stats, traits = r.roll()
+		stats, traits = r.roll(func(key string) Bounds { return w.BoundsFor(r.ID, key) })
 	} else {
 		raceID = ""
 	}
@@ -601,7 +610,7 @@ func (w *World) PlanTeam(playerID, username, raceID string) ([]*Entity, error) {
 	if r := w.races[raceID]; r != nil && len(r.TraitsMin) > 0 {
 		championTraits = make(map[string]int, len(r.TraitsMin))
 		for name, v := range r.TraitsMin {
-			championTraits[name] = v
+			championTraits[name] = w.BoundsFor(raceID, name).Clamp(v)
 		}
 	}
 	team := make([]*Entity, 0, need)
@@ -609,8 +618,9 @@ func (w *World) PlanTeam(playerID, username, raceID string) ([]*Entity, error) {
 		OwnerID: playerID, BoardID: spawn.ID, Kind: KindChampion, Name: "Champion", RaceID: raceID,
 		Description: fmt.Sprintf("Il campione della squadra di %s: forte, carismatico e convinto di essere indispensabile.", username),
 		X:           free[0].p.X, Y: free[0].p.Y, Traits: championTraits,
-		Speed: w.Rules.Champion.Speed, Health: w.Rules.Champion.Health, MaxHealth: w.Rules.Champion.Health,
-		Vision: w.Rules.Champion.Vision, Strength: w.Rules.Champion.Strength,
+		Speed: w.BoundsFor(raceID, "speed").Clamp(w.Rules.Champion.Speed), Health: w.BoundsFor(raceID, "health").Clamp(w.Rules.Champion.Health),
+		MaxHealth: w.BoundsFor(raceID, "health").Clamp(w.Rules.Champion.Health),
+		Vision:    w.BoundsFor(raceID, "vision").Clamp(w.Rules.Champion.Vision), Strength: w.BoundsFor(raceID, "strength").Clamp(w.Rules.Champion.Strength),
 	})
 	for i := 1; i < need; i++ {
 		team = append(team, w.newMinor(playerID, username, raceID, Cell{spawn.ID, free[i].p.X, free[i].p.Y}, fmt.Sprintf("Pedina %d", i)))

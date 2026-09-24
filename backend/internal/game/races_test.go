@@ -76,7 +76,7 @@ func TestRandomBonusIsInRangeAndActuallyVaries(t *testing.T) {
 	r := &Race{Min: UnitStats{Speed: 2, Health: 100, Vision: 3, Strength: 15}, Bonus: UnitStats{Health: 20}}
 	seen := map[int]bool{}
 	for i := 0; i < 300; i++ {
-		stats, _ := r.roll()
+		stats, _ := r.roll(DefaultRules().BoundsFor)
 		if stats.Health < 100 || stats.Health > 120 || stats.Speed != 2 {
 			t.Fatalf("stats out of range: %+v", stats)
 		}

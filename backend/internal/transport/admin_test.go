@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"thegame/backend/internal/game"
 	"thegame/backend/internal/protocol"
 	"thegame/backend/internal/store"
 )
@@ -467,4 +468,102 @@ func TestAdminAssignsGoals(t *testing.T) {
 	if current != goal.ID {
 		t.Fatalf("the player's goal in the database = %q, want %q", current, goal.ID)
 	}
+}
+
+func TestAdminCharacteristicsAndRaceBounds(t *testing.T) {
+	e := newEnv(t)
+	owner, _ := e.register("owner@test.io", "Owner")
+	d := e.definition(owner)
+
+	byKey := func(items []store.AdminCharacteristic) map[string]store.AdminCharacteristic {
+		m := map[string]store.AdminCharacteristic{}
+		for _, c := range items {
+			m[c.Key] = c
+		}
+		return m
+	}
+	c := byKey(d.Characteristics)
+	if len(d.Characteristics) != 10 || c["speed"].Kind != "base" || c["speed"].Min != 1 || c["speed"].Max != 10 || c["mana"].Kind != "extended" || c["soldi"].Max != 1_000_000 {
+		t.Fatalf("default characteristics = %+v", d.Characteristics)
+	}
+	if d.Characteristics[0].Key != "speed" || d.Characteristics[4].Key != "soldi" {
+		t.Fatalf("base ones come first, then the world's own order: %+v", d.Characteristics)
+	}
+
+	// Change a default, add a characteristic, remove one.
+	var next []store.AdminCharacteristic
+	for _, it := range d.Characteristics {
+		switch it.Key {
+		case "thc":
+			continue // removed
+		case "speed":
+			it.Max = 8
+		}
+		next = append(next, it)
+	}
+	next = append(next, store.AdminCharacteristic{Key: "coraggio", Kind: "extended", Min: 0, Max: 50})
+	e.save(owner, "characteristics", next, http.StatusOK)
+	d = e.definition(owner)
+	c = byKey(d.Characteristics)
+	if c["speed"].Max != 8 || c["coraggio"].Max != 50 || c["thc"].Key != "" || len(d.Characteristics) != 10 {
+		t.Fatalf("after the change: %+v", d.Characteristics)
+	}
+	if !strings.Contains(string(d.Rules), `"speed":{"max":8,"min":1}`) || !strings.Contains(string(d.Rules), `"coraggio"`) {
+		t.Fatalf("the rules store the differences: %s", d.Rules)
+	}
+	for _, r := range d.Races {
+		if _, has := r.TraitsMin["thc"]; has {
+			t.Fatalf("race %s still has the removed characteristic: %v", r.Name, r.TraitsMin)
+		}
+	}
+
+	// Mistakes.
+	drop := func(key string) []store.AdminCharacteristic {
+		var out []store.AdminCharacteristic
+		for _, it := range d.Characteristics {
+			if it.Key != key {
+				out = append(out, it)
+			}
+		}
+		return out
+	}
+	e.save(owner, "characteristics", drop("speed"), http.StatusBadRequest)
+	e.save(owner, "characteristics", append(d.Characteristics, store.AdminCharacteristic{Key: "Bad Name", Kind: "extended", Max: 5}), http.StatusBadRequest)
+	e.save(owner, "characteristics", append(d.Characteristics, store.AdminCharacteristic{Key: "mana", Kind: "extended", Max: 5}), http.StatusBadRequest)
+	e.save(owner, "characteristics", append(d.Characteristics, store.AdminCharacteristic{Key: "forza", Kind: "base", Max: 5}), http.StatusBadRequest)
+	swapped := append([]store.AdminCharacteristic(nil), d.Characteristics...)
+	swapped[0].Min, swapped[0].Max = 9, 3
+	e.save(owner, "characteristics", swapped, http.StatusBadRequest)
+
+	// A race can override the bounds; the champion of a new team follows them.
+	five, three := 5, 3
+	races := d.Races
+	races[0].Bounds = map[string]game.BoundsOverride{"speed": {Min: &five, Max: &five}}
+	e.save(owner, "races", races, http.StatusOK)
+	if got := e.definition(owner).Races[0].Bounds["speed"]; got.Min == nil || *got.Min != 5 {
+		t.Fatalf("race bounds were not saved: %+v", got)
+	}
+	tok, pid := e.player("p@test.io", "Player") // joins with the first race
+	snap := e.dial(tok).expect("snapshot", ofType(protocol.TypeSnapshot))
+	champ, _ := findEntity(snap.Entities, func(en protocol.Entity) bool { return en.Kind == "champion" && en.OwnerID == pid })
+	if champ.Speed != 5 {
+		t.Fatalf("the champion's speed is %d: the race's bounds say 5", champ.Speed)
+	}
+
+	badRaces := func(o map[string]game.BoundsOverride) []store.AdminRace {
+		out := append([]store.AdminRace(nil), e.definition(owner).Races...)
+		out[0].Bounds = o
+		return out
+	}
+	e.save(owner, "races", badRaces(map[string]game.BoundsOverride{"velocity": {Max: &five}}), http.StatusBadRequest)
+	e.save(owner, "races", badRaces(map[string]game.BoundsOverride{"speed": {Min: &five, Max: &three}}), http.StatusBadRequest)
+	// The new default minimum of speed cannot go above what a race allows.
+	next = append([]store.AdminCharacteristic(nil), e.definition(owner).Characteristics...)
+	for i := range next {
+		if next[i].Key == "speed" {
+			next[i].Min, next[i].Max = 6, 9
+		}
+	}
+	e.save(owner, "races", badRaces(map[string]game.BoundsOverride{"speed": {Max: &five}}), http.StatusOK)
+	e.save(owner, "characteristics", next, http.StatusBadRequest)
 }

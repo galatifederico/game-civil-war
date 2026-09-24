@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -87,6 +88,17 @@ type AdminRace struct {
 	BonusStrength int            `json:"bonus_strength"`
 	TraitsMin     map[string]int `json:"traits_min"`
 	TraitsBonus   map[string]int `json:"traits_bonus"`
+	// Bounds are the limits of characteristics this race changes from the world's (absent = none).
+	Bounds map[string]game.BoundsOverride `json:"bounds"`
+}
+
+// AdminCharacteristic is one characteristic of the world with its default bounds. Kind is "base"
+// (speed, health, vision, strength: always there) or "extended" (the world's trait_names).
+type AdminCharacteristic struct {
+	Key  string `json:"key"`
+	Kind string `json:"kind"`
+	Min  int    `json:"min"`
+	Max  int    `json:"max"`
 }
 
 type AdminCompat struct {
@@ -157,25 +169,26 @@ type AdminPlayer struct {
 
 // WorldDefinition is everything the admin can edit about a world, plus who is playing in it.
 type WorldDefinition struct {
-	ID          string          `json:"id"`
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Rules       json.RawMessage `json:"rules"` // only what differs from the defaults
-	Boards      []AdminBoard    `json:"boards"`
-	Links       []AdminLink     `json:"links"`
-	Terrain     []AdminTerrain  `json:"terrain"`
-	Races       []AdminRace     `json:"races"`
-	Compat      []AdminCompat   `json:"compat"`
-	Goals       []AdminGoal     `json:"goals"`
-	NPCs        []AdminNPC      `json:"npcs"`
-	Items       []AdminItem     `json:"items"`
-	Players     []AdminPlayer   `json:"players"`
+	ID              string                `json:"id"`
+	Name            string                `json:"name"`
+	Description     string                `json:"description"`
+	Rules           json.RawMessage       `json:"rules"` // only what differs from the defaults
+	Boards          []AdminBoard          `json:"boards"`
+	Links           []AdminLink           `json:"links"`
+	Terrain         []AdminTerrain        `json:"terrain"`
+	Characteristics []AdminCharacteristic `json:"characteristics"`
+	Races           []AdminRace           `json:"races"`
+	Compat          []AdminCompat         `json:"compat"`
+	Goals           []AdminGoal           `json:"goals"`
+	NPCs            []AdminNPC            `json:"npcs"`
+	Items           []AdminItem           `json:"items"`
+	Players         []AdminPlayer         `json:"players"`
 }
 
 // Definition reads a world for the admin app.
 func (s *Store) Definition(ctx context.Context, id string) (WorldDefinition, error) {
 	d := WorldDefinition{
-		ID: id, Boards: []AdminBoard{}, Links: []AdminLink{}, Terrain: []AdminTerrain{}, Races: []AdminRace{}, Compat: []AdminCompat{},
+		ID: id, Boards: []AdminBoard{}, Links: []AdminLink{}, Terrain: []AdminTerrain{}, Characteristics: []AdminCharacteristic{}, Races: []AdminRace{}, Compat: []AdminCompat{},
 		Goals: []AdminGoal{}, NPCs: []AdminNPC{}, Items: []AdminItem{}, Players: []AdminPlayer{},
 	}
 	err := s.pool.QueryRow(ctx, `SELECT name, description, rules FROM worlds WHERE id = $1::uuid`, id).
@@ -232,6 +245,16 @@ func (s *Store) Definition(ctx context.Context, id string) (WorldDefinition, err
 			d.Terrain = append(d.Terrain, AdminTerrain{BoardID: b.ID, Rows: rows})
 		}
 	}
+	if eff, err := game.ParseRules(d.Rules); err == nil {
+		for _, k := range game.BaseCharacteristics {
+			b := eff.BoundsFor(k)
+			d.Characteristics = append(d.Characteristics, AdminCharacteristic{Key: k, Kind: "base", Min: b.Min, Max: b.Max})
+		}
+		for _, k := range eff.TraitNames {
+			b := eff.BoundsFor(k)
+			d.Characteristics = append(d.Characteristics, AdminCharacteristic{Key: k, Kind: "extended", Min: b.Min, Max: b.Max})
+		}
+	}
 	if err := s.each(ctx, `SELECT l.from_board_id::text, l.from_x, l.from_y, l.to_board_id::text, l.to_x, l.to_y
 		FROM board_links l JOIN boards b ON b.id = l.from_board_id WHERE b.world_id = $1::uuid
 		ORDER BY b.position, l.from_x, l.from_y`, []any{id}, func(rows pgx.Rows) error {
@@ -245,14 +268,17 @@ func (s *Store) Definition(ctx context.Context, id string) (WorldDefinition, err
 		return d, err
 	}
 	if err := s.each(ctx, `SELECT id::text, name, description, speed, health, vision, strength,
-		bonus_speed, bonus_health, bonus_vision, bonus_strength, traits_min, traits_bonus
+		bonus_speed, bonus_health, bonus_vision, bonus_strength, traits_min, traits_bonus, bounds
 		FROM races WHERE world_id = $1::uuid ORDER BY position, name`, []any{id}, func(rows pgx.Rows) error {
 		var r AdminRace
 		if err := rows.Scan(&r.ID, &r.Name, &r.Description, &r.Speed, &r.Health, &r.Vision, &r.Strength,
-			&r.BonusSpeed, &r.BonusHealth, &r.BonusVision, &r.BonusStrength, &r.TraitsMin, &r.TraitsBonus); err != nil {
+			&r.BonusSpeed, &r.BonusHealth, &r.BonusVision, &r.BonusStrength, &r.TraitsMin, &r.TraitsBonus, &r.Bounds); err != nil {
 			return err
 		}
 		r.TraitsMin, r.TraitsBonus = nonNil(r.TraitsMin), nonNil(r.TraitsBonus)
+		if r.Bounds == nil {
+			r.Bounds = map[string]game.BoundsOverride{}
+		}
 		d.Races = append(d.Races, r)
 		return nil
 	}); err != nil {
@@ -358,12 +384,17 @@ func checkTraits(what string, traits map[string]int, names map[string]bool) erro
 	return nil
 }
 
-func traitNames(ctx context.Context, tx pgx.Tx, worldID string) (map[string]bool, error) {
+// worldRules reads the world's rules (the defaults with the stored differences applied).
+func worldRules(ctx context.Context, tx pgx.Tx, worldID string) (game.Rules, error) {
 	var raw []byte
 	if err := tx.QueryRow(ctx, `SELECT rules FROM worlds WHERE id = $1::uuid`, worldID).Scan(&raw); err != nil {
-		return nil, err
+		return game.Rules{}, err
 	}
-	rules, err := game.ParseRules(raw)
+	return game.ParseRules(raw)
+}
+
+func traitNames(ctx context.Context, tx pgx.Tx, worldID string) (map[string]bool, error) {
+	rules, err := worldRules(ctx, tx, worldID)
 	if err != nil {
 		return nil, err
 	}
@@ -607,9 +638,13 @@ func RacesChange(worldID string, races []AdminRace) Change {
 		if len(races) > maxRaces {
 			return invalid("troppe razze (massimo %d)", maxRaces)
 		}
-		traits, err := traitNames(ctx, tx, worldID)
+		rules, err := worldRules(ctx, tx, worldID)
 		if err != nil {
 			return err
+		}
+		traits := map[string]bool{}
+		for _, n := range rules.TraitNames {
+			traits[n] = true
 		}
 		existing, err := existingIDs(ctx, tx, `SELECT id::text FROM races WHERE world_id = $1::uuid`, worldID)
 		if err != nil {
@@ -641,12 +676,19 @@ func RacesChange(worldID string, races []AdminRace) Change {
 				return err
 			}
 			tmin, tbonus := nonNil(r.TraitsMin), nonNil(r.TraitsBonus)
+			if err := checkRaceBounds(rules, name, r.Bounds); err != nil {
+				return err
+			}
+			bounds := r.Bounds
+			if bounds == nil {
+				bounds = map[string]game.BoundsOverride{}
+			}
 			if r.ID == "" {
 				_, err = tx.Exec(ctx, `INSERT INTO races (world_id, name, description, position, speed, health, vision, strength,
-					bonus_speed, bonus_health, bonus_vision, bonus_strength, traits_min, traits_bonus)
-					VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+					bonus_speed, bonus_health, bonus_vision, bonus_strength, traits_min, traits_bonus, bounds)
+					VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
 					worldID, name, r.Description, i, r.Speed, r.Health, r.Vision, r.Strength,
-					r.BonusSpeed, r.BonusHealth, r.BonusVision, r.BonusStrength, tmin, tbonus)
+					r.BonusSpeed, r.BonusHealth, r.BonusVision, r.BonusStrength, tmin, tbonus, bounds)
 			} else {
 				if !existing[r.ID] {
 					return invalid("razza sconosciuta: %s", r.ID)
@@ -654,9 +696,9 @@ func RacesChange(worldID string, races []AdminRace) Change {
 				kept[r.ID] = true
 				_, err = tx.Exec(ctx, `UPDATE races SET name = $2, description = $3, position = $4, speed = $5, health = $6,
 					vision = $7, strength = $8, bonus_speed = $9, bonus_health = $10, bonus_vision = $11, bonus_strength = $12,
-					traits_min = $13, traits_bonus = $14 WHERE id = $1::uuid`,
+					traits_min = $13, traits_bonus = $14, bounds = $15 WHERE id = $1::uuid`,
 					r.ID, name, r.Description, i, r.Speed, r.Health, r.Vision, r.Strength,
-					r.BonusSpeed, r.BonusHealth, r.BonusVision, r.BonusStrength, tmin, tbonus)
+					r.BonusSpeed, r.BonusHealth, r.BonusVision, r.BonusStrength, tmin, tbonus, bounds)
 			}
 			if err != nil {
 				return err
@@ -1038,4 +1080,141 @@ func noBlockingTerrainOnThings(ctx context.Context, tx pgx.Tx, worldID string) e
 		return err
 	}
 	return invalid("la casella (%d, %d) della board %q è occupata (pedina, oggetto, struttura o passaggio) e non può avere un terreno che blocca", x, y, name)
+}
+
+// checkRaceBounds validates what a race changes of the world's bounds: only known
+// characteristics, sensible numbers and, once overlaid on the world's, a minimum that is not
+// above the maximum.
+func checkRaceBounds(rules game.Rules, raceName string, overrides map[string]game.BoundsOverride) error {
+	known := map[string]bool{}
+	for _, k := range game.BaseCharacteristics {
+		known[k] = true
+	}
+	for _, n := range rules.TraitNames {
+		known[n] = true
+	}
+	for key, o := range overrides {
+		if !known[key] {
+			return invalid("razza %q: limiti per una caratteristica sconosciuta (%q)", raceName, key)
+		}
+		b := rules.BoundsFor(key)
+		if o.Min != nil {
+			b.Min = *o.Min
+		}
+		if o.Max != nil {
+			b.Max = *o.Max
+		}
+		if b.Min < 0 || b.Max > 10_000_000 {
+			return invalid("razza %q: i limiti di %q devono stare tra 0 e 10000000", raceName, key)
+		}
+		if b.Min > b.Max {
+			return invalid("razza %q: %q avrebbe il minimo (%d) sopra il massimo (%d)", raceName, key, b.Min, b.Max)
+		}
+		if (key == "speed" || key == "health" || key == "vision") && b.Min < 1 {
+			return invalid("razza %q: il minimo di %q deve essere almeno 1", raceName, key)
+		}
+	}
+	return nil
+}
+
+var characteristicName = regexp.MustCompile(`^[a-z][a-z0-9_]{1,19}$`)
+
+// CharacteristicsChange replaces the world's characteristics: the four base ones keep their
+// place and get new default bounds; the extended ones (the world's trait_names) can be added,
+// reordered, removed and given bounds. Removing one also removes it from the races. The values
+// are stored in the world's rules, as differences from the defaults.
+func CharacteristicsChange(worldID string, items []AdminCharacteristic) Change {
+	return func(ctx context.Context, tx pgx.Tx) error {
+		if len(items) > 40 {
+			return invalid("troppe caratteristiche")
+		}
+		rules, err := worldRules(ctx, tx, worldID)
+		if err != nil {
+			return err
+		}
+		seen := map[string]bool{}
+		var extended []string
+		bounds := map[string]game.Bounds{}
+		for _, it := range items {
+			key := strings.TrimSpace(it.Key)
+			switch it.Kind {
+			case "base":
+				if !game.IsBaseCharacteristic(key) {
+					return invalid("%q non è una caratteristica di base", key)
+				}
+			case "extended":
+				if !characteristicName.MatchString(key) || game.IsBaseCharacteristic(key) {
+					return invalid("caratteristica %q: il nome deve avere da 2 a 20 caratteri (lettere minuscole, cifre e _, iniziando con una lettera) e non essere una di base", key)
+				}
+				extended = append(extended, key)
+			default:
+				return invalid("caratteristica %q: tipo %q sconosciuto (base o extended)", key, it.Kind)
+			}
+			if seen[key] {
+				return invalid("la caratteristica %q compare due volte", key)
+			}
+			seen[key] = true
+			bounds[key] = game.Bounds{Min: it.Min, Max: it.Max}
+		}
+		for _, k := range game.BaseCharacteristics {
+			if !seen[k] {
+				return invalid("le caratteristiche di base non si possono togliere (manca %q)", k)
+			}
+		}
+
+		removed := []string{}
+		for _, old := range rules.TraitNames {
+			if !seen[old] {
+				removed = append(removed, old)
+			}
+		}
+		rules.TraitNames = extended
+		for key, b := range bounds {
+			rules.Characteristics[key] = b
+		}
+		for _, old := range removed {
+			delete(rules.Characteristics, old)
+		}
+		if err := rules.Validate(); err != nil {
+			return invalid("%v", err)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE worlds SET rules = $2::jsonb WHERE id = $1::uuid`, worldID, rules.Diff()); err != nil {
+			return err
+		}
+		for _, old := range removed {
+			if _, err := tx.Exec(ctx, `UPDATE races SET traits_min = traits_min - $2, traits_bonus = traits_bonus - $2, bounds = bounds - $2
+				WHERE world_id = $1::uuid`, worldID, old); err != nil {
+				return err
+			}
+		}
+
+		// The races' own limits must still make sense with the new defaults.
+		rows, err := tx.Query(ctx, `SELECT name, bounds FROM races WHERE world_id = $1::uuid`, worldID)
+		if err != nil {
+			return err
+		}
+		type raceBounds struct {
+			name string
+			b    map[string]game.BoundsOverride
+		}
+		var all []raceBounds
+		for rows.Next() {
+			var rb raceBounds
+			if err := rows.Scan(&rb.name, &rb.b); err != nil {
+				rows.Close()
+				return err
+			}
+			all = append(all, rb)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		for _, rb := range all {
+			if err := checkRaceBounds(rules, rb.name, rb.b); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 }

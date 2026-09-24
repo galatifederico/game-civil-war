@@ -42,6 +42,10 @@ type Rules struct {
 	// the race and change with items; what they do in play is content still to be defined.
 	TraitNames []string `json:"trait_names"`
 
+	// The lowest and highest value of every characteristic (characteristics.go). Each entry is
+	// written whole ({"min": 1, "max": 10}), also in the stored differences.
+	Characteristics map[string]Bounds `json:"characteristics"`
+
 	// How individual goals are handed out: "random" (the system picks one when a player joins and
 	// after each completed one) or "manual" (only the admin assigns them).
 	GoalAssignment string `json:"goal_assignment"`
@@ -97,6 +101,7 @@ func DefaultRules() Rules {
 	r.AFK.Shield = true
 	r.TraitNames = []string{"soldi", "alcol", "alpha", "thc", "beatitudine", "mana"}
 	r.GoalAssignment = "random"
+	r.Characteristics = DefaultCharacteristics()
 	r.Points.Hit = 5
 	r.Points.KillMinor = 25
 	r.Points.KillChampion = 100
@@ -157,6 +162,7 @@ func (r Rules) Validate() error {
 	if r.Creation.BreedingEnabled && r.Creation.BreedRange < 1 {
 		problems = append(problems, errors.New("creation.breed_range must be at least 1 when breeding is enabled"))
 	}
+	problems = append(problems, r.validateCharacteristics()...)
 	if r.GoalAssignment != "random" && r.GoalAssignment != "manual" {
 		problems = append(problems, fmt.Errorf("goal_assignment must be \"random\" or \"manual\", not %q", r.GoalAssignment))
 	}
@@ -208,11 +214,17 @@ func diffJSON(base, changed map[string]any) []byte {
 }
 
 func diffMaps(base, changed map[string]any) map[string]any {
+	return diffMapsAt(base, changed, "")
+}
+
+// diffMapsAt keeps what differs, recursively. The entries of "characteristics" are compared and
+// kept whole, so a stored {"speed": {"min": 1, "max": 8}} never loses its min.
+func diffMapsAt(base, changed map[string]any, path string) map[string]any {
 	out := map[string]any{}
 	for key, v := range changed {
-		if sub, ok := v.(map[string]any); ok {
+		if sub, ok := v.(map[string]any); ok && path != "characteristics" {
 			if baseSub, ok := base[key].(map[string]any); ok {
-				if d := diffMaps(baseSub, sub); len(d) > 0 {
+				if d := diffMapsAt(baseSub, sub, key); len(d) > 0 {
 					out[key] = d
 				}
 				continue
