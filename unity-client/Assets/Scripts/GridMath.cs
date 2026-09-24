@@ -7,7 +7,7 @@ using UnityEngine;
 public static class GridMath
 {
     // I piedi di una pedina stanno un po' sotto il centro della casella, cosi' la testa resta dentro.
-    public const float FeetOffset = -0.32f;
+    public const float FeetOffset = -0.4f;
 
     // Numero di passi tra due caselle (mosse del re).
     public static int Distance(int ax, int ay, int bx, int by) => Mathf.Max(Mathf.Abs(ax - bx), Mathf.Abs(ay - by));

@@ -567,3 +567,44 @@ func TestAdminCharacteristicsAndRaceBounds(t *testing.T) {
 	e.save(owner, "races", badRaces(map[string]game.BoundsOverride{"speed": {Max: &five}}), http.StatusOK)
 	e.save(owner, "characteristics", next, http.StatusBadRequest)
 }
+
+func TestRaceLooksReachTheClient(t *testing.T) {
+	e := newEnv(t)
+	owner, _ := e.register("owner@test.io", "Owner")
+	d := e.definition(owner)
+	if d.Races[0].Look != "salmon" || d.Races[1].Look != "azure" || d.Races[2].Look != "moss" {
+		t.Fatalf("seeded looks = %q %q %q", d.Races[0].Look, d.Races[1].Look, d.Races[2].Look)
+	}
+
+	spriteOf := func(tok, pid, kind string) string {
+		snap := e.dial(tok).expect("snapshot", ofType(protocol.TypeSnapshot))
+		en, ok := findEntity(snap.Entities, func(en protocol.Entity) bool { return en.Kind == kind && en.OwnerID == pid })
+		if !ok {
+			t.Fatalf("no %s in the snapshot", kind)
+		}
+		return en.Sprite
+	}
+	tok, pid := e.player("p@test.io", "Player") // the first race
+	if got := spriteOf(tok, pid, "champion"); got != "champion-salmon" {
+		t.Fatalf("champion sprite = %q", got)
+	}
+	if got := spriteOf(tok, pid, "minor"); got != "minor-salmon" {
+		t.Fatalf("minor sprite = %q", got)
+	}
+
+	races := d.Races
+	races[0].Look = "azure"
+	e.save(owner, "races", races, http.StatusOK)
+	if got := spriteOf(tok, pid, "champion"); got != "champion-azure" {
+		t.Fatalf("after the admin changed the look: %q", got)
+	}
+	races[0].Look = "neon"
+	e.save(owner, "races", races, http.StatusBadRequest)
+
+	// An NPC can be a plain pawn in a look; a role sprite is not an NPC sprite.
+	npcs := e.definition(owner).NPCs
+	npcs[0].Sprite = "minor-moss"
+	e.save(owner, "npcs", npcs, http.StatusOK)
+	npcs[0].Sprite = "champion"
+	e.save(owner, "npcs", npcs, http.StatusBadRequest)
+}

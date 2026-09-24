@@ -114,3 +114,29 @@ func TestUnitsShowEveryCharacteristicEvenAtZero(t *testing.T) {
 		}
 	}
 }
+
+func TestUnitSprites(t *testing.T) {
+	for _, tc := range []struct {
+		kind Kind
+		look string
+		want string
+	}{
+		{KindChampion, "", "champion"}, {KindMinor, "", "minor"},
+		{KindChampion, "azure", "champion-azure"}, {KindMinor, "moss", "minor-moss"},
+	} {
+		if got := UnitSprite(tc.kind, tc.look); got != tc.want {
+			t.Errorf("UnitSprite(%v, %q) = %q, want %q", tc.kind, tc.look, got, tc.want)
+		}
+	}
+	if !ValidLook("") || !ValidLook("violet") || ValidLook("neon") {
+		t.Error("ValidLook: empty and the known looks are valid, others are not")
+	}
+	if !ValidSprite("guard") || !ValidSprite("minor-slate") || ValidSprite("champion") || ValidSprite("dragon") {
+		t.Error("ValidSprite: NPC characters and plain pawns only")
+	}
+	for _, name := range SpriteChoices() {
+		if !ValidSprite(name) {
+			t.Errorf("%q is offered but not valid", name)
+		}
+	}
+}

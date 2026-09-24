@@ -658,7 +658,7 @@ function renderRaceList() {
 }
 
 function newRace() {
-  const r = { id: '', name: 'Nuova razza', description: '', bounds: {}, traits_min: {}, traits_bonus: {} };
+  const r = { id: '', name: 'Nuova razza', description: '', look: '', bounds: {}, traits_min: {}, traits_bonus: {} };
   for (const c of state.def.characteristics) {
     if (c.kind === 'base') { r[c.key] = c.key === 'health' ? 100 : c.key === 'strength' ? 15 : c.key === 'vision' ? 3 : 2; r['bonus_' + c.key] = 0; }
   }
@@ -678,6 +678,10 @@ function renderRaceDetail() {
   const name = el('input', { type: 'text', value: r.name, maxlength: 30, onchange: (e) => { r.name = e.target.value; } });
   const description = el('textarea', { rows: 3, maxlength: 300, onchange: (e) => { r.description = e.target.value; } });
   description.value = r.description || '';
+  // Tutte le razze usano la stessa pedina standard: cambia il colore (il ruolo aggiunge il resto, per esempio la corona del campione).
+  const look = el('select', { onchange: (e) => { r.look = e.target.value; } },
+    el('option', { value: '' }, '(predefinito: salmone)'), ...state.def.looks.map((l) => el('option', { value: l }, l)));
+  look.value = r.look || '';
 
   const setStart = (c, n) => {
     if (c.kind === 'base') r[c.key] = n ?? 0;
@@ -713,7 +717,8 @@ function renderRaceDetail() {
   return [
     el('div', { class: 'crumb' }, backButton('Razze', () => { state.view = null; notice(''); renderPanel(); }), el('h2', {}, isNew ? 'Nuova razza' : r.name)),
     el('div', { class: 'card', style: 'display:flex;flex-direction:column;gap:14px' },
-      el('div', { class: 'grid2' }, el('label', {}, 'Nome', name), el('label', {}, 'Descrizione', description)),
+      el('div', { class: 'grid2' }, el('label', {}, 'Nome', name), el('label', {}, 'Descrizione', description),
+        el('label', {}, 'Aspetto (colore della pedina)', look)),
       el('h3', { style: 'margin:0' }, 'Caratteristiche'),
       el('p', { class: 'muted', style: 'margin:0' }, 'Una pedina nasce con il valore iniziale più un numero a caso da 0 al bonus. I limiti lasciati vuoti (bordo tratteggiato, valore in grigio) sono quelli del mondo: scrivi un numero per cambiarli solo per questa razza.'),
       el('div', { class: 'tablewrap' }, el('table', { class: 'list' },

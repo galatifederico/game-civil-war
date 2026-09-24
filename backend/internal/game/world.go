@@ -145,6 +145,7 @@ type Race struct {
 	TraitsMin   map[string]int
 	TraitsBonus map[string]int
 	Bounds      map[string]BoundsOverride // characteristic -> what this race changes of the world's bounds
+	Look        string                    // the pawn's colour (Looks); "" = the default
 }
 
 // roll gives a new unit's characteristics: the race's minimums plus a random part, kept inside

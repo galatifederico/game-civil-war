@@ -36,7 +36,7 @@ type Entity struct {
 	RaceID       string  `json:"race_id"`
 	Race         string  `json:"race"`             // the race's name, empty in worlds without races
 	Icon         string  `json:"icon,omitempty"`   // items only: which icon to draw (game.ItemIcons)
-	Sprite       string  `json:"sprite,omitempty"` // NPCs only: which sprite to draw (game.SpriteNames)
+	Sprite       string  `json:"sprite,omitempty"` // which sprite to draw: an NPC's own, or a unit's role in the look of its race (game.UnitSprite)
 	Traits       []Trait `json:"traits,omitempty"`
 	Kind         string  `json:"kind"`
 	OwnerID      string  `json:"owner_id"`

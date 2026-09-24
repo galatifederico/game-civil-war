@@ -28,7 +28,7 @@ public static class PixelArt
 
     public static Sprite Shadow => shadow ??= BuildEllipse(12, 5, false, new Color(0f, 0f, 0f, 0.35f));
     // La base colorata sotto i piedi: dice a quale squadra appartiene una pedina.
-    public static Sprite TeamBase => teamBase ??= BuildEllipse(14, 6, false, Color.white);
+    public static Sprite TeamBase => teamBase ??= BuildEllipse(16, 7, false, Color.white);
     public static Sprite Ring => ring ??= BuildEllipse(16, 8, true, new Color(1f, 0.92f, 0.25f, 1f));
     public static Sprite Portal => portal ??= BuildEllipse(14, 7, true, new Color(0.85f, 0.55f, 1f, 1f));
 

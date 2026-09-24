@@ -175,12 +175,12 @@ func (s *Store) LoadWorld(ctx context.Context, id string) (*game.World, error) {
 	}
 
 	err = s.each(ctx, `SELECT id::text, name, description, speed, health, vision, strength,
-		bonus_speed, bonus_health, bonus_vision, bonus_strength, traits_min, traits_bonus, bounds
+		bonus_speed, bonus_health, bonus_vision, bonus_strength, traits_min, traits_bonus, bounds, look
 		FROM races WHERE world_id = $1::uuid ORDER BY position, name`,
 		[]any{id}, func(rows pgx.Rows) error {
 			r := &game.Race{}
 			if err := rows.Scan(&r.ID, &r.Name, &r.Description, &r.Min.Speed, &r.Min.Health, &r.Min.Vision, &r.Min.Strength,
-				&r.Bonus.Speed, &r.Bonus.Health, &r.Bonus.Vision, &r.Bonus.Strength, &r.TraitsMin, &r.TraitsBonus, &r.Bounds); err != nil {
+				&r.Bonus.Speed, &r.Bonus.Health, &r.Bonus.Vision, &r.Bonus.Strength, &r.TraitsMin, &r.TraitsBonus, &r.Bounds, &r.Look); err != nil {
 				return err
 			}
 			world.AddRace(r)

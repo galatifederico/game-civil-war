@@ -90,6 +90,7 @@ type AdminRace struct {
 	TraitsBonus   map[string]int `json:"traits_bonus"`
 	// Bounds are the limits of characteristics this race changes from the world's (absent = none).
 	Bounds map[string]game.BoundsOverride `json:"bounds"`
+	Look   string                         `json:"look"` // the pawn's colour (game.Looks); "" = default
 }
 
 // AdminCharacteristic is one characteristic of the world with its default bounds. Kind is "base"
@@ -268,11 +269,11 @@ func (s *Store) Definition(ctx context.Context, id string) (WorldDefinition, err
 		return d, err
 	}
 	if err := s.each(ctx, `SELECT id::text, name, description, speed, health, vision, strength,
-		bonus_speed, bonus_health, bonus_vision, bonus_strength, traits_min, traits_bonus, bounds
+		bonus_speed, bonus_health, bonus_vision, bonus_strength, traits_min, traits_bonus, bounds, look
 		FROM races WHERE world_id = $1::uuid ORDER BY position, name`, []any{id}, func(rows pgx.Rows) error {
 		var r AdminRace
 		if err := rows.Scan(&r.ID, &r.Name, &r.Description, &r.Speed, &r.Health, &r.Vision, &r.Strength,
-			&r.BonusSpeed, &r.BonusHealth, &r.BonusVision, &r.BonusStrength, &r.TraitsMin, &r.TraitsBonus, &r.Bounds); err != nil {
+			&r.BonusSpeed, &r.BonusHealth, &r.BonusVision, &r.BonusStrength, &r.TraitsMin, &r.TraitsBonus, &r.Bounds, &r.Look); err != nil {
 			return err
 		}
 		r.TraitsMin, r.TraitsBonus = nonNil(r.TraitsMin), nonNil(r.TraitsBonus)
@@ -679,16 +680,19 @@ func RacesChange(worldID string, races []AdminRace) Change {
 			if err := checkRaceBounds(rules, name, r.Bounds); err != nil {
 				return err
 			}
+			if !game.ValidLook(r.Look) {
+				return invalid("razza %q: aspetto %q sconosciuto", name, r.Look)
+			}
 			bounds := r.Bounds
 			if bounds == nil {
 				bounds = map[string]game.BoundsOverride{}
 			}
 			if r.ID == "" {
 				_, err = tx.Exec(ctx, `INSERT INTO races (world_id, name, description, position, speed, health, vision, strength,
-					bonus_speed, bonus_health, bonus_vision, bonus_strength, traits_min, traits_bonus, bounds)
-					VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+					bonus_speed, bonus_health, bonus_vision, bonus_strength, traits_min, traits_bonus, bounds, look)
+					VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
 					worldID, name, r.Description, i, r.Speed, r.Health, r.Vision, r.Strength,
-					r.BonusSpeed, r.BonusHealth, r.BonusVision, r.BonusStrength, tmin, tbonus, bounds)
+					r.BonusSpeed, r.BonusHealth, r.BonusVision, r.BonusStrength, tmin, tbonus, bounds, r.Look)
 			} else {
 				if !existing[r.ID] {
 					return invalid("razza sconosciuta: %s", r.ID)
@@ -696,9 +700,9 @@ func RacesChange(worldID string, races []AdminRace) Change {
 				kept[r.ID] = true
 				_, err = tx.Exec(ctx, `UPDATE races SET name = $2, description = $3, position = $4, speed = $5, health = $6,
 					vision = $7, strength = $8, bonus_speed = $9, bonus_health = $10, bonus_vision = $11, bonus_strength = $12,
-					traits_min = $13, traits_bonus = $14, bounds = $15 WHERE id = $1::uuid`,
+					traits_min = $13, traits_bonus = $14, bounds = $15, look = $16 WHERE id = $1::uuid`,
 					r.ID, name, r.Description, i, r.Speed, r.Health, r.Vision, r.Strength,
-					r.BonusSpeed, r.BonusHealth, r.BonusVision, r.BonusStrength, tmin, tbonus, bounds)
+					r.BonusSpeed, r.BonusHealth, r.BonusVision, r.BonusStrength, tmin, tbonus, bounds, r.Look)
 			}
 			if err != nil {
 				return err

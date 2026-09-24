@@ -2,11 +2,14 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-// Gli sprite dei personaggi (campione, pedine, NPC): originali, generati con Pixellab (vista
-// dall'alto 3/4, 4 direzioni, ~20 px di altezza). Stanno in un'unica tavola letta a runtime da
-// Resources/Art/characters.bytes (un PNG rinominato) con la descrizione in characters-layout.json:
-// per ogni personaggio una riga di celle 28x28 con 4 pose ferme (sud, est, nord, ovest) e, se
-// cammina, 4 fotogrammi per direzione. Il nome dello sprite arriva dal server (game.SpriteNames).
+// Gli sprite dei personaggi. C'e' una sola pedina standard (una creatura tonda e paffuta, generata
+// con Pixellab a partire da img/pawn.png); tutte le altre sono quella pedina con qualcosa di
+// cambiato: la razza le da' un colore, il ruolo aggiunge un accessorio (il campione ha la corona),
+// gli NPC hanno colori e copricapo loro. Le varianti si costruiscono con tools/sprites/build_characters.py.
+// Stanno in un'unica tavola letta a runtime da Resources/Art/characters.bytes (un PNG rinominato)
+// con la descrizione in characters-layout.json: per ogni variante una riga di celle con 4 pose
+// ferme (sud, est, nord, ovest) e, se cammina, alcuni fotogrammi per direzione. Il nome della
+// variante arriva dal server (game.UnitSprite, game.SpriteChoices).
 public static class CharacterSprites
 {
     [Serializable]
@@ -25,6 +28,9 @@ public static class CharacterSprites
         public int walkFrames;
         public Entry[] characters;
     }
+
+    // Un'unita' di scena e' una casella (16 px di terreno): la pedina, larga 28 px, la riempie.
+    public const int PixelsPerUnit = 28;
 
     // Sud, est, nord, ovest: l'ordine delle celle nella tavola.
     public const int South = 0, East = 1, North = 2, West = 3;
@@ -51,16 +57,20 @@ public static class CharacterSprites
         return true;
     }
 
-    // Quale sprite disegna una entita': quello scelto dal server per un NPC, altrimenti quello del suo ruolo.
+    // Quale sprite disegna una entita': quello che dice il server (la variante della razza e del ruolo
+    // per le pedine, lo sprite scelto per un NPC); se la tavola non lo ha, quello del suo ruolo.
     public static string NameFor(EntityData e)
     {
+        string role;
         switch (e.kind)
         {
-            case Kinds.Champion: return "champion";
-            case Kinds.Minor: return "minor";
-            case Kinds.Npc: return string.IsNullOrEmpty(e.sprite) ? "wanderer" : e.sprite;
+            case Kinds.Champion: role = "champion"; break;
+            case Kinds.Minor: role = "minor"; break;
+            case Kinds.Npc: role = "wanderer"; break;
             default: return null;
         }
+        if (!string.IsNullOrEmpty(e.sprite) && Has(e.sprite)) return e.sprite;
+        return role;
     }
 
     static Entry Find(string name)
@@ -97,6 +107,6 @@ public static class CharacterSprites
         var rect = new Rect(column * layout.cell, texture.height - (entry.row + 1) * layout.cell, layout.cell, layout.cell);
         // Il perno e' ai piedi (la riga dei piedi e' nella descrizione), cosi' la pedina sta sulla casella.
         var pivot = new Vector2(0.5f, (layout.cell - layout.feet) / (float)layout.cell);
-        return sprites[key] = Sprite.Create(texture, rect, pivot, PixelArt.PixelsPerUnit);
+        return sprites[key] = Sprite.Create(texture, rect, pivot, PixelsPerUnit);
     }
 }
