@@ -8,6 +8,7 @@ const $ = (id) => document.getElementById(id);
 const TOKEN_KEY = 'thegame.admin.token';
 const WORLD_KEY = 'thegame.admin.world';
 const USER_KEY = 'thegame.admin.user';
+const SIDE_KEY = 'thegame.admin.sideCollapsed';
 
 const state = {
   token: null,
@@ -19,6 +20,7 @@ const state = {
   rulesDraft: null,
   tab: 'world',
   selected: null, // {list, index}: the row the map places
+  view: null,     // a detail page inside a section: {type: 'race'|'char', id|key, draft}
 };
 
 // --- helpers ---
@@ -145,27 +147,42 @@ async function loadWorld() {
 // --- tabs ---
 
 const TABS = [
-  ['world', 'Mondo'],
-  ['rules', 'Regole'],
-  ['boards', 'Board'],
-  ['terrain', 'Terreno'],
-  ['links', 'Passaggi'],
-  ['races', 'Razze'],
-  ['compat', 'Compatibilità'],
-  ['goals', 'Obiettivi'],
-  ['npcs', 'NPC'],
-  ['items', 'Oggetti'],
-  ['players', 'Giocatori'],
+  ['world', 'Mondo', '◉'],
+  ['rules', 'Regole', '⚙'],
+  ['characteristics', 'Caratteristiche', '≡'],
+  ['races', 'Razze', '☺'],
+  ['compat', 'Compatibilità', '⚭'],
+  ['boards', 'Board', '▦'],
+  ['terrain', 'Terreno', '▤'],
+  ['links', 'Passaggi', '⇄'],
+  ['goals', 'Obiettivi', '★'],
+  ['npcs', 'NPC', '☻'],
+  ['items', 'Oggetti', '◆'],
+  ['players', 'Giocatori', '♟'],
 ];
 
 function renderTabs() {
-  $('tabs').replaceChildren(...TABS.map(([id, label]) =>
-    el('button', { class: id === state.tab ? 'active' : '', onclick: () => { state.tab = id; state.selected = null; notice(''); renderTabs(); renderPanel(); } }, label)));
+  $('tabs').replaceChildren(...TABS.map(([id, label, icon]) =>
+    el('button', {
+      class: id === state.tab ? 'active' : '', title: label,
+      onclick: () => { state.tab = id; state.view = null; state.selected = null; notice(''); renderTabs(); renderPanel(); },
+    }, el('span', { class: 'ico' }, icon), el('span', { class: 'label' }, label))));
+}
+
+// Il menu laterale si comprime (resta solo l'icona di ogni sezione); la scelta si ricorda.
+function setSideCollapsed(collapsed) {
+  $('side').classList.toggle('collapsed', collapsed);
+  $('sideToggle').textContent = collapsed ? '»' : '«';
+  try { localStorage.setItem(SIDE_KEY, collapsed ? '1' : '0'); } catch (_) { /* ignore */ }
 }
 
 function renderPanel() {
   const panel = $('panel');
-  const renderer = { world: renderWorld, rules: renderRules, players: renderPlayers, terrain: renderTerrain }[state.tab];
+  const renderer = {
+    world: renderWorld, rules: renderRules, players: renderPlayers, terrain: renderTerrain,
+    races: () => (state.view && state.view.type === 'race' ? renderRaceDetail() : renderRaceList()),
+    characteristics: () => (state.view && state.view.type === 'char' ? renderCharDetail() : renderCharList()),
+  }[state.tab];
   panel.replaceChildren(...(renderer ? renderer() : [renderList(state.tab)]));
   drawMap(); // no-op unless this tab has a map
   drawTerrain(); // same for the terrain painter
@@ -216,6 +233,7 @@ function renderRules() {
   const top = el('div', {});
   const build = (obj, base, path, container) => {
     for (const [key, value] of Object.entries(obj)) {
+      if (path.length === 0 && (key === 'trait_names' || key === 'characteristics')) continue; // si gestiscono in Caratteristiche
       const full = path.concat(key);
       const label = full.join('.');
       if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
@@ -252,7 +270,7 @@ function renderRules() {
   // The plain values come first, then the groups.
   return [
     el('h2', {}, 'Regole del mondo'),
-    el('p', { class: 'muted' }, 'Le caselle con il bordo giallo differiscono dai valori predefiniti. Si salvano solo le differenze: se un giorno cambia un valore predefinito, i mondi che non lo hanno modificato lo seguono.'),
+    el('p', { class: 'muted' }, 'I nomi delle caratteristiche estese e i loro limiti si modificano nella sezione Caratteristiche. Le caselle con il bordo giallo differiscono dai valori predefiniti. Si salvano solo le differenze: se un giorno cambia un valore predefinito, i mondi che non lo hanno modificato lo seguono.'),
     el('div', { class: 'rules' }, el('fieldset', {}, el('legend', {}, 'generali'), top), ...groups),
     el('div', { class: 'actions' },
       el('button', { onclick: () => save('/rules', state.rulesDraft) }, 'Salva regole'),
@@ -288,20 +306,6 @@ const LISTS = {
       { key: 'to_board', label: 'A board', kind: 'select', options: boardOptions },
       { key: 'to_x', label: 'x', kind: 'number' },
       { key: 'to_y', label: 'y', kind: 'number' },
-    ],
-  },
-  races: {
-    title: 'Razze', path: '/races', blank: () => ({ id: '', name: 'Nuova razza', description: '', speed: 2, health: 100, vision: 3, strength: 15, bonus_speed: 0, bonus_health: 0, bonus_vision: 0, bonus_strength: 0, traits_min: {}, traits_bonus: {} }),
-    help: 'Una pedina di questa razza nasce con almeno i valori "min" più un numero a caso da 0 al "bonus". Le caratteristiche estese si scrivono nome=valore (i nomi validi sono quelli di trait_names nelle regole). Una razza usata da pedine o giocatori non si può cancellare.',
-    cols: [
-      { key: 'name', label: 'Nome', kind: 'text' },
-      { key: 'description', label: 'Descrizione', kind: 'area' },
-      { key: 'speed', label: 'Velocità', kind: 'number' }, { key: 'bonus_speed', label: '+ casuale', kind: 'number' },
-      { key: 'health', label: 'Vita', kind: 'number' }, { key: 'bonus_health', label: '+ casuale', kind: 'number' },
-      { key: 'vision', label: 'Vista', kind: 'number' }, { key: 'bonus_vision', label: '+ casuale', kind: 'number' },
-      { key: 'strength', label: 'Forza', kind: 'number' }, { key: 'bonus_strength', label: '+ casuale', kind: 'number' },
-      { key: 'traits_min', label: 'Caratteristiche min', kind: 'traits' },
-      { key: 'traits_bonus', label: 'Caratteristiche +casuale', kind: 'traits' },
     ],
   },
   compat: {
@@ -522,6 +526,220 @@ function clickMap(e, canvas) {
   renderPanel();
 }
 
+// --- caratteristiche e razze ---
+
+const CHAR_LABELS = { speed: 'Velocità', health: 'Vita', vision: 'Vista', strength: 'Forza' };
+const charLabel = (c) => CHAR_LABELS[c.key] || c.key;
+
+const raceStart = (race, c) => (c.kind === 'base' ? race[c.key] : (race.traits_min || {})[c.key] || 0);
+const raceBonus = (race, c) => (c.kind === 'base' ? race['bonus_' + c.key] : (race.traits_bonus || {})[c.key] || 0);
+
+// I limiti di una caratteristica per una razza: quelli del mondo, con quello che la razza cambia.
+function effectiveBounds(race, c) {
+  const o = (race.bounds || {})[c.key] || {};
+  return { min: o.min ?? c.min, max: o.max ?? c.max, custom: o.min != null || o.max != null };
+}
+
+const backButton = (label, onclick) => el('button', { class: 'ghost', onclick }, '← ' + label);
+
+function numberInput(value, onchange, opts = {}) {
+  const i = el('input', { type: 'number', value: value ?? '', placeholder: opts.placeholder ?? '', onchange: (e) => onchange(e.target.value === '' ? null : Number(e.target.value)) });
+  return i;
+}
+
+// -- caratteristiche: elenco
+
+function renderCharList() {
+  const rows = state.def.characteristics.map((c) => {
+    const overriding = state.def.races.filter((r) => (r.bounds || {})[c.key]).length;
+    return el('tr', {},
+      el('td', {}, el('strong', {}, charLabel(c)), CHAR_LABELS[c.key] ? el('span', { class: 'muted' }, '  (' + c.key + ')') : ''),
+      el('td', {}, c.kind === 'base' ? 'di base' : 'estesa'),
+      el('td', { class: 'num' }, c.min), el('td', { class: 'num' }, c.max),
+      el('td', {}, overriding ? overriding + (overriding === 1 ? ' razza' : ' razze') : '—'),
+      el('td', {}, el('button', { class: 'ghost', onclick: () => { state.view = { type: 'char', key: c.key, draft: clone(c) }; renderPanel(); } }, 'Apri')));
+  });
+  return [
+    el('h2', {}, 'Caratteristiche'),
+    el('p', { class: 'muted' }, 'I valori che ha ogni pedina. Le quattro di base (velocità, vita, vista, forza) ci sono sempre; quelle estese (soldi, alcol...) le definisce il mondo. Ognuna ha un minimo e un massimo predefiniti, che ogni razza può cambiare: i valori iniziali e gli effetti degli oggetti restano dentro questi limiti.'),
+    el('div', { class: 'tablewrap' }, el('table', { class: 'list' },
+      el('thead', {}, el('tr', {}, ...['Caratteristica', 'Tipo', 'Minimo', 'Massimo', 'Limiti propri di', ''].map((h) => el('th', {}, h)))),
+      el('tbody', {}, rows))),
+    el('div', { class: 'actions' },
+      el('button', { class: 'ghost', onclick: () => { state.view = { type: 'char', key: '', draft: { key: '', kind: 'extended', min: 0, max: 100 } }; renderPanel(); } }, '+ Nuova caratteristica')),
+  ];
+}
+
+// -- caratteristiche: dettaglio
+
+function renderCharDetail() {
+  const v = state.view;
+  const d = v.draft;
+  const isNew = v.key === '';
+  const keyInput = el('input', { type: 'text', value: d.key, maxlength: 20, placeholder: 'es. coraggio', disabled: !isNew, onchange: (e) => { d.key = e.target.value.trim(); } });
+  const raceRows = state.def.races.map((r) => {
+    if (isNew) return null;
+    const b = effectiveBounds(r, d);
+    return el('tr', {},
+      el('td', {}, r.name), el('td', { class: 'num' }, b.min), el('td', { class: 'num' }, b.max),
+      el('td', {}, b.custom ? el('span', { class: 'warn' }, 'personalizzato') : el('span', { class: 'muted' }, 'come il mondo')),
+      el('td', {}, el('button', { class: 'ghost', onclick: () => { state.tab = 'races'; state.view = { type: 'race', id: r.id, draft: clone(r) }; renderTabs(); renderPanel(); } }, 'Apri razza')));
+  }).filter(Boolean);
+
+  const actions = [
+    el('button', { onclick: () => saveChar(isNew) }, isNew ? 'Aggiungi' : 'Salva'),
+  ];
+  if (!isNew && d.kind === 'extended') {
+    actions.push(el('button', { class: 'danger', onclick: () => deleteChar(d) }, 'Elimina'));
+  }
+  return [
+    el('div', { class: 'crumb' }, backButton('Caratteristiche', () => { state.view = null; notice(''); renderPanel(); }),
+      el('h2', {}, isNew ? 'Nuova caratteristica' : charLabel(d))),
+    el('div', { class: 'card', style: 'max-width:760px;display:flex;flex-direction:column;gap:14px' },
+      el('div', { class: 'grid2' },
+        el('label', {}, 'Nome (minuscolo, senza spazi)', keyInput),
+        el('label', {}, 'Tipo', el('input', { type: 'text', value: d.kind === 'base' ? 'di base (sempre presente)' : 'estesa', disabled: true }))),
+      el('div', { class: 'grid2' },
+        el('label', {}, 'Minimo predefinito', numberInput(d.min, (n) => { d.min = n ?? 0; })),
+        el('label', {}, 'Massimo predefinito', numberInput(d.max, (n) => { d.max = n ?? 0; }))),
+      el('p', { class: 'muted' }, 'Ogni razza può avere un minimo e un massimo suoi: si cambiano nella scheda della razza. Rinominare una caratteristica estesa vuol dire crearne una nuova ed eliminare la vecchia.'),
+      el('div', { class: 'actions' }, ...actions)),
+    isNew ? null : el('h3', {}, 'Limiti per razza'),
+    isNew ? null : el('div', { class: 'tablewrap' }, el('table', { class: 'list' },
+      el('thead', {}, el('tr', {}, ...['Razza', 'Minimo', 'Massimo', '', ''].map((h) => el('th', {}, h)))),
+      el('tbody', {}, raceRows))),
+  ];
+}
+
+async function saveChar(isNew) {
+  const d = state.view.draft;
+  if (isNew && !/^[a-z][a-z0-9_]{1,19}$/.test(d.key)) {
+    notice('Il nome deve avere da 2 a 20 caratteri: lettere minuscole, cifre e _, iniziando con una lettera.', 'bad');
+    return;
+  }
+  const items = clone(state.def.characteristics);
+  if (isNew) items.push({ key: d.key, kind: 'extended', min: d.min, max: d.max });
+  else items.splice(items.findIndex((c) => c.key === state.view.key), 1, { key: d.key, kind: d.kind, min: d.min, max: d.max });
+  if (await save('/characteristics', { items })) {
+    state.view = isNew ? null : { type: 'char', key: d.key, draft: clone(state.def.characteristics.find((c) => c.key === d.key)) };
+    renderPanel();
+  }
+}
+
+async function deleteChar(d) {
+  if (!confirm('Eliminare la caratteristica "' + d.key + '"? Viene tolta anche dalle razze (i valori già presi dalle pedine restano, ma non si vedono più).')) return;
+  const items = clone(state.def.characteristics).filter((c) => c.key !== d.key);
+  if (await save('/characteristics', { items })) { state.view = null; renderPanel(); }
+}
+
+// -- razze: elenco
+
+function renderRaceList() {
+  const range = (min, bonus) => (bonus > 0 ? min + '–' + (min + bonus) : String(min));
+  const rows = state.def.races.map((r) => {
+    const custom = Object.keys(r.bounds || {}).length;
+    return el('tr', {},
+      el('td', {}, el('strong', {}, r.name)),
+      el('td', { class: 'muted' }, (r.description || '').length > 70 ? r.description.slice(0, 70) + '…' : r.description),
+      el('td', { class: 'num' }, range(r.speed, r.bonus_speed)), el('td', { class: 'num' }, range(r.health, r.bonus_health)),
+      el('td', { class: 'num' }, range(r.vision, r.bonus_vision)), el('td', { class: 'num' }, range(r.strength, r.bonus_strength)),
+      el('td', {}, custom ? custom + (custom === 1 ? ' limite' : ' limiti') : '—'),
+      el('td', {}, el('button', { class: 'ghost', onclick: () => { state.view = { type: 'race', id: r.id, draft: clone(r) }; renderPanel(); } }, 'Apri')));
+  });
+  return [
+    el('h2', {}, 'Razze (' + state.def.races.length + ')'),
+    el('p', { class: 'muted' }, 'Una razza dà alle sue pedine i valori iniziali (un minimo più un bonus casuale) e può cambiare i limiti delle caratteristiche. Nella tabella: velocità, vita, vista e forza iniziali (minimo o intervallo). Apri una razza per vederla e modificarla.'),
+    el('div', { class: 'tablewrap' }, el('table', { class: 'list' },
+      el('thead', {}, el('tr', {}, ...['Razza', 'Descrizione', 'Velocità', 'Vita', 'Vista', 'Forza', 'Limiti propri', ''].map((h) => el('th', {}, h)))),
+      el('tbody', {}, rows))),
+    el('div', { class: 'actions' },
+      el('button', { class: 'ghost', onclick: () => { state.view = { type: 'race', id: '', draft: newRace() }; renderPanel(); } }, '+ Nuova razza')),
+  ];
+}
+
+function newRace() {
+  const r = { id: '', name: 'Nuova razza', description: '', bounds: {}, traits_min: {}, traits_bonus: {} };
+  for (const c of state.def.characteristics) {
+    if (c.kind === 'base') { r[c.key] = c.key === 'health' ? 100 : c.key === 'strength' ? 15 : c.key === 'vision' ? 3 : 2; r['bonus_' + c.key] = 0; }
+  }
+  return r;
+}
+
+// -- razze: dettaglio
+
+function renderRaceDetail() {
+  const v = state.view;
+  const r = v.draft;
+  r.bounds = r.bounds || {};
+  r.traits_min = r.traits_min || {};
+  r.traits_bonus = r.traits_bonus || {};
+  const isNew = v.id === '';
+
+  const name = el('input', { type: 'text', value: r.name, maxlength: 30, onchange: (e) => { r.name = e.target.value; } });
+  const description = el('textarea', { rows: 3, maxlength: 300, onchange: (e) => { r.description = e.target.value; } });
+  description.value = r.description || '';
+
+  const setStart = (c, n) => {
+    if (c.kind === 'base') r[c.key] = n ?? 0;
+    else if (n) r.traits_min[c.key] = n; else delete r.traits_min[c.key];
+  };
+  const setBonus = (c, n) => {
+    if (c.kind === 'base') r['bonus_' + c.key] = n ?? 0;
+    else if (n) r.traits_bonus[c.key] = n; else delete r.traits_bonus[c.key];
+  };
+  const setLimit = (c, which, n) => {
+    const o = r.bounds[c.key] || {};
+    if (n === null) delete o[which]; else o[which] = n;
+    if (o.min == null && o.max == null) delete r.bounds[c.key]; else r.bounds[c.key] = o;
+    renderPanel();
+  };
+
+  const rows = state.def.characteristics.map((c) => {
+    const eff = effectiveBounds(r, c);
+    const start = raceStart(r, c);
+    const outside = start < eff.min || start > eff.max;
+    const o = r.bounds[c.key] || {};
+    return el('tr', {},
+      el('td', {}, el('strong', {}, charLabel(c)), el('div', { class: 'muted' }, c.kind === 'base' ? 'di base' : 'estesa')),
+      el('td', {}, numberInput(start, (n) => { setStart(c, n); renderPanel(); })),
+      el('td', {}, numberInput(raceBonus(r, c), (n) => { setBonus(c, n); renderPanel(); })),
+      el('td', { class: o.min == null ? 'inherit' : '' }, numberInput(o.min, (n) => setLimit(c, 'min', n), { placeholder: c.min })),
+      el('td', { class: o.max == null ? 'inherit' : '' }, numberInput(o.max, (n) => setLimit(c, 'max', n), { placeholder: c.max })),
+      el('td', {}, outside ? el('span', { class: 'warn' }, '⚠ il valore iniziale esce dai limiti (' + eff.min + '–' + eff.max + '): sarà riportato dentro') : el('span', { class: 'muted' }, 'limiti ' + eff.min + '–' + eff.max)));
+  });
+
+  const actions = [el('button', { onclick: () => saveRace(isNew) }, isNew ? 'Crea razza' : 'Salva razza')];
+  if (!isNew) actions.push(el('button', { class: 'danger', onclick: () => deleteRace(r) }, 'Elimina razza'));
+  return [
+    el('div', { class: 'crumb' }, backButton('Razze', () => { state.view = null; notice(''); renderPanel(); }), el('h2', {}, isNew ? 'Nuova razza' : r.name)),
+    el('div', { class: 'card', style: 'display:flex;flex-direction:column;gap:14px' },
+      el('div', { class: 'grid2' }, el('label', {}, 'Nome', name), el('label', {}, 'Descrizione', description)),
+      el('h3', { style: 'margin:0' }, 'Caratteristiche'),
+      el('p', { class: 'muted', style: 'margin:0' }, 'Una pedina nasce con il valore iniziale più un numero a caso da 0 al bonus. I limiti lasciati vuoti (bordo tratteggiato, valore in grigio) sono quelli del mondo: scrivi un numero per cambiarli solo per questa razza.'),
+      el('div', { class: 'tablewrap' }, el('table', { class: 'list' },
+        el('thead', {}, el('tr', {}, ...['Caratteristica', 'Valore iniziale', 'Bonus casuale', 'Limite minimo', 'Limite massimo', ''].map((h) => el('th', {}, h)))),
+        el('tbody', {}, rows))),
+      el('div', { class: 'actions' }, ...actions)),
+  ];
+}
+
+async function saveRace(isNew) {
+  const r = clone(state.view.draft);
+  const items = clone(state.def.races);
+  if (isNew) items.push(r);
+  else items.splice(items.findIndex((x) => x.id === state.view.id), 1, r);
+  if (await save('/races', { items })) {
+    state.view = isNew ? null : { type: 'race', id: r.id, draft: clone(state.def.races.find((x) => x.id === r.id)) };
+    renderPanel();
+  }
+}
+
+async function deleteRace(r) {
+  if (!confirm('Eliminare la razza "' + r.name + '"? Non si può se ci sono pedine o giocatori di questa razza.')) return;
+  const items = clone(state.def.races).filter((x) => x.id !== r.id);
+  if (await save('/races', { items })) { state.view = null; renderPanel(); }
+}
+
 // --- terrain tab: paint the cells of a board ---
 
 const TERRAIN_COLORS = { '.': '#7bc96f', ',': '#e8d44d', '=': '#c98f5a', ':': '#a9b0b8', T: '#2e7d32', B: '#5aa85a', F: '#8b5a2b', '#': '#5b6270' };
@@ -632,6 +850,8 @@ function renderPlayers() {
 // --- start-up ---
 
 $('doLogin').addEventListener('click', doLogin);
+$('sideToggle').addEventListener('click', () => setSideCollapsed(!$('side').classList.contains('collapsed')));
+try { setSideCollapsed(localStorage.getItem(SIDE_KEY) === '1' || window.innerWidth < 700); } catch (_) { setSideCollapsed(window.innerWidth < 700); }
 $('password').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
 $('logout').addEventListener('click', logout);
 $('worldPicker').addEventListener('change', async (e) => { state.worldId = e.target.value; state.tab = 'world'; notice(''); await loadWorld(); });

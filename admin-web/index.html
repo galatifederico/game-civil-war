@@ -26,9 +26,16 @@
     </section>
 
     <section id="editor" hidden>
-      <nav id="tabs"></nav>
-      <div id="notice" role="status"></div>
-      <div id="panel"></div>
+      <div id="layout">
+        <aside id="side" aria-label="Sezioni">
+          <button id="sideToggle" class="ghost" title="Comprimi o espandi il menu" aria-label="Comprimi o espandi il menu">«</button>
+          <nav id="tabs"></nav>
+        </aside>
+        <div id="content">
+          <div id="notice" role="status"></div>
+          <div id="panel"></div>
+        </div>
+      </div>
     </section>
   </main>
   <script src="app.js"></script>

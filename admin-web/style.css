@@ -33,9 +33,19 @@ button.ghost { background: transparent; color: var(--text); border: 1px solid va
 button.danger { background: transparent; color: var(--bad); border: 1px solid var(--bad); padding: 4px 9px; }
 button:disabled { opacity: .5; cursor: default; }
 
-nav { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
-nav button { background: transparent; color: var(--muted); border: 1px solid var(--line); }
-nav button.active { background: var(--accent); color: #1a1500; border-color: var(--accent); }
+/* Menu laterale collassabile con le sezioni */
+#layout { display: flex; gap: 16px; align-items: flex-start; }
+#side { position: sticky; top: 12px; flex: none; width: 220px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px; transition: width .15s; }
+#side.collapsed { width: 56px; }
+#sideToggle { width: 100%; margin-bottom: 8px; padding: 5px 0; }
+#tabs { display: flex; flex-direction: column; gap: 4px; }
+#tabs button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: transparent; color: var(--muted); border: 1px solid transparent; padding: 8px 10px; white-space: nowrap; overflow: hidden; }
+#tabs button:hover { background: rgba(255, 255, 255, .05); filter: none; }
+#tabs button.active { background: var(--accent); color: #1a1500; }
+#tabs .ico { flex: none; width: 20px; text-align: center; font-size: 15px; }
+#side.collapsed #tabs .label { display: none; }
+#side.collapsed #tabs button { justify-content: center; padding: 8px 0; }
+#content { flex: 1; min-width: 0; }
 
 #notice { min-height: 22px; margin-bottom: 8px; }
 #notice.ok { color: var(--ok); }
@@ -64,6 +74,20 @@ td select { max-width: 160px; }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
 
 @media (max-width: 700px) {
+  #side { width: 48px; }
+  #side #tabs .label { display: none; }
+  #side #tabs button { justify-content: center; padding: 8px 0; }
   main { padding: 8px; }
   header { gap: 8px; }
 }
+
+/* Tabelle di elenco con un pulsante "Apri" per riga, e pagine di dettaglio */
+table.list td, table.list th { padding: 8px 10px; }
+table.list tr:hover td { background: rgba(255, 255, 255, .03); }
+td.num { text-align: right; white-space: nowrap; }
+.crumb { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.crumb h2 { margin: 0; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 20px; max-width: 900px; }
+.warn { color: var(--accent); font-size: 12px; }
+td.inherit input { border-style: dashed; }
+table.list input[type=number] { width: 110px; }
