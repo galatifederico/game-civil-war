@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log"
 	"runtime/debug"
-	"sort"
 	"time"
 
 	"thegame/backend/internal/protocol"
@@ -494,7 +493,7 @@ func (l *Loop) dtos(entities []*Entity) []protocol.Entity {
 			icon = ResolveIcon(e.Icon, e.Effect)
 		}
 		out = append(out, protocol.Entity{
-			Icon: icon, Sprite: e.Sprite, ID: e.ID, BoardID: e.BoardID, RaceID: e.RaceID, Race: l.raceName(e.RaceID), Traits: l.traitDTOs(e.Traits), Kind: string(e.Kind), OwnerID: e.OwnerID, Name: e.Name, Description: e.Description,
+			Icon: icon, Sprite: e.Sprite, ID: e.ID, BoardID: e.BoardID, RaceID: e.RaceID, Race: l.raceName(e.RaceID), Traits: l.traitDTOs(e), Kind: string(e.Kind), OwnerID: e.OwnerID, Name: e.Name, Description: e.Description,
 			X: e.X, Y: e.Y, Speed: e.Speed, Health: e.Health, MaxHealth: e.MaxHealth,
 			Vision: e.Vision, Strength: e.Strength,
 			ReadyInMs: untilMs(e.ReadyAt), ActReadyInMs: untilMs(e.ActReadyAt), RespawnInMs: untilMs(e.RespawnAt),
@@ -520,27 +519,17 @@ func (l *Loop) raceName(id string) string {
 }
 
 // traitDTOs lists a unit's extended characteristics: the world's named ones first, in its order.
-func (l *Loop) traitDTOs(traits map[string]int) []protocol.Trait {
-	if len(traits) == 0 {
+// traitDTOs lists every extended characteristic of the world, in the world's order, for a unit:
+// the ones it does not have (yet) show as 0, so the player sees all of them. Things that are not
+// units (items, structures) have none. A value left over from a characteristic the world no
+// longer has is not shown.
+func (l *Loop) traitDTOs(e *Entity) []protocol.Trait {
+	if !e.IsUnit() {
 		return nil
 	}
-	var out []protocol.Trait
-	seen := map[string]bool{}
+	out := make([]protocol.Trait, 0, len(l.world.Rules.TraitNames))
 	for _, name := range l.world.Rules.TraitNames {
-		if v, ok := traits[name]; ok {
-			out = append(out, protocol.Trait{Name: name, Value: v})
-			seen[name] = true
-		}
-	}
-	var rest []string
-	for name := range traits {
-		if !seen[name] {
-			rest = append(rest, name)
-		}
-	}
-	sort.Strings(rest)
-	for _, name := range rest {
-		out = append(out, protocol.Trait{Name: name, Value: traits[name]})
+		out = append(out, protocol.Trait{Name: name, Value: e.Traits[name]})
 	}
 	return out
 }

@@ -101,7 +101,9 @@ public class InfoPanel : MonoBehaviour
         {
             GUILayout.Space(8f);
             GUILayout.Label("Caratteristiche", headingStyle);
+            // Tutte, anche a zero: le quattro di base e poi quelle estese del mondo, nell'ordine del server.
             Row("Velocità", data.speed.ToString());
+            Row("Vita", $"{data.health} / {data.max_health}");
             Row("Vista", data.vision.ToString());
             Row("Forza", data.strength.ToString());
             foreach (var trait in data.traits ?? new TraitData[0]) Row(trait.name, trait.value.ToString());

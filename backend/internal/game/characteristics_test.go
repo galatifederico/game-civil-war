@@ -90,3 +90,27 @@ func TestCharacteristicsRules(t *testing.T) {
 		}
 	}
 }
+
+func TestUnitsShowEveryCharacteristicEvenAtZero(t *testing.T) {
+	loop, _, p1, _ := fogWorld(t)
+	loop.Register(p1)
+	m := recv(t, p1)
+	names := DefaultRules().TraitNames
+	for _, en := range m.Entities {
+		switch en.Kind {
+		case "champion", "minor", "npc":
+			if len(en.Traits) != len(names) {
+				t.Fatalf("%s has %d characteristics, want all %d (zeros included): %+v", en.Name, len(en.Traits), len(names), en.Traits)
+			}
+			for i, tr := range en.Traits {
+				if tr.Name != names[i] {
+					t.Fatalf("%s: characteristic %d is %q, want %q (the world's order)", en.Name, i, tr.Name, names[i])
+				}
+			}
+		default:
+			if len(en.Traits) != 0 {
+				t.Fatalf("%s (%s) should have no characteristics", en.Name, en.Kind)
+			}
+		}
+	}
+}
