@@ -49,7 +49,7 @@ Test del backend: `make -C backend test` (regole e loop) e `make -C backend test
 
 - `backend/` — server Go autoritativo (REST + WebSocket + simulazione della board)
 - `unity-client/` — client Unity 6, "dumb": mostra lo stato del server e invia comandi
-- `tools/sprites/` — script che costruisce la tavola degli sprite dei personaggi dalla pedina standard (`art-src/`, `img/pawn.png`)
+- `tools/sprites/` — script che costruisce la tavola degli sprite dei personaggi dall'eroe standard (`art-src/hero/`)
 - `admin-web/` — app web di amministrazione (HTML/JS statico, servita dal backend su `/admin/`)
 - `deploy/` — docker-compose: Postgres, Redis e, a richiesta, backend e Cloudflare Tunnel
 - `docs/` — concept, design, decisioni tecniche, roadmap, risorse grafiche utilizzabili

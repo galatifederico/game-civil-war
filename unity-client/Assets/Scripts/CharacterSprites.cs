@@ -2,10 +2,11 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-// Gli sprite dei personaggi. C'e' una sola pedina standard (una creatura tonda e paffuta, generata
-// con Pixellab a partire da img/pawn.png); tutte le altre sono quella pedina con qualcosa di
-// cambiato: la razza le da' un colore, il ruolo aggiunge un accessorio (il campione ha la corona),
-// gli NPC hanno colori e copricapo loro. Le varianti si costruiscono con tools/sprites/build_characters.py.
+// Gli sprite dei personaggi. C'e' un solo eroe standard (un avventuriero chibi con cappuccio,
+// generato originale con Pixellab, solo a partire da una descrizione); tutte le altre sono
+// quell'eroe con qualcosa di cambiato: la razza tinge il cappuccio, il ruolo aggiunge un
+// accessorio (il campione ha la corona), gli NPC hanno colori e copricapo loro. Le varianti si
+// costruiscono con tools/sprites/build_characters.py.
 // Stanno in un'unica tavola letta a runtime da Resources/Art/characters.bytes (un PNG rinominato)
 // con la descrizione in characters-layout.json: per ogni variante una riga di celle con 4 pose
 // ferme (sud, est, nord, ovest) e, se cammina, alcuni fotogrammi per direzione. Il nome della

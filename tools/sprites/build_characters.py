@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Costruisce la tavola degli sprite dei personaggi a partire dalla pedina standard.
+"""Costruisce la tavola degli sprite dei personaggi a partire dall'eroe standard.
 
-Una sola pedina (art-src/pawn: 4 pose ferme + camminata, generate con Pixellab da img/pawn.png);
-tutte le altre sono quella pedina con qualcosa di cambiato:
-  - la RAZZA le da' un colore (LOOKS: la stessa pedina con un'altra tavolozza);
+Un solo personaggio (art-src/hero: 4 pose ferme + camminata, un avventuriero chibi con
+mantello/cappuccio, generato originale con Pixellab - non deriva da nessuna immagine protetta,
+solo uno stile descritto a parole); tutti gli altri sono quel personaggio con qualcosa di cambiato:
+  - la RAZZA le da' un colore (LOOKS: il cappuccio/mantello tinto con un'altra tonalita');
   - il RUOLO aggiunge un accessorio: il campione porta una corona;
   - gli NPC hanno colori e copricapo loro (NPCS).
 I nomi delle righe sono quelli che il server manda (backend/internal/game/sprites.go: Looks,
@@ -13,12 +14,13 @@ Uso:  python3 tools/sprites/build_characters.py [--preview anteprima.png]
 Scrive unity-client/Assets/Resources/Art/characters.bytes (un PNG) e characters-layout.json.
 """
 import argparse
+import colorsys
 import json
 import os
 from PIL import Image
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-SRC = os.path.join(ROOT, 'art-src', 'pawn')
+SRC = os.path.join(ROOT, 'art-src', 'hero')
 OUT = os.path.join(ROOT, 'unity-client', 'Assets', 'Resources', 'Art')
 # Una seconda copia, in un formato normale (.png), per l'app admin: mostra l'aspetto di ogni
 # razza/classe/NPC (vedi admin-web/app.js, spritePreview) senza duplicare il disegno in JS.
@@ -31,20 +33,19 @@ MARGIN_X, MARGIN_Y = (CELL - SRC_CELL) // 2, CELL - SRC_CELL
 WALK_FRAMES = 8
 FEET = 29 + MARGIN_Y                        # la riga (dall'alto) dove poggiano i piedi
 
-# Colori della pedina originale (salmone) e classi in cui si dividono.
-BASE = {
-    'outline': (15, 8, 42), 'main': (237, 104, 101), 'shadow': (152, 53, 84),
-    'light': (248, 188, 188), 'white': (248, 246, 252), 'accent': (96, 11, 84),
-}
+# Il mantello/cappuccio generato e' un verdeacqua (tonalita' ~140-200 gradi); pelle, capelli,
+# stivali e cintura vivono in un'altra fascia di tonalita' (~15-45) e restano intatti.
+CLOAK_HUE_MIN, CLOAK_HUE_MAX = 140, 200
 
-# Le altre tavolozze: cambiano il corpo (main, shadow, light, accent); contorno e occhi restano.
+# Ogni razza tinge il mantello/cappuccio con una tonalita' diversa (gradi 0-360); 'sat' scala
+# la saturazione originale (1.0 = uguale, <1 = piu' spento, per 'slate').
 LOOKS = {
-    'salmon': {},
-    'azure':  {'main': (98, 160, 232), 'shadow': (52, 92, 168), 'light': (186, 220, 252), 'accent': (30, 50, 110)},
-    'moss':   {'main': (120, 196, 110), 'shadow': (60, 124, 76), 'light': (200, 236, 170), 'accent': (30, 70, 60)},
-    'sun':    {'main': (244, 196, 84), 'shadow': (190, 120, 48), 'light': (252, 232, 170), 'accent': (120, 60, 30)},
-    'violet': {'main': (170, 120, 220), 'shadow': (108, 72, 156), 'light': (222, 196, 248), 'accent': (60, 30, 100)},
-    'slate':  {'main': (150, 160, 176), 'shadow': (90, 98, 120), 'light': (214, 220, 232), 'accent': (50, 56, 76)},
+    'salmon': {'hue': 352, 'sat': 1.05},
+    'azure':  {'hue': 208, 'sat': 1.0},
+    'moss':   {'hue': 100, 'sat': 1.0},
+    'sun':    {'hue': 38, 'sat': 1.0},
+    'violet': {'hue': 272, 'sat': 1.0},
+    'slate':  {'hue': 212, 'sat': 0.35},
 }
 
 # Accessori: disegnati una volta e appoggiati in cima alla testa, dove che sia la pedina in ogni
@@ -100,51 +101,22 @@ def remove_specks(im, min_size=40):
     return im
 
 
-def remove_scribbles(im):
-    """Toglie le linee sottili di contorno che non toccano il corpo (rimasugli del disegno di partenza):
-    un pixel di contorno senza nessun colore pieno del corpo nei dintorni non fa parte della pedina."""
-    px = im.load()
-    for _ in range(3):
-        gone = []
-        for y in range(im.height):
-            for x in range(im.width):
-                if px[x, y][3] == 0 or classify(px[x, y][:3]) != 'outline':
-                    continue
-                near = False
-                for dy in range(-2, 3):
-                    for dx in range(-2, 3):
-                        nx, ny = x + dx, y + dy
-                        if 0 <= nx < im.width and 0 <= ny < im.height and px[nx, ny][3] and classify(px[nx, ny][:3]) in ('main', 'shadow', 'light', 'accent'):
-                            near = True
-                if not near:
-                    gone.append((x, y))
-        for x, y in gone:
-            px[x, y] = (0, 0, 0, 0)
-    return im
-
-
-def classify(rgb):
-    best, dist = None, 1e9
-    for name, c in BASE.items():
-        d = sum((a - b) ** 2 for a, b in zip(rgb, c))
-        if d < dist:
-            best, dist = name, d
-    return best if dist < 60 * 60 else None
-
-
 def recolor(im, look):
-    palette = LOOKS[look]
-    if not palette:
-        return im.copy()
+    """Tinge il mantello/cappuccio (i pixel la cui tonalita' cade nella fascia del verdeacqua
+    originale) con la tonalita' della razza, mantenendo la sua stessa luminosita' e sfumatura;
+    pelle, capelli, cintura e stivali hanno un'altra tonalita' e restano intatti."""
+    hue, sat_mult = LOOKS[look]['hue'] / 360, LOOKS[look]['sat']
     out = im.copy()
     px = out.load()
     for y in range(out.height):
         for x in range(out.width):
             r, g, b, a = px[x, y]
-            if a:
-                cls = classify((r, g, b))
-                if cls in palette:
-                    px[x, y] = palette[cls] + (a,)
+            if not a:
+                continue
+            h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+            if CLOAK_HUE_MIN / 360 <= h <= CLOAK_HUE_MAX / 360:
+                nr, ng, nb = colorsys.hsv_to_rgb(hue, min(1.0, s * sat_mult), v)
+                px[x, y] = (round(nr * 255), round(ng * 255), round(nb * 255), a)
     return out
 
 
@@ -172,10 +144,10 @@ def add_accessory(im, name):
 
 
 def frames():
-    idle = {d: remove_scribbles(remove_specks(load(f'idle_{d}.png'))) for d in DIRS}
+    idle = {d: remove_specks(load(f'idle_{d}.png')) for d in DIRS}
     walk = {}
     for d in DIRS:
-        walk[d] = [remove_scribbles(remove_specks(load(f'walk_{d}_{i}.png'))) for i in range(1, WALK_FRAMES + 1)]
+        walk[d] = [remove_specks(load(f'walk_{d}_{i}.png')) for i in range(1, WALK_FRAMES + 1)]
     return idle, walk
 
 
