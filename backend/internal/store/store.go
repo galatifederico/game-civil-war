@@ -189,6 +189,19 @@ func (s *Store) LoadWorld(ctx context.Context, id string) (*game.World, error) {
 	if err != nil {
 		return nil, err
 	}
+	err = s.each(ctx, `SELECT id::text, name, description, bounds, look
+		FROM classes WHERE world_id = $1::uuid ORDER BY position, name`,
+		[]any{id}, func(rows pgx.Rows) error {
+			c := &game.Class{}
+			if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.Bounds, &c.Look); err != nil {
+				return err
+			}
+			world.AddClass(c)
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
 	err = s.each(ctx, `SELECT race_a::text, race_b::text, child_race::text FROM race_compatibility WHERE world_id = $1::uuid`,
 		[]any{id}, func(rows pgx.Rows) error {
 			var a, b, child string
@@ -218,13 +231,13 @@ func (s *Store) LoadWorld(ctx context.Context, id string) (*game.World, error) {
 
 	err = s.each(ctx, `SELECT u.id::text, u.board_id::text, COALESCE(u.player_id::text, ''), u.kind, u.name, u.description,
 		u.x, u.y, u.speed, u.health, u.max_health, u.vision, u.strength, u.dialogue,
-		COALESCE(u.race_id::text, ''), u.traits, u.sprite
+		COALESCE(u.race_id::text, ''), u.traits, u.sprite, COALESCE(u.class_id::text, '')
 		FROM units u JOIN boards b ON b.id = u.board_id WHERE b.world_id = $1::uuid`,
 		[]any{id}, func(rows pgx.Rows) error {
 			e := &game.Entity{}
 			var kind, dialogue string
 			if err := rows.Scan(&e.ID, &e.BoardID, &e.OwnerID, &kind, &e.Name, &e.Description,
-				&e.X, &e.Y, &e.Speed, &e.Health, &e.MaxHealth, &e.Vision, &e.Strength, &dialogue, &e.RaceID, &e.Traits, &e.Sprite); err != nil {
+				&e.X, &e.Y, &e.Speed, &e.Health, &e.MaxHealth, &e.Vision, &e.Strength, &dialogue, &e.RaceID, &e.Traits, &e.Sprite, &e.ClassID); err != nil {
 				return err
 			}
 			e.Kind = game.Kind(kind)

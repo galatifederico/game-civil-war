@@ -46,6 +46,7 @@ type Entity struct {
 	Strength    int // damage dealt by an attack
 	Dialogue    []string
 	RaceID      string         // units only; empty when the world has no races
+	ClassID     string         // units only; "" = no class (design.md: a unit starts without one)
 	Traits      map[string]int // the extended characteristics (soldi, alcol...)
 	Effect      Effect         // items only: what using one does
 	Icon        string         // items only: the inventory icon ("" = automatic)
@@ -180,6 +181,17 @@ func (r *Race) roll(bounds func(key string) Bounds) (UnitStats, map[string]int) 
 	return stats, traits
 }
 
+// Class is like a race, except a unit's class can change during play (a race cannot) and a class
+// only ever changes the bounds of characteristics: it has no starting stats of its own to roll.
+// Bounds combine with the unit's race as a union (World.BoundsFor): the greater limit always wins.
+type Class struct {
+	ID          string
+	Name        string
+	Description string
+	Bounds      map[string]BoundsOverride // characteristic -> what this class changes of the world's/race's bounds
+	Look        string                    // the pawn's colour when this class is worn; "" = the race's own
+}
+
 func (e *Entity) Cell() Cell   { return Cell{e.BoardID, e.X, e.Y} }
 func (e *Entity) Point() Point { return Point{e.X, e.Y} }
 
@@ -257,7 +269,9 @@ type World struct {
 	links     map[Cell]Cell
 	players   map[string]*Player
 	races     map[string]*Race
-	raceIDs   []string             // in the order the admin defined them
+	raceIDs   []string // in the order the admin defined them
+	classes   map[string]*Class
+	classIDs  []string             // in the order the admin defined them
 	compat    map[[2]string]string // sorted pair of race ids -> race of the offspring
 	goals     map[string]*Goal
 	goalOrder []string
@@ -272,6 +286,7 @@ func NewWorld(id, name string) *World {
 		links:    map[Cell]Cell{},
 		players:  map[string]*Player{},
 		races:    map[string]*Race{},
+		classes:  map[string]*Class{},
 		compat:   map[[2]string]string{},
 		goals:    map[string]*Goal{},
 	}
@@ -283,6 +298,22 @@ func (w *World) AddRace(r *Race) {
 }
 
 func (w *World) Race(id string) *Race { return w.races[id] }
+
+func (w *World) AddClass(c *Class) {
+	w.classes[c.ID] = c
+	w.classIDs = append(w.classIDs, c.ID)
+}
+
+func (w *World) Class(id string) *Class { return w.classes[id] }
+
+// Classes lists the world's classes in the order they were defined.
+func (w *World) Classes() []*Class {
+	out := make([]*Class, 0, len(w.classIDs))
+	for _, id := range w.classIDs {
+		out = append(out, w.classes[id])
+	}
+	return out
+}
 
 // Races lists the world's races in the order they were defined.
 func (w *World) Races() []*Race {
@@ -312,7 +343,7 @@ func (w *World) offspringRace(a, b string) (string, bool) {
 func (w *World) newMinor(ownerID, username, raceID string, at Cell, name string) *Entity {
 	stats, traits := w.Rules.Minor, map[string]int(nil)
 	if r := w.races[raceID]; r != nil {
-		stats, traits = r.roll(func(key string) Bounds { return w.BoundsFor(r.ID, key) })
+		stats, traits = r.roll(func(key string) Bounds { return w.BoundsFor(r.ID, "", key) })
 	} else {
 		raceID = ""
 	}
@@ -611,7 +642,7 @@ func (w *World) PlanTeam(playerID, username, raceID string) ([]*Entity, error) {
 	if r := w.races[raceID]; r != nil && len(r.TraitsMin) > 0 {
 		championTraits = make(map[string]int, len(r.TraitsMin))
 		for name, v := range r.TraitsMin {
-			championTraits[name] = w.BoundsFor(raceID, name).Clamp(v)
+			championTraits[name] = w.BoundsFor(raceID, "", name).Clamp(v)
 		}
 	}
 	team := make([]*Entity, 0, need)
@@ -619,9 +650,9 @@ func (w *World) PlanTeam(playerID, username, raceID string) ([]*Entity, error) {
 		OwnerID: playerID, BoardID: spawn.ID, Kind: KindChampion, Name: "Champion", RaceID: raceID,
 		Description: fmt.Sprintf("Il campione della squadra di %s: forte, carismatico e convinto di essere indispensabile.", username),
 		X:           free[0].p.X, Y: free[0].p.Y, Traits: championTraits,
-		Speed: w.BoundsFor(raceID, "speed").Clamp(w.Rules.Champion.Speed), Health: w.BoundsFor(raceID, "health").Clamp(w.Rules.Champion.Health),
-		MaxHealth: w.BoundsFor(raceID, "health").Clamp(w.Rules.Champion.Health),
-		Vision:    w.BoundsFor(raceID, "vision").Clamp(w.Rules.Champion.Vision), Strength: w.BoundsFor(raceID, "strength").Clamp(w.Rules.Champion.Strength),
+		Speed: w.BoundsFor(raceID, "", "speed").Clamp(w.Rules.Champion.Speed), Health: w.BoundsFor(raceID, "", "health").Clamp(w.Rules.Champion.Health),
+		MaxHealth: w.BoundsFor(raceID, "", "health").Clamp(w.Rules.Champion.Health),
+		Vision:    w.BoundsFor(raceID, "", "vision").Clamp(w.Rules.Champion.Vision), Strength: w.BoundsFor(raceID, "", "strength").Clamp(w.Rules.Champion.Strength),
 	})
 	for i := 1; i < need; i++ {
 		team = append(team, w.newMinor(playerID, username, raceID, Cell{spawn.ID, free[i].p.X, free[i].p.Y}, fmt.Sprintf("Pedina %d", i)))

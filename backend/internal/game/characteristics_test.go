@@ -17,20 +17,71 @@ func TestBoundsClampAndOverride(t *testing.T) {
 		"speed":    {Max: &five},
 		"strength": {Min: &five, Max: &twenty},
 	}})
-	if got := w.BoundsFor("", "speed"); got != (Bounds{1, 10}) {
+	if got := w.BoundsFor("", "", "speed"); got != (Bounds{1, 10}) {
 		t.Fatalf("world bounds for speed = %+v", got)
 	}
-	if got := w.BoundsFor("r", "speed"); got != (Bounds{1, 5}) {
+	if got := w.BoundsFor("r", "", "speed"); got != (Bounds{1, 5}) {
 		t.Fatalf("the race lowers the maximum only: %+v", got)
 	}
-	if got := w.BoundsFor("r", "strength"); got != (Bounds{5, 20}) {
+	if got := w.BoundsFor("r", "", "strength"); got != (Bounds{5, 20}) {
 		t.Fatalf("the race sets both: %+v", got)
 	}
-	if got := w.BoundsFor("r", "mana"); got != (Bounds{0, 100}) {
+	if got := w.BoundsFor("r", "", "mana"); got != (Bounds{0, 100}) {
 		t.Fatalf("an untouched characteristic keeps the world's bounds: %+v", got)
 	}
-	if got := w.BoundsFor("", "no-such-trait"); got != fallbackBounds {
+	if got := w.BoundsFor("", "", "no-such-trait"); got != fallbackBounds {
 		t.Fatalf("unknown characteristic: %+v", got)
+	}
+}
+
+func TestClassBoundsUnionWithRaceTakingTheGreaterLimit(t *testing.T) {
+	w := NewWorld("w", "test")
+	five, eight, three, twelve := 5, 8, 3, 12
+	w.AddRace(&Race{ID: "r", Name: "Elfi", Bounds: map[string]BoundsOverride{
+		"speed":  {Max: &five},               // race: speed <= 5 (world default min 1)
+		"vision": {Min: &three, Max: &eight}, // race: 3 <= vision <= 8
+	}})
+
+	// No class: same as the race alone.
+	if got := w.BoundsFor("r", "", "speed"); got != (Bounds{1, 5}) {
+		t.Fatalf("no class: %+v", got)
+	}
+	if got := w.BoundsFor("r", "unknown-class", "speed"); got != (Bounds{1, 5}) {
+		t.Fatalf("an unknown class id is ignored: %+v", got)
+	}
+
+	// A class with a higher max widens the ceiling; a class untouching a key changes nothing.
+	w.AddClass(&Class{ID: "c", Name: "Guerriero", Bounds: map[string]BoundsOverride{
+		"speed": {Max: &eight}, // class: speed <= 8, greater than the race's 5
+	}})
+	if got := w.BoundsFor("r", "c", "speed"); got != (Bounds{1, 8}) {
+		t.Fatalf("the class's greater max should win: %+v", got)
+	}
+	if got := w.BoundsFor("r", "c", "vision"); got != (Bounds{3, 8}) {
+		t.Fatalf("a key the class does not touch keeps the race's bounds: %+v", got)
+	}
+	// With no race override the world's default (max 10) already beats the class's narrower 8; a
+	// class that widens past the world's default does take effect, with no race involved at all.
+	if got := w.BoundsFor("", "c", "speed"); got != (Bounds{1, 10}) {
+		t.Fatalf("the union never narrows below the world's own default: %+v", got)
+	}
+	twentyFive := 25
+	w.AddClass(&Class{ID: "giant", Name: "Gigante", Bounds: map[string]BoundsOverride{"speed": {Max: &twentyFive}}})
+	if got := w.BoundsFor("", "giant", "speed"); got != (Bounds{1, 25}) {
+		t.Fatalf("a class alone can still widen past the world's default: %+v", got)
+	}
+
+	// A class with a lower max never narrows what the race already allows (max(5, 3) = 5).
+	w.AddClass(&Class{ID: "weak", Name: "Debole", Bounds: map[string]BoundsOverride{"speed": {Max: &three}}})
+	if got := w.BoundsFor("r", "weak", "speed"); got != (Bounds{1, 5}) {
+		t.Fatalf("the union always keeps the greater max: %+v", got)
+	}
+	// A higher class minimum raises the floor, even above the race's own minimum. The class's own
+	// max is untouched by it, so it falls back to the world's default (12) for the union, which
+	// also beats the race's max (8).
+	w.AddClass(&Class{ID: "tough", Name: "Robusto", Bounds: map[string]BoundsOverride{"vision": {Min: &twelve}}})
+	if got := w.BoundsFor("r", "tough", "vision"); got != (Bounds{12, 12}) {
+		t.Fatalf("the union always keeps the greater min too: %+v", got)
 	}
 }
 
@@ -43,7 +94,7 @@ func TestStartingValuesStayInsideTheBounds(t *testing.T) {
 	r.Bounds = map[string]BoundsOverride{"speed": {Max: &five}}
 	w.AddRace(r)
 	for i := 0; i < 100; i++ {
-		stats, traits := r.roll(func(key string) Bounds { return w.BoundsFor("r", key) })
+		stats, traits := r.roll(func(key string) Bounds { return w.BoundsFor("r", "", key) })
 		if stats.Speed != 5 || stats.Health != 1000 || traits["mana"] != 100 {
 			t.Fatalf("stats %+v traits %v not clamped to the bounds (speed 5, health 1000, mana 100)", stats, traits)
 		}

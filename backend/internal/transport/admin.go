@@ -31,6 +31,7 @@ func (s *Server) adminRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /admin/api/worlds/{id}/terrain", s.adminWorld(adminList(s, store.TerrainChange)))
 	mux.HandleFunc("PUT /admin/api/worlds/{id}/characteristics", s.adminWorld(adminList(s, store.CharacteristicsChange)))
 	mux.HandleFunc("PUT /admin/api/worlds/{id}/races", s.adminWorld(adminList(s, store.RacesChange)))
+	mux.HandleFunc("PUT /admin/api/worlds/{id}/classes", s.adminWorld(adminList(s, store.ClassesChange)))
 	mux.HandleFunc("PUT /admin/api/worlds/{id}/compat", s.adminWorld(adminList(s, store.CompatChange)))
 	mux.HandleFunc("PUT /admin/api/worlds/{id}/goals", s.adminWorld(adminList(s, store.GoalsChange)))
 	mux.HandleFunc("PUT /admin/api/worlds/{id}/npcs", s.adminWorld(adminList(s, store.NPCsChange)))

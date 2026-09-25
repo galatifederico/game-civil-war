@@ -497,6 +497,10 @@ func (l *Loop) dtos(entities []*Entity) []protocol.Entity {
 			if r := l.world.Race(e.RaceID); r != nil {
 				look = r.Look
 			}
+			// A class's own colour, when it has one, shows instead of the race's.
+			if c := l.world.Class(e.ClassID); c != nil && c.Look != "" {
+				look = c.Look
+			}
 			sprite = UnitSprite(e.Kind, look)
 		}
 		out = append(out, protocol.Entity{

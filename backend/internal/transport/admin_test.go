@@ -608,3 +608,82 @@ func TestRaceLooksReachTheClient(t *testing.T) {
 	npcs[0].Sprite = "champion"
 	e.save(owner, "npcs", npcs, http.StatusBadRequest)
 }
+
+func TestAdminClasses(t *testing.T) {
+	e := newEnv(t)
+	owner, _ := e.register("owner@test.io", "Owner")
+	d := e.definition(owner)
+	if len(d.Classes) != 0 {
+		t.Fatalf("a fresh world has no classes: %+v", d.Classes)
+	}
+
+	five, ten := 5, 10
+	classes := []store.AdminClass{{Name: "Guerriero", Description: "Forte e coraggioso.", Bounds: map[string]game.BoundsOverride{"mana": {Min: &ten}}, Look: "slate"}}
+	e.save(owner, "classes", classes, http.StatusOK)
+	d = e.definition(owner)
+	if len(d.Classes) != 1 || d.Classes[0].Name != "Guerriero" || d.Classes[0].Look != "slate" || *d.Classes[0].Bounds["mana"].Min != 10 {
+		t.Fatalf("saved class = %+v", d.Classes)
+	}
+	guerriero := d.Classes[0]
+
+	// Mistakes: duplicate name, unknown characteristic, min above max, bad look.
+	e.save(owner, "classes", append(d.Classes, store.AdminClass{Name: "guerriero"}), http.StatusBadRequest)
+	e.save(owner, "classes", []store.AdminClass{{ID: guerriero.ID, Name: "Guerriero", Bounds: map[string]game.BoundsOverride{"agilita": {Min: &five}}}}, http.StatusBadRequest)
+	e.save(owner, "classes", []store.AdminClass{{ID: guerriero.ID, Name: "Guerriero", Bounds: map[string]game.BoundsOverride{"speed": {Min: &ten, Max: &five}}}}, http.StatusBadRequest)
+	e.save(owner, "classes", []store.AdminClass{{ID: guerriero.ID, Name: "Guerriero", Look: "neon"}}, http.StatusBadRequest)
+	if got := len(e.definition(owner).Classes); got != 1 {
+		t.Fatalf("a rejected save changed the classes: %d", got)
+	}
+
+	// Removing a characteristic the class uses strips it from the class's bounds too.
+	next := clone(t, e.definition(owner).Characteristics)
+	var kept []store.AdminCharacteristic
+	for _, c := range next {
+		if c.Key != "mana" {
+			kept = append(kept, c)
+		}
+	}
+	e.save(owner, "characteristics", kept, http.StatusOK)
+	if _, has := e.definition(owner).Classes[0].Bounds["mana"]; has {
+		t.Fatalf("the removed characteristic should be gone from the class: %+v", e.definition(owner).Classes[0].Bounds)
+	}
+
+	// A class a unit wears cannot be deleted; wearing it also changes the sprite's colour.
+	tok, pid := e.player("p@test.io", "Player")
+	snap := e.dial(tok).expect("snapshot", ofType(protocol.TypeSnapshot))
+	champ, _ := findEntity(snap.Entities, func(en protocol.Entity) bool { return en.Kind == "champion" && en.OwnerID == pid })
+	if champ.Sprite != "champion-salmon" {
+		t.Fatalf("champion sprite before wearing a class = %q", champ.Sprite)
+	}
+	guerriero = e.definition(owner).Classes[0]
+	if _, err := e.db.Exec(e.ctx, `UPDATE units SET class_id = $1::uuid WHERE id = $2::uuid`, guerriero.ID, champ.ID); err != nil {
+		t.Fatal(err)
+	}
+	// The running world only picks this up on a reload (an admin save always triggers one); a
+	// no-op meta save is the simplest way to force it after changing the database directly.
+	final := e.definition(owner)
+	e.adminCall("PUT", "/meta", owner, map[string]string{"name": final.Name, "description": final.Description})
+	snap2 := e.dial(tok).expect("snapshot", ofType(protocol.TypeSnapshot))
+	champ2, _ := findEntity(snap2.Entities, func(en protocol.Entity) bool { return en.ID == champ.ID })
+	if champ2.Sprite != "champion-slate" {
+		t.Fatalf("champion sprite while wearing the class = %q, want the class's own colour", champ2.Sprite)
+	}
+
+	if msg := e.save(owner, "classes", []store.AdminClass{}, http.StatusBadRequest); !strings.Contains(msg, "indossata") {
+		t.Fatalf("deleting a worn class: %q", msg)
+	}
+}
+
+// clone is a deep copy through JSON, handy to build a variant of what the server just returned.
+func clone(t *testing.T, v any) []store.AdminCharacteristic {
+	t.Helper()
+	data, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []store.AdminCharacteristic
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}

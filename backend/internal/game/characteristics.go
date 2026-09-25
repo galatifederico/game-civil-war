@@ -53,21 +53,39 @@ func (r Rules) BoundsFor(key string) Bounds {
 	return fallbackBounds
 }
 
-// BoundsFor is the bounds of a characteristic for units of a race: the world's, with what the
-// race overrides.
-func (w *World) BoundsFor(raceID, key string) Bounds {
+// applyOverride replaces the fields of b that o sets; a field o leaves nil keeps b's.
+func applyOverride(b Bounds, o BoundsOverride) Bounds {
+	if o.Min != nil {
+		b.Min = *o.Min
+	}
+	if o.Max != nil {
+		b.Max = *o.Max
+	}
+	return b
+}
+
+// BoundsFor is the bounds of a characteristic for a unit: the world's, overridden by its race,
+// unioned with what its class overrides (classID may be "": a unit starts without a class, see
+// design.md). The union always takes the greater limit, both for the floor and the ceiling: a
+// class layered on a race only ever widens the maximum or raises the minimum further, never
+// narrows what the race alone allows.
+func (w *World) BoundsFor(raceID, classID, key string) Bounds {
 	b := w.Rules.BoundsFor(key)
 	if race := w.races[raceID]; race != nil {
 		if o, ok := race.Bounds[key]; ok {
-			if o.Min != nil {
-				b.Min = *o.Min
-			}
-			if o.Max != nil {
-				b.Max = *o.Max
-			}
+			b = applyOverride(b, o)
 		}
 	}
-	return b
+	class := w.classes[classID] // classes[""] is always nil
+	if class == nil {
+		return b
+	}
+	o, ok := class.Bounds[key]
+	if !ok {
+		return b
+	}
+	cb := applyOverride(w.Rules.BoundsFor(key), o)
+	return Bounds{Min: max(b.Min, cb.Min), Max: max(b.Max, cb.Max)}
 }
 
 // validateCharacteristics rejects bounds that make no sense (used by Rules.Validate).

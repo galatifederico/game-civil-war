@@ -406,12 +406,12 @@ func (w *World) useItem(actor *Entity, itemID string, now time.Time) (*Outcome, 
 
 	fx := item.Effect
 	actor.Health = min(actor.MaxHealth, actor.Health+fx.Heal)
-	actor.Strength = w.BoundsFor(actor.RaceID, "strength").Clamp(actor.Strength + fx.Strength)
+	actor.Strength = w.BoundsFor(actor.RaceID, actor.ClassID, "strength").Clamp(actor.Strength + fx.Strength)
 	if len(fx.Traits) > 0 && actor.Traits == nil {
 		actor.Traits = map[string]int{}
 	}
 	for name, delta := range fx.Traits {
-		actor.Traits[name] = w.BoundsFor(actor.RaceID, name).Clamp(actor.Traits[name] + delta)
+		actor.Traits[name] = w.BoundsFor(actor.RaceID, actor.ClassID, name).Clamp(actor.Traits[name] + delta)
 	}
 	owner.Inventory = append(append([]Item(nil), owner.Inventory[:at]...), owner.Inventory[at+1:]...)
 	actor.ActReadyAt = now.Add(w.Rules.PickupCooldown())

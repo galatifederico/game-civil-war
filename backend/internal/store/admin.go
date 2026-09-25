@@ -93,6 +93,17 @@ type AdminRace struct {
 	Look   string                         `json:"look"` // the pawn's colour (game.Looks); "" = default
 }
 
+// AdminClass is like AdminRace but without the starting stats: a class only changes the bounds of
+// characteristics (Bounds) and, optionally, the pawn's colour (Look). Unlike a race, a unit's
+// class can change during play.
+type AdminClass struct {
+	ID          string                         `json:"id"`
+	Name        string                         `json:"name"`
+	Description string                         `json:"description"`
+	Bounds      map[string]game.BoundsOverride `json:"bounds"`
+	Look        string                         `json:"look"` // "" = the race's own colour
+}
+
 // AdminCharacteristic is one characteristic of the world with its default bounds. Kind is "base"
 // (speed, health, vision, strength: always there) or "extended" (the world's trait_names).
 type AdminCharacteristic struct {
@@ -179,6 +190,7 @@ type WorldDefinition struct {
 	Terrain         []AdminTerrain        `json:"terrain"`
 	Characteristics []AdminCharacteristic `json:"characteristics"`
 	Races           []AdminRace           `json:"races"`
+	Classes         []AdminClass          `json:"classes"`
 	Compat          []AdminCompat         `json:"compat"`
 	Goals           []AdminGoal           `json:"goals"`
 	NPCs            []AdminNPC            `json:"npcs"`
@@ -189,7 +201,7 @@ type WorldDefinition struct {
 // Definition reads a world for the admin app.
 func (s *Store) Definition(ctx context.Context, id string) (WorldDefinition, error) {
 	d := WorldDefinition{
-		ID: id, Boards: []AdminBoard{}, Links: []AdminLink{}, Terrain: []AdminTerrain{}, Characteristics: []AdminCharacteristic{}, Races: []AdminRace{}, Compat: []AdminCompat{},
+		ID: id, Boards: []AdminBoard{}, Links: []AdminLink{}, Terrain: []AdminTerrain{}, Characteristics: []AdminCharacteristic{}, Races: []AdminRace{}, Classes: []AdminClass{}, Compat: []AdminCompat{},
 		Goals: []AdminGoal{}, NPCs: []AdminNPC{}, Items: []AdminItem{}, Players: []AdminPlayer{},
 	}
 	err := s.pool.QueryRow(ctx, `SELECT name, description, rules FROM worlds WHERE id = $1::uuid`, id).
@@ -281,6 +293,20 @@ func (s *Store) Definition(ctx context.Context, id string) (WorldDefinition, err
 			r.Bounds = map[string]game.BoundsOverride{}
 		}
 		d.Races = append(d.Races, r)
+		return nil
+	}); err != nil {
+		return d, err
+	}
+	if err := s.each(ctx, `SELECT id::text, name, description, bounds, look
+		FROM classes WHERE world_id = $1::uuid ORDER BY position, name`, []any{id}, func(rows pgx.Rows) error {
+		var c AdminClass
+		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.Bounds, &c.Look); err != nil {
+			return err
+		}
+		if c.Bounds == nil {
+			c.Bounds = map[string]game.BoundsOverride{}
+		}
+		d.Classes = append(d.Classes, c)
 		return nil
 	}); err != nil {
 		return d, err
@@ -677,7 +703,7 @@ func RacesChange(worldID string, races []AdminRace) Change {
 				return err
 			}
 			tmin, tbonus := nonNil(r.TraitsMin), nonNil(r.TraitsBonus)
-			if err := checkRaceBounds(rules, name, r.Bounds); err != nil {
+			if err := checkBoundsOverrides(rules, fmt.Sprintf("razza %q", name), r.Bounds); err != nil {
 				return err
 			}
 			if !game.ValidLook(r.Look) {
@@ -1086,10 +1112,10 @@ func noBlockingTerrainOnThings(ctx context.Context, tx pgx.Tx, worldID string) e
 	return invalid("la casella (%d, %d) della board %q è occupata (pedina, oggetto, struttura o passaggio) e non può avere un terreno che blocca", x, y, name)
 }
 
-// checkRaceBounds validates what a race changes of the world's bounds: only known
+// checkBoundsOverrides validates what a race or a class changes of the world's bounds: only known
 // characteristics, sensible numbers and, once overlaid on the world's, a minimum that is not
-// above the maximum.
-func checkRaceBounds(rules game.Rules, raceName string, overrides map[string]game.BoundsOverride) error {
+// above the maximum. what names who it belongs to for the message, e.g. `razza "Balordi"`.
+func checkBoundsOverrides(rules game.Rules, what string, overrides map[string]game.BoundsOverride) error {
 	known := map[string]bool{}
 	for _, k := range game.BaseCharacteristics {
 		known[k] = true
@@ -1099,7 +1125,7 @@ func checkRaceBounds(rules game.Rules, raceName string, overrides map[string]gam
 	}
 	for key, o := range overrides {
 		if !known[key] {
-			return invalid("razza %q: limiti per una caratteristica sconosciuta (%q)", raceName, key)
+			return invalid("%s: limiti per una caratteristica sconosciuta (%q)", what, key)
 		}
 		b := rules.BoundsFor(key)
 		if o.Min != nil {
@@ -1109,13 +1135,13 @@ func checkRaceBounds(rules game.Rules, raceName string, overrides map[string]gam
 			b.Max = *o.Max
 		}
 		if b.Min < 0 || b.Max > 10_000_000 {
-			return invalid("razza %q: i limiti di %q devono stare tra 0 e 10000000", raceName, key)
+			return invalid("%s: i limiti di %q devono stare tra 0 e 10000000", what, key)
 		}
 		if b.Min > b.Max {
-			return invalid("razza %q: %q avrebbe il minimo (%d) sopra il massimo (%d)", raceName, key, b.Min, b.Max)
+			return invalid("%s: %q avrebbe il minimo (%d) sopra il massimo (%d)", what, key, b.Min, b.Max)
 		}
 		if (key == "speed" || key == "health" || key == "vision") && b.Min < 1 {
-			return invalid("razza %q: il minimo di %q deve essere almeno 1", raceName, key)
+			return invalid("%s: il minimo di %q deve essere almeno 1", what, key)
 		}
 	}
 	return nil
@@ -1190,6 +1216,9 @@ func CharacteristicsChange(worldID string, items []AdminCharacteristic) Change {
 				WHERE world_id = $1::uuid`, worldID, old); err != nil {
 				return err
 			}
+			if _, err := tx.Exec(ctx, `UPDATE classes SET bounds = bounds - $2 WHERE world_id = $1::uuid`, worldID, old); err != nil {
+				return err
+			}
 		}
 
 		// The races' own limits must still make sense with the new defaults.
@@ -1215,7 +1244,104 @@ func CharacteristicsChange(worldID string, items []AdminCharacteristic) Change {
 			return err
 		}
 		for _, rb := range all {
-			if err := checkRaceBounds(rules, rb.name, rb.b); err != nil {
+			if err := checkBoundsOverrides(rules, fmt.Sprintf("razza %q", rb.name), rb.b); err != nil {
+				return err
+			}
+		}
+
+		// The classes' own limits must still make sense with the new defaults too.
+		crows, err := tx.Query(ctx, `SELECT name, bounds FROM classes WHERE world_id = $1::uuid`, worldID)
+		if err != nil {
+			return err
+		}
+		var allClasses []raceBounds
+		for crows.Next() {
+			var cb raceBounds
+			if err := crows.Scan(&cb.name, &cb.b); err != nil {
+				crows.Close()
+				return err
+			}
+			allClasses = append(allClasses, cb)
+		}
+		crows.Close()
+		if err := crows.Err(); err != nil {
+			return err
+		}
+		for _, cb := range allClasses {
+			if err := checkBoundsOverrides(rules, fmt.Sprintf("classe %q", cb.name), cb.b); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
+// ClassesChange replaces the world's classes. A class is like a race but has no starting stats of
+// its own (it only changes the bounds of characteristics, and optionally the pawn's colour) and a
+// unit's class can change during play, so deleting one only needs to check units, not memberships.
+func ClassesChange(worldID string, classes []AdminClass) Change {
+	return func(ctx context.Context, tx pgx.Tx) error {
+		if len(classes) > maxRaces {
+			return invalid("troppe classi (massimo %d)", maxRaces)
+		}
+		rules, err := worldRules(ctx, tx, worldID)
+		if err != nil {
+			return err
+		}
+		existing, err := existingIDs(ctx, tx, `SELECT id::text FROM classes WHERE world_id = $1::uuid`, worldID)
+		if err != nil {
+			return err
+		}
+		names, kept := map[string]bool{}, map[string]bool{}
+		for i, c := range classes {
+			name, err := checkName("classe", c.Name, 30)
+			if err != nil {
+				return err
+			}
+			if names[strings.ToLower(name)] {
+				return invalid("due classi si chiamano %q", name)
+			}
+			names[strings.ToLower(name)] = true
+			if err := checkText("classe "+name, c.Description, 300); err != nil {
+				return err
+			}
+			if err := checkBoundsOverrides(rules, fmt.Sprintf("classe %q", name), c.Bounds); err != nil {
+				return err
+			}
+			if !game.ValidLook(c.Look) {
+				return invalid("classe %q: aspetto %q sconosciuto", name, c.Look)
+			}
+			bounds := c.Bounds
+			if bounds == nil {
+				bounds = map[string]game.BoundsOverride{}
+			}
+			if c.ID == "" {
+				_, err = tx.Exec(ctx, `INSERT INTO classes (world_id, name, description, position, bounds, look)
+					VALUES ($1::uuid, $2, $3, $4, $5, $6)`, worldID, name, c.Description, i, bounds, c.Look)
+			} else {
+				if !existing[c.ID] {
+					return invalid("classe sconosciuta: %s", c.ID)
+				}
+				kept[c.ID] = true
+				_, err = tx.Exec(ctx, `UPDATE classes SET name = $2, description = $3, position = $4, bounds = $5, look = $6
+					WHERE id = $1::uuid`, c.ID, name, c.Description, i, bounds, c.Look)
+			}
+			if err != nil {
+				return err
+			}
+		}
+		for id := range existing {
+			if kept[id] {
+				continue
+			}
+			n, err := count(ctx, tx, `SELECT count(*) FROM units WHERE class_id = $1::uuid`, id)
+			if err != nil {
+				return err
+			}
+			if n > 0 {
+				return invalid("una classe da eliminare è indossata da qualche pedina: non si può cancellare")
+			}
+			if _, err := tx.Exec(ctx, `DELETE FROM classes WHERE id = $1::uuid`, id); err != nil {
 				return err
 			}
 		}
