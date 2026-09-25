@@ -150,11 +150,10 @@ const TABS = [
   ['world', 'Mondo', '◉'],
   ['rules', 'Regole', '⚙'],
   ['characteristics', 'Caratteristiche', '≡'],
+  ['classes', 'Classi', '▲'],
   ['races', 'Razze', '☺'],
   ['compat', 'Compatibilità', '⚭'],
-  ['boards', 'Board', '▦'],
-  ['terrain', 'Terreno', '▤'],
-  ['links', 'Passaggi', '⇄'],
+  ['board', 'Board', '▦'],
   ['goals', 'Obiettivi', '★'],
   ['npcs', 'NPC', '☻'],
   ['items', 'Oggetti', '◆'],
@@ -179,13 +178,17 @@ function setSideCollapsed(collapsed) {
 function renderPanel() {
   const panel = $('panel');
   const renderer = {
-    world: renderWorld, rules: renderRules, players: renderPlayers, terrain: renderTerrain,
+    world: renderWorld, rules: renderRules, players: renderPlayers, board: renderBoardPage,
     races: () => (state.view && state.view.type === 'race' ? renderRaceDetail() : renderRaceList()),
+    classes: () => (state.view && state.view.type === 'class' ? renderClassDetail() : renderClassList()),
     characteristics: () => (state.view && state.view.type === 'char' ? renderCharDetail() : renderCharList()),
+    npcs: () => (state.view && state.view.type === 'npc' ? renderNpcDetail() : renderNpcList()),
+    items: () => (state.view && state.view.type === 'item' ? renderItemDetail() : renderItemList()),
   }[state.tab];
-  panel.replaceChildren(...(renderer ? renderer() : [renderList(state.tab)]));
-  drawMap(); // no-op unless this tab has a map
-  drawTerrain(); // same for the terrain painter
+  // replaceChildren stringifies anything that is not a Node (so a bare null would show up as the
+  // text "null"): renderers may return one for a part that does not apply right now, drop those.
+  panel.replaceChildren(...(renderer ? renderer() : [renderList(state.tab)]).filter(Boolean));
+  drawBoardMap(); // no-op unless the Board page (with its map) is showing
 }
 
 // Saving restarts the world so that it picks the change up: players reconnect on their own.
@@ -298,7 +301,6 @@ const LISTS = {
   links: {
     title: 'Passaggi', path: '/links', blank: () => ({ from_board: state.def.boards[0].id, from_x: 0, from_y: 0, to_board: state.def.boards[0].id, to_x: 1, to_y: 1 }),
     help: 'Un passaggio porta chi ci mette piede su un\'altra casella, di solito di un\'altra board. Vale in un solo verso: per andare e tornare servono due passaggi.',
-    map: 'links',
     cols: [
       { key: 'from_board', label: 'Da board', kind: 'select', options: boardOptions },
       { key: 'from_x', label: 'x', kind: 'number' },
@@ -329,49 +331,16 @@ const LISTS = {
       { key: 'reward', label: 'Premio', kind: 'number' },
     ],
   },
-  npcs: {
-    title: 'NPC', path: '/npcs', map: 'entities',
-    blank: () => ({ id: '', board_id: state.def.boards[0].id, name: 'Nuovo NPC', description: '', x: 0, y: 0, speed: 0, health: 100, vision: 3, strength: 10, dialogue: '', race_id: '', traits: {}, sprite: '' }),
-    help: 'Gli NPC non li controlla nessuno. Il dialogo ha una battuta per riga: ne risponde una a caso a ogni conversazione. Seleziona una riga e clicca sulla mappa per spostarla.',
-    cols: [
-      { key: 'name', label: 'Nome', kind: 'text' },
-      { key: 'description', label: 'Descrizione', kind: 'area' },
-      { key: 'board_id', label: 'Board', kind: 'select', options: boardOptions },
-      { key: 'x', label: 'x', kind: 'number' }, { key: 'y', label: 'y', kind: 'number' },
-      { key: 'health', label: 'Vita', kind: 'number' }, { key: 'strength', label: 'Forza', kind: 'number' },
-      { key: 'speed', label: 'Velocità', kind: 'number' }, { key: 'vision', label: 'Vista', kind: 'number' },
-      { key: 'dialogue', label: 'Dialogo (una battuta per riga)', kind: 'area' },
-      { key: 'race_id', label: 'Razza', kind: 'select', options: () => raceOptions(true) },
-      { key: 'traits', label: 'Caratteristiche', kind: 'traits' },
-      { key: 'sprite', label: 'Sprite', kind: 'select', options: () => [['', '(predefinito)']].concat(state.def.sprites.map((k) => [k, k])) },
-    ],
-  },
-  items: {
-    title: 'Oggetti', path: '/items', map: 'entities',
-    blank: () => ({ id: '', board_id: state.def.boards[0].id, name: 'Nuovo oggetto', description: '', x: 0, y: 0, effect: {}, icon: '' }),
-    help: 'Oggetti a terra. Chi li raccoglie li mette nell\'inventario della squadra; il champion può usarli e l\'effetto (cura, punti, forza, caratteristiche) si applica a lui. Con tutti gli effetti a zero l\'oggetto è solo decorativo.',
-    cols: [
-      { key: 'name', label: 'Nome', kind: 'text' },
-      { key: 'description', label: 'Descrizione', kind: 'area' },
-      { key: 'board_id', label: 'Board', kind: 'select', options: boardOptions },
-      { key: 'x', label: 'x', kind: 'number' }, { key: 'y', label: 'y', kind: 'number' },
-      { key: 'effect.heal', label: 'Cura', kind: 'number' },
-      { key: 'effect.points', label: 'Punti', kind: 'number' },
-      { key: 'effect.strength', label: 'Forza', kind: 'number' },
-      { key: 'effect.traits', label: 'Caratteristiche', kind: 'traits' },
-      { key: 'icon', label: 'Icona (inventario)', kind: 'select', options: () => [['', '(automatica)']].concat(state.def.item_icons.map((k) => [k, k])) },
-    ],
-  },
 };
 
-function cellInput(list, cols, row, col, index) {
+function cellInput(row, col) {
   const value = getPath(row, col.key);
   const set = (v) => setPath(row, col.key, v);
   switch (col.kind) {
     case 'number':
-      return el('input', { type: 'number', value: value ?? 0, onchange: (e) => { set(Number(e.target.value)); if (list.map) drawMap(); } });
+      return el('input', { type: 'number', value: value ?? 0, onchange: (e) => set(Number(e.target.value)) });
     case 'select': {
-      const select = el('select', { onchange: (e) => { set(e.target.value); if (list.map) drawMap(); } },
+      const select = el('select', { onchange: (e) => set(e.target.value) },
         ...col.options().map(([v, label]) => el('option', { value: v }, label)));
       select.value = value ?? '';
       return select;
@@ -405,7 +374,7 @@ function renderList(name) {
       class: state.selected && state.selected.list === name && state.selected.index === i ? 'selected' : '',
       onfocusin: () => selectRow(name, i),
     },
-    ...list.cols.map((c) => el('td', {}, cellInput(list, list.cols, row, c, i))),
+    ...list.cols.map((c) => el('td', {}, cellInput(row, c))),
     el('td', {}, el('button', { class: 'danger', title: 'Elimina la riga', onclick: () => { rows.splice(i, 1); state.selected = null; renderPanel(); } }, '✕'))));
 
   const parts = [
@@ -417,37 +386,14 @@ function renderList(name) {
       el('button', { onclick: () => save(list.path, { items: rows }) }, 'Salva ' + list.title),
       el('button', { class: 'ghost', onclick: () => { delete state.draft[name]; renderPanel(); notice(''); } }, 'Annulla modifiche')),
   ];
-  if (list.map) parts.push(mapBox(name));
   return el('div', {}, ...parts);
 }
 
 function selectRow(list, index, rerender) {
-  const same = state.selected && state.selected.list === list && state.selected.index === index;
   state.selected = { list, index };
   if (rerender) { renderPanel(); return; }
-  if (!same) {
-    // Mark the row without rebuilding the table (that would drop the focus).
-    document.querySelectorAll('#panel tbody tr').forEach((tr, i) => tr.classList.toggle('selected', i === index));
-    if (LISTS[list].map) drawMap();
-  }
-}
-
-// --- map: shows the cells of a board with what is on them; clicking places the selected row ---
-
-const mapView = { boardId: null, cell: 18 };
-
-function mapBox(listName) {
-  const canvas = el('canvas', { id: 'map' });
-  canvas.addEventListener('click', (e) => clickMap(e, canvas));
-  return el('div', { class: 'mapbox' },
-    el('h3', {}, 'Mappa'),
-    el('div', { class: 'legend' },
-      legend('#e0c060', 'NPC'), legend('#6fb3ff', 'oggetto'), legend('#c084fc', 'passaggio'),
-      legend('#e8eaf0', 'riga selezionata')),
-    el('label', { style: 'max-width:240px' }, 'Board mostrata',
-      el('select', { id: 'mapBoard', onchange: (e) => { mapView.boardId = e.target.value; drawMap(); } },
-        ...state.def.boards.map((b) => el('option', { value: b.id }, b.name)))),
-    canvas);
+  // Mark the row without rebuilding the table (that would drop the focus).
+  document.querySelectorAll('#panel tbody tr').forEach((tr, i) => tr.classList.toggle('selected', i === index));
 }
 
 function legend(color, text) {
@@ -456,74 +402,202 @@ function legend(color, text) {
   return el('span', {}, dot, text);
 }
 
-function currentBoard() {
-  const list = state.selected && LISTS[state.selected.list].map ? state.draft[state.selected.list] : null;
-  const row = list && list[state.selected.index];
-  const rowBoard = row && (row.board_id || row.from_board);
-  const id = rowBoard || mapView.boardId || state.def.boards[0].id;
-  mapView.boardId = state.def.boards.some((b) => b.id === id) ? id : state.def.boards[0].id;
-  return state.def.boards.find((b) => b.id === mapView.boardId);
+// --- board page: one map for terrain, passages, NPCs and items -----------------------------
+//
+// board+terrain+links used to be three separate tabs; NPCs and items had their own small map
+// each. They are now one page: a mode picks what a click on the map does, everything else shows
+// as dots so you always see where things are. Terreno paints by dragging; the other modes place
+// whatever row is "armed" (boardEditor.selected) on the clicked cell.
+
+const TERRAIN_COLORS = { '.': '#7bc96f', ',': '#e8d44d', '=': '#c98f5a', ':': '#a9b0b8', T: '#2e7d32', B: '#5aa85a', F: '#8b5a2b', '#': '#5b6270' };
+const MODES = [['terrain', 'Terreno'], ['links', 'Passaggi'], ['npcs', 'NPC'], ['items', 'Oggetti']];
+const boardEditor = { boardId: null, cell: 20, mode: 'terrain', glyph: 'T', drawing: false, selected: null };
+
+function terrainRows(boardId) {
+  if (!state.draft.terrain) state.draft.terrain = clone(state.def.terrain);
+  return state.draft.terrain.find((t) => t.board_id === boardId).rows;
 }
 
-// Cell centre on the canvas: plain rows and columns.
-function cellCenter(board, x, y) {
-  const c = mapView.cell;
-  return [x * c + c / 2, y * c + c / 2];
+function currentBoardEditor() {
+  if (!boardEditor.boardId || !state.def.boards.some((b) => b.id === boardEditor.boardId)) boardEditor.boardId = state.def.boards[0].id;
+  return state.def.boards.find((b) => b.id === boardEditor.boardId);
 }
 
-function drawMap() {
-  const canvas = $('map');
+function armPlacement(list, index) {
+  boardEditor.mode = list;
+  boardEditor.selected = { list, index };
+  renderPanel();
+}
+
+function renderBoardPage() {
+  const board = currentBoardEditor();
+  const canvas = el('canvas', { id: 'boardMap' });
+  const stop = () => { boardEditor.drawing = false; };
+  canvas.addEventListener('mousedown', (e) => { boardEditor.drawing = true; clickBoardMap(e, canvas); });
+  canvas.addEventListener('mousemove', (e) => { if (boardEditor.drawing && boardEditor.mode === 'terrain') paintBoardMap(e, canvas); });
+  canvas.addEventListener('mouseup', stop);
+  canvas.addEventListener('mouseleave', stop);
+
+  const modeButtons = MODES.map(([m, label]) => el('button', {
+    class: boardEditor.mode === m ? '' : 'ghost',
+    onclick: () => { boardEditor.mode = m; boardEditor.selected = null; renderPanel(); notice(''); },
+  }, label));
+
+  const parts = [
+    el('h2', {}, 'Board'),
+    el('p', { class: 'muted' }, 'Le aree del mondo: dimensioni e griglia qui sotto; terreno, passaggi, NPC e oggetti si vedono e si spostano tutti nella stessa mappa, più sotto.'),
+    renderList('boards'),
+    el('h2', {}, 'Mappa'),
+    el('p', { class: 'muted' }, 'Scegli cosa modificare, poi clicca sulla mappa (trascina, per il terreno). Le altre cose restano visibili come puntini colorati.'),
+    el('label', { style: 'max-width:280px' }, 'Board mostrata',
+      el('select', { onchange: (e) => { boardEditor.boardId = e.target.value; boardEditor.selected = null; renderPanel(); } },
+        ...state.def.boards.map((b) => el('option', { value: b.id, selected: b.id === board.id }, b.name)))),
+    el('div', { class: 'actions' }, ...modeButtons),
+    boardEditor.mode === 'terrain' ? renderTerrainPalette() : null,
+    el('div', { class: 'legend' },
+      legend('#ffd84a', 'NPC'), legend('#6fb3ff', 'oggetto'), legend('#c084fc', 'passaggio'), legend('#ffffff', 'selezionato')),
+    el('div', { class: 'mapbox' }, canvas),
+  ];
+  if (boardEditor.mode === 'terrain') {
+    parts.push(el('div', { class: 'actions' },
+      el('button', { onclick: () => save('/terrain', { items: state.draft.terrain || state.def.terrain }) }, 'Salva terreno'),
+      el('button', { class: 'ghost', onclick: () => { delete state.draft.terrain; renderPanel(); notice(''); } }, 'Annulla modifiche')));
+  } else if (boardEditor.mode === 'links') {
+    parts.push(renderBoardLinks());
+  } else {
+    parts.push(renderBoardEntities(boardEditor.mode));
+  }
+  return parts;
+}
+
+function renderTerrainPalette() {
+  return el('div', { class: 'actions' }, ...state.def.terrain_kinds.map((k) => {
+    const swatch = el('span', { class: 'dot' });
+    swatch.style.background = TERRAIN_COLORS[k.glyph];
+    return el('button', { class: k.glyph === boardEditor.glyph ? '' : 'ghost', onclick: () => { boardEditor.glyph = k.glyph; renderPanel(); } },
+      swatch, k.name + (k.blocks ? ' (blocca)' : ''));
+  }));
+}
+
+// The passages table: the same fields as before, plus a "Posiziona" button per row that arms it
+// for the map (a click there sets the end that is on the board currently shown).
+function renderBoardLinks() {
+  if (!state.draft.links) state.draft.links = clone(state.def.links);
+  const rows = state.draft.links;
+  const cols = LISTS.links.cols;
+  const table = el('table', { class: 'list' },
+    el('thead', {}, el('tr', {}, ...cols.map((c) => el('th', {}, c.label)), el('th', {}), el('th', {}))),
+    el('tbody', {}, ...rows.map((row, i) => el('tr',
+      { class: boardEditor.selected && boardEditor.selected.list === 'links' && boardEditor.selected.index === i ? 'selected' : '' },
+      ...cols.map((c) => el('td', {}, cellInput(row, c))),
+      el('td', {}, el('button', { class: 'ghost', onclick: () => armPlacement('links', i) }, 'Posiziona')),
+      el('td', {}, el('button', { class: 'danger', title: 'Elimina', onclick: () => { rows.splice(i, 1); boardEditor.selected = null; renderPanel(); } }, '✕'))))));
+  table.addEventListener('change', () => drawBoardMap());
+  return el('div', {},
+    el('h3', {}, 'Passaggi (' + rows.length + ')'),
+    el('p', { class: 'muted' }, LISTS.links.help + ' "Posiziona" e poi un clic sulla mappa muove l\'estremo che sta sulla board mostrata.'),
+    el('div', { class: 'tablewrap' }, table),
+    el('div', { class: 'actions' },
+      el('button', { class: 'ghost', onclick: () => { rows.push(LISTS.links.blank()); armPlacement('links', rows.length - 1); } }, '+ Aggiungi'),
+      el('button', { onclick: () => save('/links', { items: rows }) }, 'Salva passaggi'),
+      el('button', { class: 'ghost', onclick: () => { delete state.draft.links; boardEditor.selected = null; renderPanel(); notice(''); } }, 'Annulla modifiche')));
+}
+
+// The NPC/item quick-position list for the map: name, where they are, "Posiziona" to arm them for
+// a click on the map, and "Apri scheda" to their full page (item 3) for everything else.
+function renderBoardEntities(name) {
+  if (!state.draft[name]) state.draft[name] = clone(state.def[name]);
+  const rows = state.draft[name];
+  const label = name === 'npcs' ? 'NPC' : 'Oggetti';
+  const body = rows.map((row, i) => el('tr',
+    { class: boardEditor.selected && boardEditor.selected.list === name && boardEditor.selected.index === i ? 'selected' : '' },
+    el('td', {}, spritePreview(name === 'npcs' ? (row.sprite || 'wanderer') : null, 26)),
+    el('td', {}, row.name),
+    el('td', {}, (state.def.boards.find((b) => b.id === row.board_id) || {}).name || '?'),
+    el('td', { class: 'num' }, row.x + ', ' + row.y),
+    el('td', {}, el('button', { class: 'ghost', onclick: () => armPlacement(name, i) }, 'Posiziona')),
+    el('td', {}, el('button', { class: 'ghost', onclick: () => {
+      state.tab = name; state.view = { type: name === 'npcs' ? 'npc' : 'item', id: row.id, draft: clone(row) }; renderTabs(); renderPanel();
+    } }, 'Apri scheda'))));
+  return el('div', {},
+    el('h3', {}, label + ' (' + rows.length + ')'),
+    el('p', { class: 'muted' }, '"Posiziona" e poi un clic sulla mappa sposta la riga. Il resto (nome, statistiche, sprite...) si modifica nella scheda.'),
+    el('div', { class: 'tablewrap' }, el('table', { class: 'list' },
+      el('thead', {}, el('tr', {}, ...['', 'Nome', 'Board', 'Casella', '', ''].map((h) => el('th', {}, h)))),
+      el('tbody', {}, body))),
+    el('div', { class: 'actions' },
+      el('button', { onclick: () => save('/' + name, { items: rows }) }, 'Salva posizioni ' + label.toLowerCase()),
+      el('button', { class: 'ghost', onclick: () => { delete state.draft[name]; boardEditor.selected = null; renderPanel(); notice(''); } }, 'Annulla modifiche')));
+}
+
+function cellFromEvent(e, canvas, board) {
+  const rect = canvas.getBoundingClientRect();
+  const scale = canvas.width / rect.width;
+  const x = Math.floor((e.clientX - rect.left) * scale / boardEditor.cell);
+  const y = Math.floor((e.clientY - rect.top) * scale / boardEditor.cell);
+  return x < 0 || y < 0 || x >= board.width || y >= board.height ? null : { x, y };
+}
+
+function paintBoardMap(e, canvas) {
+  const board = currentBoardEditor();
+  const cell = cellFromEvent(e, canvas, board);
+  if (!cell) return;
+  const rows = terrainRows(board.id);
+  if (rows[cell.y][cell.x] === boardEditor.glyph) return;
+  rows[cell.y] = rows[cell.y].slice(0, cell.x) + boardEditor.glyph + rows[cell.y].slice(cell.x + 1);
+  drawBoardMap();
+}
+
+function clickBoardMap(e, canvas) {
+  if (boardEditor.mode === 'terrain') { paintBoardMap(e, canvas); return; }
+  const board = currentBoardEditor();
+  const cell = cellFromEvent(e, canvas, board);
+  if (!cell) return;
+  const sel = boardEditor.selected;
+  if (!sel || sel.list !== boardEditor.mode) { notice('Premi prima "Posiziona" sulla riga da spostare, poi clicca sulla mappa.', 'bad'); return; }
+  if (boardEditor.mode === 'links') {
+    const row = state.draft.links[sel.index];
+    // A click moves whichever end is (or becomes) the one on the board shown.
+    if (row.to_board === board.id && row.from_board !== board.id) { row.to_x = cell.x; row.to_y = cell.y; }
+    else { row.from_board = board.id; row.from_x = cell.x; row.from_y = cell.y; }
+  } else {
+    const row = state.draft[boardEditor.mode][sel.index];
+    row.board_id = board.id; row.x = cell.x; row.y = cell.y;
+  }
+  notice('Casella (' + cell.x + ', ' + cell.y + ') su ' + board.name + '. Ricordati di salvare.', 'ok');
+  drawBoardMap();
+}
+
+function drawBoardMap() {
+  const canvas = $('boardMap');
   if (!canvas) return;
-  const board = currentBoard();
-  const select = $('mapBoard');
-  if (select) select.value = board.id;
-  const c = mapView.cell;
+  const board = currentBoardEditor();
+  const rows = terrainRows(board.id);
+  const c = boardEditor.cell;
   canvas.width = board.width * c + 1;
   canvas.height = board.height * c + 1;
   const ctx = canvas.getContext('2d');
-  ctx.strokeStyle = '#262a36';
-  for (let y = 0; y < board.height; y++) {
-    for (let x = 0; x < board.width; x++) {
-      const [cx, cy] = cellCenter(board, x, y);
-      ctx.strokeRect(cx - c / 2 + 0.5, cy - c / 2 + 0.5, c - 1, c - 1);
-    }
-  }
-  const mark = (x, y, color, ring) => {
-    const [cx, cy] = cellCenter(board, x, y);
+  rows.forEach((row, y) => [...row].forEach((glyph, x) => {
+    ctx.fillStyle = TERRAIN_COLORS[glyph] || '#f0f';
+    ctx.fillRect(x * c, y * c, c - 1, c - 1);
+  }));
+  const dot = (x, y, color, ring) => {
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(cx, cy, c / 3, 0, Math.PI * 2);
+    ctx.arc(x * c + c / 2, y * c + c / 2, c / 3, 0, Math.PI * 2);
     ctx.fill();
-    if (ring) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1; }
+    ctx.strokeStyle = ring ? '#fff' : '#000';
+    ctx.lineWidth = ring ? 2 : 1;
+    ctx.stroke();
+    ctx.lineWidth = 1;
   };
-  const sel = state.selected;
-  const selected = (list, i) => sel && sel.list === list && sel.index === i;
-  (state.draft.npcs || state.def.npcs).forEach((n, i) => { if (n.board_id === board.id) mark(n.x, n.y, '#e0c060', selected('npcs', i)); });
-  (state.draft.items || state.def.items).forEach((n, i) => { if (n.board_id === board.id) mark(n.x, n.y, '#6fb3ff', selected('items', i)); });
+  const isSel = (list, i) => boardEditor.selected && boardEditor.selected.list === list && boardEditor.selected.index === i;
+  (state.draft.npcs || state.def.npcs).forEach((n, i) => { if (n.board_id === board.id) dot(n.x, n.y, '#ffd84a', isSel('npcs', i)); });
+  (state.draft.items || state.def.items).forEach((n, i) => { if (n.board_id === board.id) dot(n.x, n.y, '#6fb3ff', isSel('items', i)); });
   (state.draft.links || state.def.links).forEach((l, i) => {
-    if (l.from_board === board.id) mark(l.from_x, l.from_y, '#c084fc', selected('links', i));
+    if (l.from_board === board.id) dot(l.from_x, l.from_y, '#c084fc', isSel('links', i));
+    if (l.to_board === board.id) dot(l.to_x, l.to_y, '#c084fc', isSel('links', i));
   });
-}
-
-function clickMap(e, canvas) {
-  const sel = state.selected;
-  if (!sel || !LISTS[sel.list].map) { notice('Seleziona prima una riga della tabella, poi clicca sulla mappa.'); return; }
-  const board = currentBoard();
-  const rect = canvas.getBoundingClientRect();
-  const scale = canvas.width / rect.width;
-  const px = (e.clientX - rect.left) * scale;
-  const py = (e.clientY - rect.top) * scale;
-  const y = Math.floor(py / mapView.cell);
-  const x = Math.floor(px / mapView.cell);
-  if (x < 0 || y < 0 || x >= board.width || y >= board.height) return;
-  const row = state.draft[sel.list][sel.index];
-  if (sel.list === 'links') {
-    row.from_board = board.id; row.from_x = x; row.from_y = y;
-  } else {
-    row.board_id = board.id; row.x = x; row.y = y;
-  }
-  notice('Casella (' + x + ', ' + y + ') su ' + board.name + '. Ricordati di salvare.');
-  renderPanel();
 }
 
 // --- caratteristiche e razze ---
@@ -639,6 +713,7 @@ function renderRaceList() {
   const rows = state.def.races.map((r) => {
     const custom = Object.keys(r.bounds || {}).length;
     return el('tr', {},
+      el('td', {}, spritePreview(raceSpriteName(r.look), 32)),
       el('td', {}, el('strong', {}, r.name)),
       el('td', { class: 'muted' }, (r.description || '').length > 70 ? r.description.slice(0, 70) + '…' : r.description),
       el('td', { class: 'num' }, range(r.speed, r.bonus_speed)), el('td', { class: 'num' }, range(r.health, r.bonus_health)),
@@ -650,7 +725,7 @@ function renderRaceList() {
     el('h2', {}, 'Razze (' + state.def.races.length + ')'),
     el('p', { class: 'muted' }, 'Una razza dà alle sue pedine i valori iniziali (un minimo più un bonus casuale) e può cambiare i limiti delle caratteristiche. Nella tabella: velocità, vita, vista e forza iniziali (minimo o intervallo). Apri una razza per vederla e modificarla.'),
     el('div', { class: 'tablewrap' }, el('table', { class: 'list' },
-      el('thead', {}, el('tr', {}, ...['Razza', 'Descrizione', 'Velocità', 'Vita', 'Vista', 'Forza', 'Limiti propri', ''].map((h) => el('th', {}, h)))),
+      el('thead', {}, el('tr', {}, ...['', 'Razza', 'Descrizione', 'Velocità', 'Vita', 'Vista', 'Forza', 'Limiti propri', ''].map((h) => el('th', {}, h)))),
       el('tbody', {}, rows))),
     el('div', { class: 'actions' },
       el('button', { class: 'ghost', onclick: () => { state.view = { type: 'race', id: '', draft: newRace() }; renderPanel(); } }, '+ Nuova razza')),
@@ -679,7 +754,7 @@ function renderRaceDetail() {
   const description = el('textarea', { rows: 3, maxlength: 300, onchange: (e) => { r.description = e.target.value; } });
   description.value = r.description || '';
   // Tutte le razze usano la stessa pedina standard: cambia il colore (il ruolo aggiunge il resto, per esempio la corona del campione).
-  const look = el('select', { onchange: (e) => { r.look = e.target.value; } },
+  const look = el('select', { onchange: (e) => { r.look = e.target.value; renderPanel(); } },
     el('option', { value: '' }, '(predefinito: salmone)'), ...state.def.looks.map((l) => el('option', { value: l }, l)));
   look.value = r.look || '';
 
@@ -717,8 +792,10 @@ function renderRaceDetail() {
   return [
     el('div', { class: 'crumb' }, backButton('Razze', () => { state.view = null; notice(''); renderPanel(); }), el('h2', {}, isNew ? 'Nuova razza' : r.name)),
     el('div', { class: 'card', style: 'display:flex;flex-direction:column;gap:14px' },
-      el('div', { class: 'grid2' }, el('label', {}, 'Nome', name), el('label', {}, 'Descrizione', description),
+      el('div', { style: 'display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap' },
+        spritePreview(raceSpriteName(r.look), 64),
         el('label', {}, 'Aspetto (colore della pedina)', look)),
+      el('div', { class: 'grid2' }, el('label', {}, 'Nome', name), el('label', {}, 'Descrizione', description)),
       el('h3', { style: 'margin:0' }, 'Caratteristiche'),
       el('p', { class: 'muted', style: 'margin:0' }, 'Una pedina nasce con il valore iniziale più un numero a caso da 0 al bonus. I limiti lasciati vuoti (bordo tratteggiato, valore in grigio) sono quelli del mondo: scrivi un numero per cambiarli solo per questa razza.'),
       el('div', { class: 'tablewrap' }, el('table', { class: 'list' },
@@ -745,77 +822,318 @@ async function deleteRace(r) {
   if (await save('/races', { items })) { state.view = null; renderPanel(); }
 }
 
-// --- terrain tab: paint the cells of a board ---
+// --- sprite preview: the same pixel-art pawn the game draws, cropped from art/characters.png
+// (built by tools/sprites/build_characters.py from img/pawn.png). Used by NPC, Razze and Classi so
+// you see the look you are choosing, not just its name (art/characters-layout.json says where each
+// variant sits in the sheet: one row of frames, the first column is the pose facing the viewer).
 
-const TERRAIN_COLORS = { '.': '#7bc96f', ',': '#e8d44d', '=': '#c98f5a', ':': '#a9b0b8', T: '#2e7d32', B: '#5aa85a', F: '#8b5a2b', '#': '#5b6270' };
-const paint = { boardId: null, glyph: 'T', cell: 18, drawing: false };
+const spriteAtlas = { img: null, layout: null, loading: null };
 
-function terrainRows(boardId) {
-  if (!state.draft.terrain) state.draft.terrain = clone(state.def.terrain);
-  return state.draft.terrain.find((t) => t.board_id === boardId).rows;
+function ensureSpriteAtlas() {
+  if (spriteAtlas.loading) return spriteAtlas.loading;
+  spriteAtlas.loading = Promise.all([
+    fetch('art/characters-layout.json').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = 'art/characters.png';
+    }),
+  ]).then(([layout, img]) => {
+    spriteAtlas.layout = layout;
+    spriteAtlas.img = img;
+    renderPanel(); // the first previews were blank while this loaded; redraw now that it's here
+  });
+  return spriteAtlas.loading;
 }
 
-function renderTerrain() {
-  if (!paint.boardId || !state.def.boards.some((b) => b.id === paint.boardId)) paint.boardId = state.def.boards[0].id;
-  const canvas = el('canvas', { id: 'terrainMap' });
-  const stop = () => { paint.drawing = false; };
-  canvas.addEventListener('mousedown', (e) => { paint.drawing = true; paintAt(e, canvas); });
-  canvas.addEventListener('mousemove', (e) => { if (paint.drawing) paintAt(e, canvas); });
-  canvas.addEventListener('mouseup', stop);
-  canvas.addEventListener('mouseleave', stop);
-  const palette = state.def.terrain_kinds.map((k) => {
-    const swatch = el('span', { class: 'dot' });
-    swatch.style.background = TERRAIN_COLORS[k.glyph];
-    return el('button', { class: k.glyph === paint.glyph ? '' : 'ghost', onclick: () => { paint.glyph = k.glyph; renderPanel(); } },
-      swatch, k.name + (k.blocks ? ' (blocca)' : ''));
+// The pedina standard in a given colour ("" or unknown -> the plain, uncoloured one): what a race
+// or a class looks like when nothing more specific applies.
+const raceSpriteName = (look) => (look ? 'minor-' + look : 'minor');
+
+// A small canvas with one character's sprite; name can be null or unknown (stays blank).
+function spritePreview(name, size) {
+  const canvas = el('canvas', { width: size, height: size, class: 'sprite-preview' });
+  canvas.style.width = canvas.style.height = size + 'px';
+  if (name) { ensureSpriteAtlas(); drawSpritePreview(canvas, name); }
+  return canvas;
+}
+
+function drawSpritePreview(canvas, name) {
+  const { img, layout } = spriteAtlas;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!img || !layout) return; // still loading; ensureSpriteAtlas() redraws everything once it is
+  const entry = layout.characters.find((c) => c.name === name);
+  if (entry) ctx.drawImage(img, 0, entry.row * layout.cell, layout.cell, layout.cell, 0, 0, canvas.width, canvas.height);
+}
+
+// -- classi: elenco -------------------------------------------------------------------------
+//
+// Una classe è come una razza, ma la classe di una pedina può cambiare nel tempo (la razza no) e
+// non ha valori iniziali propri: cambia solo i limiti delle caratteristiche. Quando una pedina ha
+// sia una razza sia una classe, i limiti finali sono l'unione dei due: per il minimo e per il
+// massimo, sempre il valore maggiore tra quello della razza e quello della classe (vedi
+// game.World.BoundsFor). Il server non ha ancora un modo per assegnare una classe a una pedina:
+// questa pagina la definisce soltanto.
+
+function renderClassList() {
+  const rows = state.def.classes.map((c) => {
+    const custom = Object.keys(c.bounds || {}).length;
+    return el('tr', {},
+      el('td', {}, spritePreview(raceSpriteName(c.look), 32)),
+      el('td', {}, el('strong', {}, c.name)),
+      el('td', { class: 'muted' }, (c.description || '').length > 70 ? c.description.slice(0, 70) + '…' : c.description),
+      el('td', {}, custom ? custom + (custom === 1 ? ' limite' : ' limiti') : '—'),
+      el('td', {}, el('button', { class: 'ghost', onclick: () => { state.view = { type: 'class', id: c.id, draft: clone(c) }; renderPanel(); } }, 'Apri')));
   });
   return [
-    el('h2', {}, 'Terreno'),
-    el('p', { class: 'muted' }, 'Ogni casella è erba se non scegli altro. Alberi, cespugli, staccionate e muri bloccano: nessuno ci può stare, quindi non si possono mettere sotto pedine, oggetti, strutture o passaggi. Scegli un tipo e dipingi trascinando sulla mappa; i puntini mostrano NPC (giallo), oggetti (azzurro) e passaggi (viola). Le altre board si salvano insieme.'),
-    el('label', { style: 'max-width:240px' }, 'Board',
-      el('select', { onchange: (e) => { paint.boardId = e.target.value; renderPanel(); } },
-        ...state.def.boards.map((b) => el('option', { value: b.id, selected: b.id === paint.boardId }, b.name)))),
-    el('div', { class: 'actions' }, ...palette),
-    el('div', { class: 'mapbox' }, canvas),
+    el('h2', {}, 'Classi (' + state.def.classes.length + ')'),
+    el('p', { class: 'muted' }, 'Una classe è come una razza, ma quella di una pedina può cambiare nel tempo e non dà valori iniziali: cambia solo i limiti delle caratteristiche (ed eventualmente il colore). Se una pedina ha sia razza sia classe, per ogni limite vince sempre il valore maggiore tra i due. Apri una classe per vederla e modificarla.'),
+    el('div', { class: 'tablewrap' }, el('table', { class: 'list' },
+      el('thead', {}, el('tr', {}, ...['', 'Classe', 'Descrizione', 'Limiti propri', ''].map((h) => el('th', {}, h)))),
+      el('tbody', {}, rows))),
     el('div', { class: 'actions' },
-      el('button', { onclick: () => save('/terrain', { items: state.draft.terrain || state.def.terrain }) }, 'Salva terreno'),
-      el('button', { class: 'ghost', onclick: () => { delete state.draft.terrain; renderPanel(); notice(''); } }, 'Annulla modifiche')),
+      el('button', { class: 'ghost', onclick: () => { state.view = { type: 'class', id: '', draft: { id: '', name: 'Nuova classe', description: '', look: '', bounds: {} } }; renderPanel(); } }, '+ Nuova classe')),
   ];
 }
 
-function drawTerrain() {
-  const canvas = $('terrainMap');
-  if (!canvas) return;
-  const board = state.def.boards.find((b) => b.id === paint.boardId);
-  const rows = terrainRows(board.id);
-  const c = paint.cell;
-  canvas.width = board.width * c + 1;
-  canvas.height = board.height * c + 1;
-  const ctx = canvas.getContext('2d');
-  rows.forEach((row, y) => [...row].forEach((glyph, x) => {
-    ctx.fillStyle = TERRAIN_COLORS[glyph] || '#f0f';
-    ctx.fillRect(x * c, y * c, c - 1, c - 1);
-  }));
-  const dot = (x, y, color) => { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x * c + c / 2, y * c + c / 2, c / 4, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#000'; ctx.stroke(); };
-  state.def.npcs.filter((n) => n.board_id === board.id).forEach((n) => dot(n.x, n.y, '#ffd84a'));
-  state.def.items.filter((n) => n.board_id === board.id).forEach((n) => dot(n.x, n.y, '#6fb3ff'));
-  state.def.links.forEach((l) => {
-    if (l.from_board === board.id) dot(l.from_x, l.from_y, '#c084fc');
-    if (l.to_board === board.id) dot(l.to_x, l.to_y, '#c084fc');
+// -- classi: dettaglio -----------------------------------------------------------------------
+
+function renderClassDetail() {
+  const v = state.view;
+  const c = v.draft;
+  c.bounds = c.bounds || {};
+  const isNew = v.id === '';
+
+  const name = el('input', { type: 'text', value: c.name, maxlength: 30, onchange: (e) => { c.name = e.target.value; } });
+  const description = el('textarea', { rows: 3, maxlength: 300, onchange: (e) => { c.description = e.target.value; } });
+  description.value = c.description || '';
+  const look = el('select', { onchange: (e) => { c.look = e.target.value; renderPanel(); } },
+    el('option', { value: '' }, '(usa il colore della razza)'), ...state.def.looks.map((l) => el('option', { value: l }, l)));
+  look.value = c.look || '';
+
+  const setLimit = (ch, which, n) => {
+    const o = c.bounds[ch.key] || {};
+    if (n === null) delete o[which]; else o[which] = n;
+    if (o.min == null && o.max == null) delete c.bounds[ch.key]; else c.bounds[ch.key] = o;
+    renderPanel();
+  };
+  const rows = state.def.characteristics.map((ch) => {
+    const eff = effectiveBounds(c, ch);
+    const o = c.bounds[ch.key] || {};
+    return el('tr', {},
+      el('td', {}, el('strong', {}, charLabel(ch)), el('div', { class: 'muted' }, ch.kind === 'base' ? 'di base' : 'estesa')),
+      el('td', { class: o.min == null ? 'inherit' : '' }, numberInput(o.min, (n) => setLimit(ch, 'min', n), { placeholder: ch.min })),
+      el('td', { class: o.max == null ? 'inherit' : '' }, numberInput(o.max, (n) => setLimit(ch, 'max', n), { placeholder: ch.max })),
+      el('td', {}, o.min == null && o.max == null ? el('span', { class: 'muted' }, 'come il mondo (' + eff.min + '–' + eff.max + ')') : el('span', { class: 'warn' }, 'limiti propri ' + eff.min + '–' + eff.max)));
   });
+
+  const actions = [el('button', { onclick: () => saveClass(isNew) }, isNew ? 'Crea classe' : 'Salva classe')];
+  if (!isNew) actions.push(el('button', { class: 'danger', onclick: () => deleteClass(c) }, 'Elimina classe'));
+  return [
+    el('div', { class: 'crumb' }, backButton('Classi', () => { state.view = null; notice(''); renderPanel(); }), el('h2', {}, isNew ? 'Nuova classe' : c.name)),
+    el('div', { class: 'card', style: 'display:flex;flex-direction:column;gap:14px' },
+      el('div', { class: 'grid2' },
+        el('div', { style: 'display:flex;gap:12px;align-items:flex-end' }, spritePreview(raceSpriteName(c.look), 64),
+          el('label', { style: 'flex:1' }, 'Aspetto (vuoto = quello della razza)', look)),
+        el('label', {}, 'Nome', name)),
+      el('label', {}, 'Descrizione', description),
+      el('h3', { style: 'margin:0' }, 'Limiti delle caratteristiche'),
+      el('p', { class: 'muted', style: 'margin:0' }, 'Una classe non ha valori iniziali: solo limiti. Quelli lasciati vuoti (bordo tratteggiato) sono quelli del mondo. Se la pedina ha anche una razza, alla fine vale sempre il limite maggiore tra i due.'),
+      el('div', { class: 'tablewrap' }, el('table', { class: 'list' },
+        el('thead', {}, el('tr', {}, ...['Caratteristica', 'Limite minimo', 'Limite massimo', ''].map((h) => el('th', {}, h)))),
+        el('tbody', {}, rows))),
+      el('div', { class: 'actions' }, ...actions)),
+  ];
 }
 
-function paintAt(e, canvas) {
-  const board = state.def.boards.find((b) => b.id === paint.boardId);
-  const rect = canvas.getBoundingClientRect();
-  const scale = canvas.width / rect.width;
-  const x = Math.floor((e.clientX - rect.left) * scale / paint.cell);
-  const y = Math.floor((e.clientY - rect.top) * scale / paint.cell);
-  if (x < 0 || y < 0 || x >= board.width || y >= board.height) return;
-  const rows = terrainRows(board.id);
-  if (rows[y][x] === paint.glyph) return;
-  rows[y] = rows[y].slice(0, x) + paint.glyph + rows[y].slice(x + 1);
-  drawTerrain();
+async function saveClass(isNew) {
+  const c = clone(state.view.draft);
+  const items = clone(state.def.classes);
+  if (isNew) items.push(c);
+  else items.splice(items.findIndex((x) => x.id === state.view.id), 1, c);
+  if (await save('/classes', { items })) {
+    state.view = isNew ? null : { type: 'class', id: c.id, draft: clone(state.def.classes.find((x) => x.id === c.id)) };
+    renderPanel();
+  }
+}
+
+async function deleteClass(c) {
+  if (!confirm('Eliminare la classe "' + c.name + '"? Non si può se qualche pedina la indossa.')) return;
+  const items = clone(state.def.classes).filter((x) => x.id !== c.id);
+  if (await save('/classes', { items })) { state.view = null; renderPanel(); }
+}
+
+// -- NPC: elenco -----------------------------------------------------------------------------
+
+function renderNpcList() {
+  const rows = state.def.npcs.map((n) => el('tr', {},
+    el('td', {}, spritePreview(n.sprite || 'wanderer', 32)),
+    el('td', {}, el('strong', {}, n.name)),
+    el('td', { class: 'muted' }, (n.description || '').length > 60 ? n.description.slice(0, 60) + '…' : n.description),
+    el('td', {}, (state.def.boards.find((b) => b.id === n.board_id) || {}).name || '?'),
+    el('td', { class: 'num' }, n.x + ', ' + n.y),
+    el('td', {}, n.race_id ? (state.def.races.find((r) => r.id === n.race_id) || {}).name || '—' : '—'),
+    el('td', {}, el('button', { class: 'ghost', onclick: () => { state.view = { type: 'npc', id: n.id, draft: clone(n) }; renderPanel(); } }, 'Apri'))));
+  return [
+    el('h2', {}, 'NPC (' + state.def.npcs.length + ')'),
+    el('p', { class: 'muted' }, 'Le pedine che non controlla nessuno. Apri un NPC per vederlo e modificarlo, oppure vai alla pagina Board per spostarlo sulla mappa.'),
+    el('div', { class: 'tablewrap' }, el('table', { class: 'list' },
+      el('thead', {}, el('tr', {}, ...['', 'Nome', 'Descrizione', 'Board', 'Casella', 'Razza', ''].map((h) => el('th', {}, h)))),
+      el('tbody', {}, rows))),
+    el('div', { class: 'actions' },
+      el('button', { class: 'ghost', onclick: () => { state.view = { type: 'npc', id: '', draft: newNpc() }; renderPanel(); } }, '+ Nuovo NPC')),
+  ];
+}
+
+function newNpc() {
+  return { id: '', board_id: state.def.boards[0].id, name: 'Nuovo NPC', description: '', x: 0, y: 0, speed: 0, health: 100, vision: 3, strength: 10, dialogue: '', race_id: '', traits: {}, sprite: '' };
+}
+
+// -- NPC: dettaglio ----------------------------------------------------------------------------
+
+function renderNpcDetail() {
+  const v = state.view;
+  const n = v.draft;
+  n.traits = n.traits || {};
+  const isNew = v.id === '';
+
+  const field = (label, input) => el('label', {}, label, input);
+  const text = (value, onchange, max) => { const i = el('input', { type: 'text', maxlength: max, onchange: (e) => onchange(e.target.value) }); i.value = value || ''; return i; };
+  const area = (value, onchange, max) => { const i = el('textarea', { rows: 3, maxlength: max, onchange: (e) => onchange(e.target.value) }); i.value = value || ''; return i; };
+  const num = (value, onchange) => el('input', { type: 'number', value: value ?? 0, onchange: (e) => onchange(Number(e.target.value)) });
+  const boardSelect = el('select', { onchange: (e) => { n.board_id = e.target.value; } }, ...boardOptions().map(([v2, l]) => el('option', { value: v2 }, l)));
+  boardSelect.value = n.board_id;
+  const raceSelect = el('select', { onchange: (e) => { n.race_id = e.target.value; } }, ...raceOptions(true).map(([v2, l]) => el('option', { value: v2 }, l)));
+  raceSelect.value = n.race_id || '';
+  const spriteSelect = el('select', { onchange: (e) => { n.sprite = e.target.value; renderPanel(); } },
+    el('option', { value: '' }, '(predefinito: wanderer)'), ...state.def.sprites.map((k) => el('option', { value: k }, k)));
+  spriteSelect.value = n.sprite || '';
+  const traits = el('input', { type: 'text', value: traitsToText(n.traits), placeholder: 'nome=valore, ...' });
+  traits.addEventListener('change', () => {
+    try { n.traits = textToTraits(traits.value); traits.style.borderColor = ''; notice(''); }
+    catch (e) { traits.style.borderColor = 'var(--bad)'; notice(e.message, 'bad'); }
+  });
+
+  const actions = [el('button', { onclick: () => saveNpc(isNew) }, isNew ? 'Crea NPC' : 'Salva NPC')];
+  if (!isNew) actions.push(el('button', { class: 'danger', onclick: () => deleteNpc(n) }, 'Elimina NPC'));
+  return [
+    el('div', { class: 'crumb' }, backButton('NPC', () => { state.view = null; notice(''); renderPanel(); }), el('h2', {}, isNew ? 'Nuovo NPC' : n.name)),
+    el('div', { class: 'card', style: 'display:flex;flex-direction:column;gap:14px;max-width:820px' },
+      el('div', { style: 'display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap' },
+        spritePreview(n.sprite || 'wanderer', 64),
+        field('Sprite', spriteSelect)),
+      el('div', { class: 'grid2' }, field('Nome', text(n.name, (v2) => { n.name = v2; }, 40)), field('Descrizione', area(n.description, (v2) => { n.description = v2; }, 300))),
+      el('div', { class: 'grid2' }, field('Board', boardSelect), field('Razza (facoltativa)', raceSelect)),
+      el('div', { class: 'grid2' },
+        el('div', { class: 'grid2' }, field('x', num(n.x, (v2) => { n.x = v2; })), field('y', num(n.y, (v2) => { n.y = v2; }))),
+        el('div', { class: 'grid2' }, field('Velocità', num(n.speed, (v2) => { n.speed = v2; })), field('Vista', num(n.vision, (v2) => { n.vision = v2; })))),
+      el('div', { class: 'grid2' }, field('Vita', num(n.health, (v2) => { n.health = v2; })), field('Forza', num(n.strength, (v2) => { n.strength = v2; }))),
+      field('Dialogo (una battuta per riga)', area(n.dialogue, (v2) => { n.dialogue = v2; }, 1000)),
+      field('Caratteristiche', traits),
+      el('div', { class: 'actions' }, ...actions)),
+  ];
+}
+
+async function saveNpc(isNew) {
+  const n = clone(state.view.draft);
+  const items = clone(state.def.npcs);
+  if (isNew) items.push(n);
+  else items.splice(items.findIndex((x) => x.id === state.view.id), 1, n);
+  if (await save('/npcs', { items })) {
+    state.view = isNew ? null : { type: 'npc', id: n.id, draft: clone(state.def.npcs.find((x) => x.id === n.id)) };
+    renderPanel();
+  }
+}
+
+async function deleteNpc(n) {
+  if (!confirm('Eliminare l\'NPC "' + n.name + '"?')) return;
+  const items = clone(state.def.npcs).filter((x) => x.id !== n.id);
+  if (await save('/npcs', { items })) { state.view = null; renderPanel(); }
+}
+
+// -- Oggetti: elenco ---------------------------------------------------------------------------
+
+function renderItemList() {
+  const rows = state.def.items.map((it) => el('tr', {},
+    el('td', {}, el('strong', {}, it.name)),
+    el('td', { class: 'muted' }, (it.description || '').length > 60 ? it.description.slice(0, 60) + '…' : it.description),
+    el('td', {}, (state.def.boards.find((b) => b.id === it.board_id) || {}).name || '?'),
+    el('td', { class: 'num' }, it.x + ', ' + it.y),
+    el('td', {}, it.icon || '(auto)'),
+    el('td', {}, el('button', { class: 'ghost', onclick: () => { state.view = { type: 'item', id: it.id, draft: clone(it) }; renderPanel(); } }, 'Apri'))));
+  return [
+    el('h2', {}, 'Oggetti (' + state.def.items.length + ')'),
+    el('p', { class: 'muted' }, 'Oggetti a terra. Chi li raccoglie li mette nell\'inventario della squadra; il campione può usarli. Apri un oggetto per vederlo e modificarlo, oppure vai alla pagina Board per spostarlo sulla mappa.'),
+    el('div', { class: 'tablewrap' }, el('table', { class: 'list' },
+      el('thead', {}, el('tr', {}, ...['Nome', 'Descrizione', 'Board', 'Casella', 'Icona', ''].map((h) => el('th', {}, h)))),
+      el('tbody', {}, rows))),
+    el('div', { class: 'actions' },
+      el('button', { class: 'ghost', onclick: () => { state.view = { type: 'item', id: '', draft: newItem() }; renderPanel(); } }, '+ Nuovo oggetto')),
+  ];
+}
+
+function newItem() {
+  return { id: '', board_id: state.def.boards[0].id, name: 'Nuovo oggetto', description: '', x: 0, y: 0, effect: {}, icon: '' };
+}
+
+// -- Oggetti: dettaglio ------------------------------------------------------------------------
+
+function renderItemDetail() {
+  const v = state.view;
+  const it = v.draft;
+  it.effect = it.effect || {};
+  it.effect.traits = it.effect.traits || {};
+  const isNew = v.id === '';
+
+  const field = (label, input) => el('label', {}, label, input);
+  const text = (value, onchange, max) => { const i = el('input', { type: 'text', maxlength: max, onchange: (e) => onchange(e.target.value) }); i.value = value || ''; return i; };
+  const area = (value, onchange, max) => { const i = el('textarea', { rows: 3, maxlength: max, onchange: (e) => onchange(e.target.value) }); i.value = value || ''; return i; };
+  const num = (value, onchange) => el('input', { type: 'number', value: value ?? 0, onchange: (e) => onchange(Number(e.target.value)) });
+  const boardSelect = el('select', { onchange: (e) => { it.board_id = e.target.value; } }, ...boardOptions().map(([v2, l]) => el('option', { value: v2 }, l)));
+  boardSelect.value = it.board_id;
+  const iconSelect = el('select', { onchange: (e) => { it.icon = e.target.value; } },
+    el('option', { value: '' }, '(automatica, secondo l\'effetto)'), ...state.def.item_icons.map((k) => el('option', { value: k }, k)));
+  iconSelect.value = it.icon || '';
+  const traits = el('input', { type: 'text', value: traitsToText(it.effect.traits), placeholder: 'nome=valore, ...' });
+  traits.addEventListener('change', () => {
+    try { it.effect.traits = textToTraits(traits.value); traits.style.borderColor = ''; notice(''); }
+    catch (e) { traits.style.borderColor = 'var(--bad)'; notice(e.message, 'bad'); }
+  });
+
+  const actions = [el('button', { onclick: () => saveItem(isNew) }, isNew ? 'Crea oggetto' : 'Salva oggetto')];
+  if (!isNew) actions.push(el('button', { class: 'danger', onclick: () => deleteItem(it) }, 'Elimina oggetto'));
+  return [
+    el('div', { class: 'crumb' }, backButton('Oggetti', () => { state.view = null; notice(''); renderPanel(); }), el('h2', {}, isNew ? 'Nuovo oggetto' : it.name)),
+    el('div', { class: 'card', style: 'display:flex;flex-direction:column;gap:14px;max-width:760px' },
+      el('div', { class: 'grid2' }, field('Nome', text(it.name, (v2) => { it.name = v2; }, 40)), field('Descrizione', area(it.description, (v2) => { it.description = v2; }, 300))),
+      el('div', { class: 'grid2' }, field('Board', boardSelect), field('Icona (nell\'inventario)', iconSelect)),
+      el('div', { class: 'grid2' }, field('x', num(it.x, (v2) => { it.x = v2; })), field('y', num(it.y, (v2) => { it.y = v2; }))),
+      el('h3', { style: 'margin:0' }, 'Effetto (per quando il campione lo usa)'),
+      el('div', { class: 'grid2' }, field('Cura', num(it.effect.heal, (v2) => { it.effect.heal = v2; })), field('Punti', num(it.effect.points, (v2) => { it.effect.points = v2; }))),
+      el('div', { class: 'grid2' }, field('Forza', num(it.effect.strength, (v2) => { it.effect.strength = v2; })), field('Caratteristiche', traits)),
+      el('p', { class: 'muted', style: 'margin:0' }, 'Con tutti gli effetti a zero l\'oggetto è solo decorativo (non si può usare).'),
+      el('div', { class: 'actions' }, ...actions)),
+  ];
+}
+
+async function saveItem(isNew) {
+  const it = clone(state.view.draft);
+  const items = clone(state.def.items);
+  if (isNew) items.push(it);
+  else items.splice(items.findIndex((x) => x.id === state.view.id), 1, it);
+  if (await save('/items', { items })) {
+    state.view = isNew ? null : { type: 'item', id: it.id, draft: clone(state.def.items.find((x) => x.id === it.id)) };
+    renderPanel();
+  }
+}
+
+async function deleteItem(it) {
+  if (!confirm('Eliminare l\'oggetto "' + it.name + '"?')) return;
+  const items = clone(state.def.items).filter((x) => x.id !== it.id);
+  if (await save('/items', { items })) { state.view = null; renderPanel(); }
 }
 
 // --- players tab ---

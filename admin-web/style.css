@@ -91,3 +91,6 @@ td.num { text-align: right; white-space: nowrap; }
 .warn { color: var(--accent); font-size: 12px; }
 td.inherit input { border-style: dashed; }
 table.list input[type=number] { width: 110px; }
+
+/* Anteprima dello sprite (razze, classi, NPC): la stessa tavola pixel art del gioco. */
+.sprite-preview { image-rendering: pixelated; background: #0c0e13; border: 1px solid var(--line); border-radius: 6px; vertical-align: middle; }

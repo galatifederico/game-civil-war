@@ -20,6 +20,9 @@ from PIL import Image
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 SRC = os.path.join(ROOT, 'art-src', 'pawn')
 OUT = os.path.join(ROOT, 'unity-client', 'Assets', 'Resources', 'Art')
+# Una seconda copia, in un formato normale (.png), per l'app admin: mostra l'aspetto di ogni
+# razza/classe/NPC (vedi admin-web/app.js, spritePreview) senza duplicare il disegno in JS.
+ADMIN_OUT = os.path.join(ROOT, 'admin-web', 'art')
 
 DIRS = ['south', 'east', 'north', 'west']   # l'ordine delle celle: vedi CharacterSprites.cs
 SRC_CELL = 32                               # la dimensione dei fotogrammi generati
@@ -211,6 +214,10 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     atlas.save(os.path.join(OUT, 'characters.bytes'), format='PNG')
     with open(os.path.join(OUT, 'characters-layout.json'), 'w') as f:
+        json.dump(layout, f)
+    os.makedirs(ADMIN_OUT, exist_ok=True)
+    atlas.save(os.path.join(ADMIN_OUT, 'characters.png'), format='PNG')
+    with open(os.path.join(ADMIN_OUT, 'characters-layout.json'), 'w') as f:
         json.dump(layout, f)
     print(f'{len(rows)} varianti, tavola {atlas.width}x{atlas.height}')
     if args.preview:
