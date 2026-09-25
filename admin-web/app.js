@@ -851,11 +851,18 @@ function ensureSpriteAtlas() {
 // or a class looks like when nothing more specific applies.
 const raceSpriteName = (look) => (look ? 'minor-' + look : 'minor');
 
-// A small canvas with one character's sprite; name can be null or unknown (stays blank).
+// A small canvas with one character's sprite; name can be null or unknown (stays blank). Clicking
+// a real sprite opens it enlarged (spriteLightbox below) — in the table overview and in details alike.
 function spritePreview(name, size) {
   const canvas = el('canvas', { width: size, height: size, class: 'sprite-preview' });
   canvas.style.width = canvas.style.height = size + 'px';
-  if (name) { ensureSpriteAtlas(); drawSpritePreview(canvas, name); }
+  if (name) {
+    ensureSpriteAtlas();
+    drawSpritePreview(canvas, name);
+    canvas.classList.add('sprite-preview-clickable');
+    canvas.title = 'Clicca per ingrandire';
+    canvas.addEventListener('click', (e) => { e.stopPropagation(); openSpriteLightbox(name); });
+  }
   return canvas;
 }
 
@@ -867,6 +874,25 @@ function drawSpritePreview(canvas, name) {
   if (!img || !layout) return; // still loading; ensureSpriteAtlas() redraws everything once it is
   const entry = layout.characters.find((c) => c.name === name);
   if (entry) ctx.drawImage(img, 0, entry.row * layout.cell, layout.cell, layout.cell, 0, 0, canvas.width, canvas.height);
+}
+
+// A bigger look at a sprite: one overlay reused for every click, built the first time it is needed.
+let spriteLightbox = null;
+
+function openSpriteLightbox(name) {
+  if (!spriteLightbox) {
+    const canvas = el('canvas', { width: 256, height: 256, class: 'sprite-preview' });
+    spriteLightbox = el('div', { class: 'sprite-lightbox', onclick: closeSpriteLightbox }, canvas);
+    spriteLightbox.canvas = canvas;
+    document.body.append(spriteLightbox);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSpriteLightbox(); });
+  }
+  drawSpritePreview(spriteLightbox.canvas, name);
+  spriteLightbox.classList.add('open');
+}
+
+function closeSpriteLightbox() {
+  if (spriteLightbox) spriteLightbox.classList.remove('open');
 }
 
 // -- classi: elenco -------------------------------------------------------------------------

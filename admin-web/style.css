@@ -94,3 +94,13 @@ table.list input[type=number] { width: 110px; }
 
 /* Anteprima dello sprite (razze, classi, NPC): la stessa tavola pixel art del gioco. */
 .sprite-preview { image-rendering: pixelated; background: #0c0e13; border: 1px solid var(--line); border-radius: 6px; vertical-align: middle; }
+.sprite-preview-clickable { cursor: zoom-in; }
+.sprite-preview-clickable:hover { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Sprite ingrandito: si apre cliccando un'anteprima, sopra tutto, si chiude ricliccando o con Esc. */
+.sprite-lightbox {
+  display: none; position: fixed; inset: 0; background: rgba(6, 7, 11, 0.82);
+  align-items: center; justify-content: center; z-index: 1000; cursor: zoom-out;
+}
+.sprite-lightbox.open { display: flex; }
+.sprite-lightbox .sprite-preview { width: 256px; height: 256px; cursor: zoom-out; }
