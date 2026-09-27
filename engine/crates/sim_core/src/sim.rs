@@ -144,7 +144,7 @@ impl SimBuilder {
         schedule.add_systems((crate::dungeon::tethers, crate::dungeon::spawners, crate::dungeon::triggers).chain().in_set(SimSet::World));
         schedule.add_systems(crate::ai::think.in_set(SimSet::Ai));
         schedule.add_systems((crate::jobs::run_jobs, crate::crime::crime_upkeep).chain().in_set(SimSet::Act));
-        schedule.add_systems((crate::buildings::buildings_tick, crate::market::update_market, crate::economy::payroll).chain().in_set(SimSet::Economy));
+        schedule.add_systems((crate::buildings::buildings_tick, crate::logistics::post_logistics, crate::market::update_market, crate::economy::payroll).chain().in_set(SimSet::Economy));
         schedule.add_systems(
             (crate::social::defections, crate::social::merges, crate::social::succession, crate::victory::collections, crate::victory::check_victory)
                 .chain()

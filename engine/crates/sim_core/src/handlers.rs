@@ -46,6 +46,8 @@ pub fn register_core(ext: &mut Extensions) {
         ("poison", poison),
         ("clean", clean),
         ("loot", loot),
+        ("haul", crate::logistics::haul),
+        ("deliver", crate::logistics::deliver),
     ];
     for (name, f) in list {
         ext.job_handlers.insert((*name).to_string(), h(*f));
@@ -219,7 +221,9 @@ fn produce(world: &mut World, ctx: &JobCtx) -> JobResult {
 }
 
 fn process(world: &mut World, ctx: &JobCtx) -> JobResult {
-    let Some((bid, ri)) = ctx.active.recipe else { return JobResult::fail("nessuna ricetta") };
+    let Some(crate::jobs::JobPayload::Recipe { building: bid, index: ri }) = ctx.active.payload else {
+        return JobResult::fail("nessuna ricetta");
+    };
     let Some(b) = crate::lifecycle::entity_of(world, bid) else { return JobResult::fail("edificio sparito") };
     match crate::buildings::process_recipe(world, b, ri) {
         Ok(msg) => {

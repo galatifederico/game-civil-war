@@ -45,6 +45,15 @@ impl JobTarget {
     }
 }
 
+/// Extra data of engine-generated jobs.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum JobPayload {
+    /// Run recipe `index` of a processing building.
+    Recipe { building: SimId, index: usize },
+    /// Carry `qty` of `item` from one building to another (pick-up leg, then delivery leg).
+    Haul { from: SimId, to: SimId, item: String, qty: u32 },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BoardJob {
     pub id: u64,
@@ -56,8 +65,7 @@ pub struct BoardJob {
     pub reserved_by: Option<SimId>,
     pub created: u64,
     pub posted_by: Option<SimId>,
-    /// Production jobs: building and recipe index.
-    pub recipe: Option<(SimId, usize)>,
+    pub payload: Option<JobPayload>,
 }
 
 #[derive(Resource, Debug, Clone, Default, Serialize, Deserialize)]
@@ -108,7 +116,7 @@ pub struct ActiveJob {
     pub started: u64,
     /// Set when the task is an ability use rather than a job.
     pub ability: Option<String>,
-    pub recipe: Option<(SimId, usize)>,
+    pub payload: Option<JobPayload>,
 }
 
 /// What a pawn is doing right now.
@@ -119,6 +127,8 @@ pub struct Task {
     pub job: Option<ActiveJob>,
     /// Imposed by a squad order or a command: the utility AI does not override it.
     pub forced: bool,
+    /// Consecutive ticks spent trying to move without getting closer.
+    pub stuck: u32,
 }
 
 pub struct JobCtx {
@@ -169,7 +179,7 @@ pub fn post_job(world: &mut World, job: &str, faction: Option<String>, target: J
         reserved_by: None,
         created: tick,
         posted_by,
-        recipe: None,
+        payload: None,
     })
 }
 
@@ -200,7 +210,7 @@ pub fn can_do(world: &mut World, e: Entity, def: &JobDef, check_matrix: bool) ->
 }
 
 fn recipe_work_type(world: &World, j: &BoardJob) -> Option<String> {
-    let (bid, ri) = j.recipe?;
+    let Some(JobPayload::Recipe { building: bid, index: ri }) = j.payload else { return None };
     let b = world.resource::<IdIndex>().get(bid)?;
     let def = world.get::<crate::buildings::Building>(b)?.def.clone();
     let r = world.resource::<Content>().buildings.get(&def)?.recipes.get(ri)?;
@@ -219,10 +229,13 @@ pub fn best_board_job(world: &mut World, e: Entity) -> Option<(f32, BoardJob)> {
         .and_then(|m| content.rank(&m.faction, &m.rank).map(|r| r.job_priority))
         .unwrap_or(1.0);
     let pos = world.get::<Position>(e).copied();
-    if world.resource::<JobBoard>().jobs.values().all(|j| j.reserved_by.is_some()) {
+    // Free jobs, plus the one this pawn already reserved (so it keeps working on it).
+    let me = world.get::<SimId>(e).copied();
+    let open = |j: &BoardJob| j.reserved_by.is_none() || j.reserved_by == me;
+    if !world.resource::<JobBoard>().jobs.values().any(open) {
         return None;
     }
-    let jobs: Vec<BoardJob> = world.resource::<JobBoard>().jobs.values().filter(|j| j.reserved_by.is_none()).cloned().collect();
+    let jobs: Vec<BoardJob> = world.resource::<JobBoard>().jobs.values().filter(|j| open(j)).cloned().collect();
     let mut best: Option<(f32, BoardJob)> = None;
     for j in jobs {
         if let Some(f) = &j.faction {
@@ -250,7 +263,7 @@ pub fn best_board_job(world: &mut World, e: Entity) -> Option<(f32, BoardJob)> {
 }
 
 /// Starts a job for a pawn (reserving board jobs).
-pub fn start_job(world: &mut World, e: Entity, job: &str, target: JobTarget, board_id: Option<u64>, recipe: Option<(SimId, usize)>) {
+pub fn start_job(world: &mut World, e: Entity, job: &str, target: JobTarget, board_id: Option<u64>, payload: Option<JobPayload>) {
     let tick = world.resource::<SimClock>().tick;
     let required = world.resource::<Content>().jobs.get(job).map_or(1.0, |d| d.duration.max(0.0));
     let me = world.get::<SimId>(e).copied();
@@ -260,7 +273,7 @@ pub fn start_job(world: &mut World, e: Entity, job: &str, target: JobTarget, boa
         }
     }
     if let Some(mut t) = world.get_mut::<Task>(e) {
-        t.job = Some(ActiveJob { job: job.to_string(), board_id, target, progress: 0.0, required, started: tick, ability: None, recipe });
+        t.job = Some(ActiveJob { job: job.to_string(), board_id, target, progress: 0.0, required, started: tick, ability: None, payload });
     }
 }
 
@@ -270,6 +283,7 @@ pub fn release_task(world: &mut World, e: Entity) {
     let job = t.job.take();
     t.action = None;
     t.forced = false;
+    t.stuck = 0;
     t.label.clear();
     if let Some(id) = job.and_then(|j| j.board_id) {
         if let Some(j) = world.resource_mut::<JobBoard>().jobs.get_mut(&id) {
@@ -312,8 +326,26 @@ pub fn run_jobs(world: &mut World) {
             continue;
         }
         if let Some(goal) = active.target.position(world) {
-            if world.get::<Position>(e).is_some() && !crate::movement::move_towards(world, e, goal, range) {
-                continue;
+            if let Some(before) = world.get::<Position>(e).copied() {
+                if !crate::movement::move_towards(world, e, goal, range) {
+                    let moved = world.get::<Position>(e).copied() != Some(before);
+                    let stuck = {
+                        let mut t = world.get_mut::<Task>(e).unwrap();
+                        t.stuck = if moved { 0 } else { t.stuck + 1 };
+                        t.stuck
+                    };
+                    // Unreachable target (tether, no portal…): give up and let the AI pick something else.
+                    if stuck > 3 {
+                        let action = world.get::<Task>(e).and_then(|t| t.action.clone());
+                        release_task(world, e);
+                        let tick = world.resource::<SimClock>().tick;
+                        if let (Some(a), Some(mut b)) = (action, world.get_mut::<crate::ai::Brain>(e)) {
+                            b.cooldowns.insert(a, tick + 12);
+                            b.current = None;
+                        }
+                    }
+                    continue;
+                }
             }
         }
         if let Some(ab) = &active.ability {

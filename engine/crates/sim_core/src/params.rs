@@ -33,6 +33,8 @@ pub const DEFAULTS: &[(&str, f64, &str)] = &[
     ("economy.guild_income_share", 1.0, "Quota dei guadagni dei membri che va al fondo di gilda"),
     ("economy.payroll_period", 24.0, "Ogni quanti tick si pagano gli stipendi"),
     ("economy.unpaid_dissent", 10.0, "Dissenso per ogni stipendio non pagato"),
+    ("logistics.interval", 4.0, "Ogni quanti tick si pianificano i trasporti"),
+    ("logistics.batch", 5.0, "Unità massime per viaggio di trasporto"),
     ("market.elasticity", 0.5, "Elasticità del prezzo rispetto a domanda/offerta"),
     ("market.smoothing", 0.2, "Velocità con cui il prezzo segue il valore teorico"),
     ("market.ema", 0.1, "Peso della media mobile di domanda e offerta"),

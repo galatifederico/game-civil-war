@@ -240,6 +240,11 @@ pub fn think(world: &mut World) {
         if current.as_deref() == Some(&best.action.id) && has_job {
             continue; // keep going: momentum won
         }
+        // Same board job chosen again under another action label: keep the progress.
+        let active_board = world.get::<Task>(e).and_then(|t| t.job.as_ref().and_then(|j| j.board_id));
+        if best.board.as_ref().is_some_and(|b| Some(b.id) == active_board && b.id != 0) {
+            continue;
+        }
         release_task(world, e);
         {
             let mut b = world.get_mut::<Brain>(e).unwrap();
@@ -256,7 +261,7 @@ pub fn think(world: &mut World) {
             ActionKind::Job { job, .. } => start_job(world, e, job, best.target, None, None),
             ActionKind::Work => {
                 if let Some(j) = best.board {
-                    start_job(world, e, &j.job, j.target, Some(j.id), j.recipe);
+                    start_job(world, e, &j.job, j.target, Some(j.id), j.payload);
                 }
             }
             ActionKind::Ability { ability, .. } => {

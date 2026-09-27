@@ -166,12 +166,13 @@ pub fn buildings_tick(world: &mut World) {
         if let (Some(job), true, Owner::Faction(f)) = (&process_job, b.hp > 0.0, &b.owner) {
             let stock = world.get::<Stock>(e).cloned().unwrap_or_default();
             for (ri, r) in def.recipes.iter().enumerate() {
-                let open = world.resource::<JobBoard>().jobs.values().any(|j| j.recipe == Some((id, ri)));
+                let payload = Some(crate::jobs::JobPayload::Recipe { building: id, index: ri });
+                let open = world.resource::<JobBoard>().jobs.values().any(|j| j.payload == payload);
                 let has = r.inputs.iter().all(|(i, n)| stock.count(i) >= *n);
                 if !open && has {
                     let jid = crate::jobs::post_job(world, job, Some(f.clone()), JobTarget::Entity(id), 0, None);
                     if let Some(j) = world.resource_mut::<JobBoard>().jobs.get_mut(&jid) {
-                        j.recipe = Some((id, ri));
+                        j.payload = payload;
                     }
                 }
             }

@@ -34,7 +34,12 @@ pub fn resolve(world: &mut World, chooser: Entity, sel: &Selector) -> Option<Job
         }
         Selector::Zone(z) => {
             let map = world.resource::<WorldMap>().clone();
-            map.random_cell(z, &mut world.resource_mut::<SimRng>()).map(JobTarget::Cell)
+            let cell = map.random_cell(z, &mut world.resource_mut::<SimRng>())?;
+            // A tethered pawn walks to the nearest point of the target zone that is inside its own zone.
+            match world.get::<crate::dungeon::Tethered>(chooser) {
+                Some(t) if !map.in_zone(&t.0.zone, &cell) => None,
+                _ => Some(JobTarget::Cell(cell)),
+            }
         }
         Selector::OwnFactionZone(tag) => {
             let f = world.get::<FactionMember>(chooser).map(|m| m.faction.clone())?;
@@ -88,6 +93,8 @@ pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId,
     let my_faction = world.get::<FactionMember>(chooser).map(|m| m.faction.clone());
     let min_wanted = f.min_wanted.as_ref().map(|t| threshold(world, t));
     let perception = world.resource::<Params>().get("ai.perception_range", 6.0) as i32;
+    let tether = world.get::<crate::dungeon::Tethered>(chooser).map(|t| t.0.zone.clone());
+    let map = world.resource::<WorldMap>().clone();
     let index = std::mem::take(&mut world.resource_mut::<TargetIndex>().entries);
     let mut out = Vec::new();
     for &(id, e, pos, is_pawn) in &index {
@@ -96,6 +103,12 @@ pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId,
         }
         if let Some(p) = f.pawn {
             if p != is_pawn {
+                continue;
+            }
+        }
+        // Tethered pawns cannot leave their zone, so they only consider what is inside it.
+        if let Some(z) = &tether {
+            if !pos.is_some_and(|p| map.in_zone(z, &p)) {
                 continue;
             }
         }

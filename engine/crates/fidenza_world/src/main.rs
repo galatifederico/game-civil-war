@@ -158,7 +158,7 @@ fn main() {
         check(bribe.is_some()),
         bribe.map(|b| format!(" al tick {}: {} euro", b.tick, b.data.get("amount").cloned().unwrap_or_default())).unwrap_or_default(),
         if recidivo { format!("; poi ci ricasca, ricercato ora {wanted_now:.0}") } else { format!("; ricercato ora {wanted_now:.0}") });
-    println!("{} 4. Un Giornalista pubblica lo scoop sul {}{} e i prezzi si muovono{}", check(scoop.is_some() && price_move.is_some()), feed.name,
+    println!("{} 4. Un Giornalista pubblica lo scoop su «{}»{} e i prezzi si muovono{}", check(scoop.is_some() && price_move.is_some()), feed.name,
         scoop.map(|a| format!(": «{}» ({})", a.headline, a.author_name)).unwrap_or_default(),
         price_move.map(|p| format!(": {}", p.message)).unwrap_or_default());
 

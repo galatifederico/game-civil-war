@@ -176,7 +176,7 @@ pub fn apply(world: &mut World, cmd: SimCommand) -> Result<String, String> {
                 Some(a) => {
                     let e = entity(world, a)?;
                     let tick = world.resource::<SimClock>().tick;
-                    let bj = BoardJob { id: 0, job: job.clone(), faction, target, priority, reserved_by: None, created: tick, posted_by: None, recipe: None };
+                    let bj = BoardJob { id: 0, job: job.clone(), faction, target, priority, reserved_by: None, created: tick, posted_by: None, payload: None };
                     world.get_mut::<PersonalQueue>(e).ok_or("nessuna coda")?.0.push_back(bj);
                     Ok(format!("{job} in coda a {a}"))
                 }

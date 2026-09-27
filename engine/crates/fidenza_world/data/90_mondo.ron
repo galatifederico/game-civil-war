@@ -47,7 +47,7 @@
         Entity(template: "sith", zone: "casino"),
         Entity(template: "contadino", count: 3, zone: "campagna_bassa"),
         Entity(template: "allevatore", zone: "campagna_bassa"),
-        Entity(template: "fornaio", zone: "campagna_bassa"),
+        Entity(template: "fornaio", count: 2, zone: "campagna_bassa"),
         Entity(template: "salsese", count: 4, zone: "salsomaggiore_terme"),
         Entity(template: "babbo_natale_estivo", zone: "capannone_regali"),
         Entity(template: "elfo_logistica", count: 5, zone: "capannone_regali", tether: (zone: "capannone_regali", release: Never)),

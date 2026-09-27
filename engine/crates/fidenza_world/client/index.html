@@ -1,1 +1,338 @@
-<!doctype html><title>Fidenza</title><p>Client in arrivo (task 19).</p>
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fidenza Sim</title>
+<style>
+  :root {
+    --bg: #f4efe6; --panel: #fffaf2; --ink: #2b2620; --muted: #7a6f62; --line: #d9cfbf;
+    --accent: #b5452f; --good: #2f7d4f; --map: #e9e2d3; --zone: #d8cdb7; --fog: rgba(30, 26, 22, 0.55);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17140f; --panel: #211d17; --ink: #efe6d6; --muted: #a39580; --line: #3a3228;
+      --accent: #e0775f; --good: #6cc38e; --map: #2a251d; --zone: #3a3226; --fog: rgba(0, 0, 0, 0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17140f; --panel: #211d17; --ink: #efe6d6; --muted: #a39580; --line: #3a3228;
+    --accent: #e0775f; --good: #6cc38e; --map: #2a251d; --zone: #3a3226; --fog: rgba(0, 0, 0, 0.6);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { font-size: 16px; margin: 0 12px 0 0; }
+  header .spacer { flex: 1; }
+  button, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  label { display: inline-flex; gap: 4px; align-items: center; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 12px; padding: 12px 16px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  #mapwrap { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  canvas { display: block; width: 100%; image-rendering: pixelated; cursor: crosshair; }
+  aside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 6px; }
+  .list { max-height: 220px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+  .list li { padding: 3px 0; border-bottom: 1px dashed var(--line); }
+  .list li:last-child { border-bottom: 0; }
+  .tick { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 4px; }
+  .fake { color: var(--accent); font-weight: 600; font-size: 11px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; overflow-wrap: anywhere; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--good); }
+  .up { color: var(--accent); } .down { color: var(--good); }
+  .muted { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  td { padding: 2px 0; } td.n { text-align: right; }
+  #tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 12px; display: none; max-width: 260px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Fidenza &amp; Salsomaggiore</h1>
+  <span id="clock" class="muted">tick –</span>
+  <button id="pause">Pausa</button>
+  <button id="step">+1 tick</button>
+  <label>Velocità <select id="speed"><option value="1000">lenta</option><option value="400" selected>normale</option><option value="120">veloce</option><option value="30">turbo</option></select></label>
+  <label>Livello <select id="layer"></select></label>
+  <label>Nebbia di <select id="fog"><option value="">nessuna (admin)</option></select></label>
+  <span class="spacer"></span>
+  <button id="theme" title="Tema chiaro/scuro">◐</button>
+</header>
+<main>
+  <div>
+    <div id="mapwrap"><canvas id="map" width="900" height="640"></canvas><div id="tip"></div></div>
+    <p class="muted">Clic su una pedina per la scheda. Forme e colori vengono dal mapping sprite dei dati
+      (<code>/api/sprites</code>): cerchio = razza, bordo = fazione, quadrato = edificio, barra = progresso dell'azione.</p>
+  </div>
+  <aside>
+    <section id="sel"><h2>Pedina selezionata</h2><div class="muted">Nessuna.</div></section>
+    <section><h2 id="feedname">Feed</h2><ul class="list" id="feed"></ul></section>
+    <section><h2>Cronaca</h2><ul class="list" id="events"></ul></section>
+    <section><h2>Mercato</h2><table id="market"></table></section>
+    <section><h2>Fazioni</h2><table id="factions"></table></section>
+  </aside>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const api = (path, opts) => fetch(path, opts).then((r) => r.ok ? r.json() : r.text().then((t) => Promise.reject(t)));
+const post = (path, body) => api(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+let map = null, state = null, selected = null, cell = 10, layer = 0;
+const canvas = $("map"), ctx = canvas.getContext("2d");
+
+try {
+  const t = localStorage.getItem("theme");
+  if (t) document.documentElement.dataset.theme = t;
+} catch (e) { /* storage unavailable */ }
+$("theme").onclick = () => {
+  const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("theme", next); } catch (e) { /* ignore */ }
+  draw();
+};
+
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function sprite(kind, id) {
+  const s = (state && state.sprites) || {};
+  return s[kind + ":" + id] || null;
+}
+
+function hashColor(str) {
+  let h = 0;
+  for (const c of String(str)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return `hsl(${h % 360} 45% 55%)`;
+}
+
+function resize() {
+  if (!map) return;
+  const l = map.layers[layer];
+  const w = $("mapwrap").clientWidth;
+  cell = Math.max(4, Math.floor(w / l.width));
+  canvas.width = l.width * cell;
+  canvas.height = l.height * cell;
+  draw();
+}
+
+function shape(kind, x, y, r) {
+  ctx.beginPath();
+  if (kind === "square") ctx.rect(x - r, y - r, r * 2, r * 2);
+  else if (kind === "triangle") { ctx.moveTo(x, y - r); ctx.lineTo(x + r, y + r); ctx.lineTo(x - r, y + r); ctx.closePath(); }
+  else if (kind === "diamond") { ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath(); }
+  else ctx.arc(x, y, r, 0, Math.PI * 2);
+}
+
+function draw() {
+  if (!map) return;
+  ctx.fillStyle = css("--map");
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.font = `${Math.max(9, cell)}px system-ui`;
+  for (const z of map.zones.filter((z) => z.layer === layer)) {
+    ctx.fillStyle = css("--zone");
+    ctx.fillRect(z.x * cell, z.y * cell, z.w * cell, z.h * cell);
+    ctx.strokeStyle = css("--line");
+    ctx.strokeRect(z.x * cell + 0.5, z.y * cell + 0.5, z.w * cell - 1, z.h * cell - 1);
+    ctx.fillStyle = css("--muted");
+    ctx.fillText(z.name, z.x * cell + 3, z.y * cell + cell);
+  }
+  for (const p of map.portals) {
+    for (const end of [p.a, p.b]) {
+      if (end.layer !== layer) continue;
+      ctx.fillStyle = css("--accent");
+      ctx.fillText("⇅", end.x * cell, end.y * cell + cell);
+    }
+  }
+  if (!state) return;
+  for (const c of state.cells || []) {
+    if (c.pos.layer !== layer) continue;
+    ctx.fillStyle = c.pathogens ? "rgba(120,160,40,.45)" : "rgba(110,80,40,.35)";
+    ctx.fillRect(c.pos.x * cell, c.pos.y * cell, cell, cell);
+  }
+  const ents = state.snapshot.entities.filter((e) => e.pos && e.pos.layer === layer);
+  for (const e of ents.filter((e) => e.kind === "building")) {
+    const sp = sprite("building", e.building.def) || sprite("building", "default") || {};
+    const x = e.pos.x * cell, y = e.pos.y * cell;
+    ctx.fillStyle = sp.color || "#a1887f";
+    ctx.globalAlpha = e.building.hp > 0 ? 1 : 0.35;
+    ctx.fillRect(x, y, cell * 2, cell * 2);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = (sprite("faction", e.faction) || {}).outline || css("--ink");
+    ctx.strokeRect(x + 0.5, y + 0.5, cell * 2 - 1, cell * 2 - 1);
+    if (sp.glyph) { ctx.fillStyle = "#fff"; ctx.fillText(sp.glyph, x + 2, y + cell * 1.5); }
+  }
+  for (const e of ents.filter((e) => e.kind === "pawn")) {
+    const sp = sprite("race", e.race) || {};
+    const cx = e.pos.x * cell + cell / 2, cy = e.pos.y * cell + cell / 2, r = Math.max(3, cell * 0.45);
+    if (e.dead) {
+      ctx.strokeStyle = css("--muted");
+      ctx.beginPath(); ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r); ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r); ctx.stroke();
+      continue;
+    }
+    shape(sp.shape || "circle", cx, cy, r);
+    ctx.fillStyle = sp.color || hashColor(e.race);
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, cell / 6);
+    ctx.strokeStyle = (sprite("faction", e.faction) || {}).outline || hashColor(e.faction || "none");
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    if (e.activity && e.activity.progress > 0) {
+      ctx.fillStyle = css("--good");
+      ctx.fillRect(cx - r, cy + r + 1, 2 * r * e.activity.progress, 2);
+    }
+    if (e.activity && e.activity.flags.includes("detained")) {
+      ctx.strokeStyle = css("--ink");
+      for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(cx + i * r / 1.5, cy - r); ctx.lineTo(cx + i * r / 1.5, cy + r); ctx.stroke(); }
+    }
+    if (selected === e.id) {
+      ctx.strokeStyle = css("--accent");
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, r + 3, 0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = 1;
+    }
+  }
+  if (state.fog) {
+    ctx.save();
+    ctx.fillStyle = css("--fog");
+    ctx.beginPath();
+    ctx.rect(0, 0, canvas.width, canvas.height);
+    for (const [p, radius] of state.fog.observers) {
+      if (p.layer !== layer) continue;
+      ctx.moveTo((p.x + radius + 0.5) * cell, (p.y + 0.5) * cell);
+      ctx.arc((p.x + 0.5) * cell, (p.y + 0.5) * cell, (radius + 0.5) * cell, 0, Math.PI * 2, true);
+    }
+    ctx.fill("evenodd");
+    ctx.restore();
+  }
+}
+
+function entityAt(px, py) {
+  if (!state) return null;
+  const x = Math.floor(px / cell), y = Math.floor(py / cell);
+  let best = null, bd = 2;
+  for (const e of state.snapshot.entities) {
+    if (!e.pos || e.pos.layer !== layer) continue;
+    const d = Math.max(Math.abs(e.pos.x - x), Math.abs(e.pos.y - y)) + (e.kind === "pawn" ? 0 : 0.5);
+    if (d < bd) { bd = d; best = e; }
+  }
+  return best;
+}
+
+function canvasPoint(ev) {
+  const r = canvas.getBoundingClientRect();
+  return [(ev.clientX - r.left) * canvas.width / r.width, (ev.clientY - r.top) * canvas.height / r.height];
+}
+
+canvas.addEventListener("mousemove", (ev) => {
+  const e = entityAt(...canvasPoint(ev));
+  const tip = $("tip");
+  if (!e) { tip.style.display = "none"; return; }
+  tip.style.display = "block";
+  const r = $("mapwrap").getBoundingClientRect();
+  tip.style.left = Math.min(ev.clientX - r.left + 12, r.width - 270) + "px";
+  tip.style.top = (ev.clientY - r.top + 12) + "px";
+  tip.innerHTML = `<b>${esc(e.name)}</b><br>${esc(e.activity ? e.activity.label : (e.building ? e.building.def : ""))}`;
+});
+canvas.addEventListener("mouseleave", () => { $("tip").style.display = "none"; });
+canvas.addEventListener("click", (ev) => {
+  const e = entityAt(...canvasPoint(ev));
+  selected = e ? e.id : null;
+  renderSelected();
+  draw();
+});
+
+async function renderSelected() {
+  const box = $("sel");
+  if (selected == null) { box.innerHTML = "<h2>Pedina selezionata</h2><div class='muted'>Nessuna.</div>"; return; }
+  try {
+    const [e, ai] = await Promise.all([api(`/api/entities/${selected}?truth=true`), api(`/api/entities/${selected}/ai`)]);
+    const act = e.activity || {};
+    const truth = e.truth ? `<dt>Vera identità</dt><dd class="up">${esc(e.truth.name)} (${esc(e.truth.race)}, ${esc(e.truth.faction)}), copertura ${e.truth.cover.toFixed(0)}</dd>` : "";
+    const scores = (ai.scores || []).slice(0, 5).map((s) => `<li>${esc(s.action)} <span class="muted">${s.score.toFixed(2)}${s.momentum ? " +m" : ""}</span></li>`).join("");
+    const bribe = e.activity && e.activity.flags.includes("detained")
+      ? `<button class="primary" id="bribe">Paga la tangente</button> <select id="payer"></select>` : "";
+    box.innerHTML = `<h2>Pedina selezionata</h2>
+      <dl class="kv">
+        <dt>Nome</dt><dd><b>${esc(e.name)}</b> #${e.id}</dd>
+        <dt>Razza / classi</dt><dd>${esc(e.race)} ${e.classes.length ? "· " + esc(e.classes.join(", ")) : ""}</dd>
+        <dt>Fazione</dt><dd>${esc(e.faction)} ${e.rank ? "· " + esc(e.rank) : ""}</dd>
+        ${truth}
+        <dt>Sta facendo</dt><dd>${esc(act.label)} <span class="muted">(${esc(act.mood)})</span></dd>
+        <dt>Progresso</dt><dd><div class="bar"><span style="width:${((act.progress || 0) * 100).toFixed(0)}%"></span></div></dd>
+        <dt>Salute</dt><dd>${(e.health * 100).toFixed(0)}% ${e.missing_parts && e.missing_parts.length ? "· manca: " + esc(e.missing_parts.join(", ")) : ""}</dd>
+        <dt>Soldi / ricercato</dt><dd>${e.money.toFixed(0)} € · ${e.wanted.toFixed(1)}</dd>
+        <dt>Status</dt><dd>${esc((e.statuses || []).map((s) => s.name + (s.stage ? " (" + s.stage + ")" : "")).join(", ") || "—")}</dd>
+        <dt>Inventario</dt><dd>${esc((e.inventory || []).map(([i, n]) => n + "× " + i).join(", ") || "—")}</dd>
+      </dl>
+      <h2 style="margin-top:8px">Utility AI</h2><ul class="list">${scores || "<li class='muted'>—</li>"}</ul>${bribe}`;
+    if (bribe && state) {
+      $("payer").innerHTML = state.snapshot.factions.filter((f) => f.treasury > 0).map((f) => `<option value="${esc(f.id)}">${esc(f.name)} (${f.treasury.toFixed(0)} €)</option>`).join("");
+      $("bribe").onclick = () => post("/api/commands?now=true", { type: "bribe", faction: $("payer").value, target: selected })
+        .then((r) => alert(r.ok), (err) => alert(err)).then(refresh);
+    }
+  } catch (err) {
+    box.innerHTML = `<h2>Pedina selezionata</h2><div class="muted">${esc(err)}</div>`;
+  }
+}
+
+function renderPanels() {
+  const s = state.snapshot;
+  $("clock").textContent = `tick ${s.tick} · giorno ${Math.floor(s.tick / 24) + 1}, ore ${s.tick % 24}:00`;
+  $("feedname").textContent = s.feed_name || "Feed";
+  $("feed").innerHTML = s.feed.map((a) => `<li><span class="tick">${a.tick}</span>${a.truth === "Fake" ? '<span class="fake">FAKE</span> ' : ""}${esc(a.headline)} <span class="muted">— ${esc(a.author_name)}</span></li>`).join("");
+  $("events").innerHTML = state.recent_events.filter((e) => e.kind !== "article").slice(0, 25).map((e) => `<li><span class="tick">${e.tick}</span>${esc(e.message)}</li>`).join("");
+  const moved = s.market.map((m) => ({ ...m, d: (m.price - m.base) / m.base })).sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).slice(0, 8);
+  $("market").innerHTML = moved.map((m) => `<tr><td>${esc(m.name)}</td><td class="n">${m.price.toFixed(2)} €</td><td class="n ${m.d > 0 ? "up" : "down"}">${(m.d * 100).toFixed(0)}%</td></tr>`).join("");
+  const scores = s.scores || {};
+  $("factions").innerHTML = s.factions.filter((f) => !f.absorbed_into).sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0))
+    .map((f) => `<tr><td>${esc(f.name)}${f.controlled_by ? " ★" : ""}</td><td class="n">${f.members}</td><td class="n">${f.treasury.toFixed(0)} €</td><td class="n">${scores[f.id] || 0} PV</td></tr>`).join("");
+}
+
+async function refresh() {
+  try {
+    const fog = $("fog").value;
+    state = await api("/api/ui/state" + (fog ? "?faction=" + encodeURIComponent(fog) : ""));
+    renderPanels();
+    draw();
+    if (selected != null) renderSelected();
+  } catch (err) {
+    $("clock").textContent = "server non raggiungibile";
+  }
+}
+
+async function boot() {
+  map = await api("/api/ui/map");
+  $("layer").innerHTML = map.layers.map((l, i) => `<option value="${i}">${esc(l.name)}</option>`).join("");
+  $("layer").onchange = () => { layer = Number($("layer").value); resize(); };
+  const snap = await api("/api/ui/state");
+  const players = snap.snapshot.players || {};
+  const factions = snap.snapshot.factions;
+  $("fog").innerHTML += factions.map((f) => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("");
+  const mine = Object.values(players)[0];
+  if (mine) $("fog").value = mine.faction;
+  $("fog").onchange = refresh;
+  const ctl = await api("/api/control");
+  $("pause").textContent = ctl.paused ? "Riprendi" : "Pausa";
+  $("pause").onclick = async () => {
+    const c = await api("/api/control");
+    const r = await post("/api/control", { paused: !c.paused });
+    $("pause").textContent = r.paused ? "Riprendi" : "Pausa";
+  };
+  $("step").onclick = () => post("/api/control", { step: 1 }).then(refresh);
+  $("speed").onchange = () => post("/api/control", { tick_ms: Number($("speed").value) });
+  window.addEventListener("resize", resize);
+  resize();
+  await refresh();
+  setInterval(refresh, 700);
+}
+boot().catch((err) => { $("clock").textContent = "errore: " + err; });
+</script>
+</body>
+</html>
