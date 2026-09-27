@@ -132,13 +132,16 @@ pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId,
             }
         }
         if let Some(rel) = f.relation {
-            let (Some(mine), Some(theirs)) = (&my_faction, &their) else { continue };
             let fs = world.resource::<Factions>();
-            let ok = match rel {
-                Relation::Same => mine == theirs,
-                Relation::Other => mine != theirs,
-                Relation::Hostile => fs.hostile(mine, theirs),
-                Relation::Friendly => fs.friendly(mine, theirs),
+            // Pawns without a faction are "other" but neither hostile nor friendly.
+            let ok = match (&my_faction, &their) {
+                (Some(mine), Some(theirs)) => match rel {
+                    Relation::Same => mine == theirs,
+                    Relation::Other => mine != theirs,
+                    Relation::Hostile => fs.hostile(mine, theirs),
+                    Relation::Friendly => fs.friendly(mine, theirs),
+                },
+                _ => rel == Relation::Other,
             };
             if !ok {
                 continue;
