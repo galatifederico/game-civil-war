@@ -78,6 +78,13 @@ pub fn router(state: AppState) -> Router {
 
 /// Runs the ticker and the HTTP server until Ctrl+C.
 pub async fn serve(state: AppState, addr: SocketAddr) -> std::io::Result<()> {
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    tracing::info!("admin/API/MCP su http://{addr}");
+    serve_on(state, listener).await
+}
+
+/// Like [`serve`] on an already bound listener.
+pub async fn serve_on(state: AppState, listener: tokio::net::TcpListener) -> std::io::Result<()> {
     let ticker = {
         let (sim, control) = (state.sim.clone(), state.control.clone());
         tokio::spawn(async move {
@@ -93,8 +100,6 @@ pub async fn serve(state: AppState, addr: SocketAddr) -> std::io::Result<()> {
             }
         })
     };
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    tracing::info!("admin/API/MCP su http://{addr}");
     let res = axum::serve(listener, router(state))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
@@ -335,10 +340,20 @@ async fn ui_map(State(s): State<AppState>) -> ApiResult {
     Ok(Json(json!({ "layers": m.layers, "zones": m.zones, "portals": m.portals, "networks": m.networks, "network_load": env.network_load })))
 }
 
+#[derive(Deserialize, Default)]
+struct UiQ {
+    /// Apply the fog of war of this faction (default: no fog).
+    faction: Option<String>,
+}
+
 /// Everything the client needs each frame: apparent entities, feed, market, factions, sprites.
-async fn ui_state(State(s): State<AppState>) -> ApiResult {
+async fn ui_state(State(s): State<AppState>, Query(q): Query<UiQ>) -> ApiResult {
     let mut sim = s.sim.lock().unwrap();
-    let snap = sim.snapshot(false);
+    let mut snap = sim.snapshot(false);
+    let fog = q.faction.as_ref().map(|f| crate::snapshot::fog_of_war(&mut sim.world, f));
+    if let Some(f) = &fog {
+        snap.entities.retain(|e| f.visible.contains(&e.id));
+    }
     let sprites = sim.world.resource::<SpriteMapping>().clone();
     let cells: Vec<Value> = sim
         .world
@@ -356,7 +371,8 @@ async fn ui_state(State(s): State<AppState>) -> ApiResult {
         .take(30)
         .cloned()
         .collect();
-    Ok(Json(json!({ "snapshot": snap, "sprites": sprites, "cells": cells, "recent_events": recent })))
+    Ok(Json(json!({ "snapshot": snap, "sprites": sprites, "cells": cells, "recent_events": recent,
+                     "fog": fog.map(|f| json!({ "faction": f.faction, "observers": f.observers })) })))
 }
 
 async fn ui_page(State(s): State<AppState>) -> Response {

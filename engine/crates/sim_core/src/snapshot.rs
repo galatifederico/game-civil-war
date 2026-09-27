@@ -338,6 +338,54 @@ pub fn snapshot(world: &mut World, truth: bool) -> WorldSnapshot {
     }
 }
 
+/// What a faction can see: its own members and buildings always; other pawns only within the
+/// perception range of its pawns or the vision radius of its buildings (e.g. garden-gnome cameras).
+#[derive(Debug, Clone, Serialize)]
+pub struct FogView {
+    pub faction: String,
+    /// (position, radius) of every observer, for the client to shade the fog.
+    pub observers: Vec<(Position, i32)>,
+    pub visible: std::collections::BTreeSet<SimId>,
+}
+
+pub fn fog_of_war(world: &mut World, faction: &str) -> FogView {
+    let content = world.resource::<Content>().clone();
+    let base = world.resource::<crate::params::Params>().get("ai.perception_range", 6.0) as i32;
+    let mut observers = Vec::new();
+    let mut visible = std::collections::BTreeSet::new();
+    for e in crate::sorted_entities::<SimId>(world) {
+        let id = *world.get::<SimId>(e).unwrap();
+        let own = world.get::<FactionMember>(e).is_some_and(|m| m.faction == faction && world.get::<Dead>(e).is_none());
+        let building = world.get::<Building>(e);
+        let owned_building = building.is_some_and(|b| matches!(&b.owner, Owner::Faction(f) if f == faction));
+        if building.is_some() {
+            visible.insert(id); // landmarks are on the map
+        }
+        let Some(pos) = world.get::<Position>(e).copied() else { continue };
+        if own {
+            visible.insert(id);
+            observers.push((pos, base));
+        } else if owned_building {
+            let vision = building.and_then(|b| content.buildings.get(&b.def)).map_or(0, |d| d.vision);
+            if vision > 0 {
+                observers.push((pos, vision));
+            }
+        }
+    }
+    for e in crate::sorted_entities::<crate::stats::Pawn>(world) {
+        let id = *world.get::<SimId>(e).unwrap();
+        if visible.contains(&id) || crate::infiltration::invisible(world, e) {
+            continue;
+        }
+        if let Some(p) = world.get::<Position>(e) {
+            if observers.iter().any(|(o, r)| o.within(p, *r)) {
+                visible.insert(id);
+            }
+        }
+    }
+    FogView { faction: faction.to_string(), observers, visible }
+}
+
 /// Utility AI inspection for one entity.
 pub fn ai_inspect(world: &World, e: Entity) -> serde_json::Value {
     let b = world.get::<Brain>(e);

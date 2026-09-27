@@ -32,6 +32,9 @@ pub struct MarketItem {
     pub supply: f32,
     pub reference_supply: f32,
     pub pending_demand: f32,
+    /// Average stock per shop selling the item (for local scarcity).
+    #[serde(default)]
+    pub avg_shop_stock: f32,
     pub shocks: Vec<Shock>,
     pub last_reported: f64,
     pub history: VecDeque<f64>,
@@ -62,6 +65,7 @@ impl Market {
                         supply: 0.0,
                         reference_supply: 0.0,
                         pending_demand: 0.0,
+                        avg_shop_stock: 0.0,
                         shocks: vec![],
                         last_reported: i.base_price,
                         history: VecDeque::new(),
@@ -74,6 +78,14 @@ impl Market {
 
     pub fn price(&self, item: &str) -> Option<f64> {
         self.items.get(item).map(|m| m.price)
+    }
+
+    /// Local price at a shop holding `stock` units: global price corrected by local scarcity
+    /// (a shop with less stock than the average shop charges more), within ×0.5..×2.
+    pub fn local_price(&self, item: &str, stock: u32, elasticity: f32) -> Option<f64> {
+        let m = self.items.get(item)?;
+        let local = ((m.avg_shop_stock + 1.0) / (stock as f32 + 1.0)).powf(elasticity * 0.5).clamp(0.5, 2.0);
+        Some(m.price * local as f64)
     }
 
     pub fn record_purchase(&mut self, item: &str, qty: u32) {
@@ -106,10 +118,12 @@ pub fn update_market(world: &mut World) {
     let (elasticity, smoothing, ema) = (p.f("market.elasticity"), p.get("market.smoothing", 0.2), p.f("market.ema"));
     let (min_m, max_m, change) = (p.get("market.min_mult", 0.25), p.get("market.max_mult", 5.0), p.get("market.change_event", 0.05));
     let mut supply: BTreeMap<String, u32> = BTreeMap::new();
+    let mut sellers: BTreeMap<String, u32> = BTreeMap::new();
     let mut q = world.query::<(&Shop, &Stock)>();
     for (shop, stock) in q.iter(world) {
         for item in shop.catalog.keys() {
             *supply.entry(item.clone()).or_insert(0) += stock.count(item);
+            *sellers.entry(item.clone()).or_insert(0) += 1;
         }
     }
     let disruption = world.resource::<GlobalModifiers>().logistics_disruption();
@@ -122,6 +136,7 @@ pub fn update_market(world: &mut World) {
         market.initialized = true;
         for (id, m) in market.items.iter_mut() {
             let s = supply.get(id).copied().unwrap_or(0) as f32;
+            m.avg_shop_stock = s / sellers.get(id).copied().unwrap_or(1).max(1) as f32;
             if init {
                 m.supply = s;
                 m.reference_supply = s;

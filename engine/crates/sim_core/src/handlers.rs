@@ -93,7 +93,7 @@ fn buy(world: &mut World, ctx: &JobCtx) -> JobResult {
         .filter(|i| stock.count(i) > 0)
         .filter(|i| wanted_item.is_none_or(|w| w == i.as_str()))
         .filter(|i| tag.is_none_or(|t| content.items.get(*i).is_some_and(|d| d.tags.iter().any(|x| x == t))))
-        .filter_map(|i| crate::economy::shop_price(world, &s, i).map(|p| (p, i.clone())))
+        .filter_map(|i| crate::economy::shop_price(world, &s, &stock, i).map(|p| (p, i.clone())))
         .filter(|(p, _)| *p <= money)
         .collect();
     options.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));

@@ -59,6 +59,8 @@
         (id: "levitazione", name: "Levitazione", kind: Power, duration: 6, stats: {"velocita": 1.5, "furtivita": 5}),
         (id: "aura_di_formaggio", name: "Aura di formaggio", kind: Trait, duration: 24, grants_tags: ["aura_di_carne"],
          description: "Chi mangia salumi e formaggi emana un'aura che la Polizia Vegana riconosce."),
+        (id: "in_sella", name: "In sella a un dinosauro", kind: Buff, duration: 24, stats: {"velocita": 1.5, "forza": 15, "alpha_status": 20},
+         grants_tags: ["cavaliere_di_dinosauro"]),
         (id: "vaccinato", name: "Vaccinato", kind: Buff, duration: 240, tags: ["vaccino"]),
         (id: "benedetto", name: "Benedetto", kind: Buff, duration: 24, stats: {"morale": 10}),
     ],

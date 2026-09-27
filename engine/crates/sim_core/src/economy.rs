@@ -39,19 +39,21 @@ pub fn earn_owner(world: &mut World, owner: &Owner, amount: f64) {
     }
 }
 
-/// Price of an item in a shop (fixed price or market price × markup).
-pub fn shop_price(world: &World, shop: &Shop, item: &str) -> Option<f64> {
+/// Price of an item in a shop: the owner's fixed price, or the local market price × markup.
+pub fn shop_price(world: &World, shop: &Shop, stock: &Stock, item: &str) -> Option<f64> {
     let fixed = shop.catalog.get(item)?;
-    fixed.or_else(|| world.resource::<Market>().price(item).map(|p| p * shop.markup as f64))
+    let elasticity = world.resource::<Params>().f("market.elasticity");
+    fixed.or_else(|| world.resource::<Market>().local_price(item, stock.count(item), elasticity).map(|p| p * shop.markup as f64))
 }
 
 /// Buys one unit of `item` from `shop_e` for `buyer`. Returns the price paid.
 pub fn buy(world: &mut World, buyer: Entity, shop_e: Entity, item: &str) -> Result<f64, String> {
     let shop = world.get::<Shop>(shop_e).cloned().ok_or("non è un negozio")?;
-    if world.get::<Stock>(shop_e).is_none_or(|s| s.count(item) == 0) {
+    let stock = world.get::<Stock>(shop_e).cloned().unwrap_or_default();
+    if stock.count(item) == 0 {
         return Err("esaurito".into());
     }
-    let price = shop_price(world, &shop, item).ok_or("non in vendita")?;
+    let price = shop_price(world, &shop, &stock, item).ok_or("non in vendita")?;
     let money = world.get::<Wallet>(buyer).map_or(0.0, |w| w.0);
     if money + 1e-9 < price {
         return Err("soldi insufficienti".into());

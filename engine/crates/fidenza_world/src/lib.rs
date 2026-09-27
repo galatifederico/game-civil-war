@@ -45,6 +45,7 @@ impl SimPlugin for FidenzaPlugin {
         b.register_effect("oracle_reveal", oracle_reveal);
         b.register_effect("borgazzi_masterpiece", borgazzi_masterpiece);
         b.register_condition("intruders", intruders);
+        b.register_condition("near", near);
         b.register_job_handler("hack", hack);
         Ok(())
     }
@@ -139,6 +140,18 @@ fn intruders(world: &mut World, _ctx: &EffectCtx, p: &serde_json::Value) -> bool
         .filter(|(pos, m)| map.in_zone(&zone, pos) && m.is_none_or(|m| m.faction != faction))
         .count()
         >= min
+}
+
+/// `{"template": "...", "range": n}`: a living entity of that template of the subject's faction is close.
+fn near(world: &mut World, ctx: &EffectCtx, p: &serde_json::Value) -> bool {
+    let Some(me) = ctx.subject else { return false };
+    let template = p.get("template").and_then(|v| v.as_str()).unwrap_or_default();
+    let range = p.get("range").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
+    let (Some(pos), faction) = (world.get::<Position>(me).copied(), world.get::<FactionMember>(me).map(|m| m.faction.clone())) else {
+        return false;
+    };
+    let mut q = world.query_filtered::<(&TemplateId, &Position, Option<&FactionMember>), Without<Dead>>();
+    q.iter(world).any(|(t, p, m)| t.0 == template && p.within(&pos, range) && m.map(|m| m.faction.clone()) == faction)
 }
 
 /// The hacker rewrites the firmware: the robot or drone joins the hacker's faction.

@@ -127,6 +127,8 @@
          kind: Job(job: "inocula")),
         (id: "sintetizza_antidoto", name: "Sintetizza antidoti", weight: 0.6, cooldown: 24, kind: Job(job: "sintesi_antidoto")),
         (id: "sintetizza_vaccino", name: "Sintetizza vaccini", weight: 0.6, cooldown: 24, kind: Job(job: "sintesi_vaccino")),
+        (id: "monta_in_sella", name: "Monta in sella", universal: true, weight: 1.0, kind: Ability(ability: "cavalca_dinosauro"),
+         requires: IsRace("nano")),
         (id: "levita", name: "Levita", weight: 0.3, kind: Ability(ability: "levitazione"),
          considerations: [(input: Random, curve: Step(threshold: 0.8))]),
         (id: "usa_telecinesi", name: "Telecinesi", weight: 1.0,
