@@ -199,6 +199,14 @@ pub fn can_do(world: &mut World, e: Entity, def: &JobDef, check_matrix: bool) ->
     eval_condition(world, &ctx, &def.requires)
 }
 
+fn recipe_work_type(world: &World, j: &BoardJob) -> Option<String> {
+    let (bid, ri) = j.recipe?;
+    let b = world.resource::<IdIndex>().get(bid)?;
+    let def = world.get::<crate::buildings::Building>(b)?.def.clone();
+    let r = world.resource::<Content>().buildings.get(&def)?.recipes.get(ri)?;
+    (!r.work_type.is_empty()).then(|| r.work_type.clone())
+}
+
 /// Picks the best job for a pawn from its personal queue or the board. Returns (score, job).
 pub fn best_board_job(world: &mut World, e: Entity) -> Option<(f32, BoardJob)> {
     if let Some(j) = world.get::<PersonalQueue>(e).and_then(|q| q.0.front().cloned()) {
@@ -220,7 +228,12 @@ pub fn best_board_job(world: &mut World, e: Entity) -> Option<(f32, BoardJob)> {
             }
         }
         let Some(def) = content.jobs.get(&j.job) else { continue };
-        if !can_do(world, e, def, true) {
+        // Production jobs use the work type of their recipe (brewing, baking, forging…).
+        let mut def = def.clone();
+        if let Some(wt) = recipe_work_type(world, &j) {
+            def.work_type = wt;
+        }
+        if !can_do(world, e, &def, true) {
             continue;
         }
         let prio = world.get::<WorkPriorities>(e).map_or(4, |w| w.get(&def.work_type)).max(1);

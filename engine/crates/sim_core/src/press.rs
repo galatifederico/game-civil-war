@@ -115,7 +115,11 @@ fn name_of_id(world: &World, id: Option<SimId>) -> String {
 
 /// Writes an article from the journalist's best scoop. Returns the headline.
 pub fn publish_best_scoop(world: &mut World, journalist: Entity) -> Option<String> {
+    let published: std::collections::BTreeSet<u64> =
+        world.resource::<Feed>().articles.iter().filter_map(|a| a.source_event).collect();
     let mut nb = world.get_mut::<Notebook>(journalist)?;
+    // A story already published by someone else is no longer a scoop.
+    nb.scoops.retain(|s| !published.contains(&s.event));
     let best = nb.scoops.iter().enumerate().max_by(|a, b| a.1.news.total_cmp(&b.1.news).then(b.0.cmp(&a.0)))?.0;
     let scoop = nb.scoops.remove(best);
     let press = world.resource::<Content>().press.clone();

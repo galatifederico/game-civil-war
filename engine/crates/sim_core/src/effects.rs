@@ -308,12 +308,14 @@ pub fn apply_effect(world: &mut World, ctx: &EffectCtx, effect: &Effect) {
         }
         Effect::ModCover(amount) => {
             if let Some(e) = subj {
-                crate::infiltration::mod_cover(world, e, *amount, &ctx.origin);
+                let reason = origin_label(world, &ctx.origin);
+                crate::infiltration::mod_cover(world, e, *amount, &reason);
             }
         }
         Effect::Expose => {
             if let Some(e) = subj {
-                crate::infiltration::expose(world, e, &ctx.origin, ctx.target);
+                let reason = origin_label(world, &ctx.origin);
+                crate::infiltration::expose(world, e, &reason, ctx.target);
             }
         }
         Effect::Stealth { amount, duration } => {
@@ -394,6 +396,21 @@ pub fn apply_effect(world: &mut World, ctx: &EffectCtx, effect: &Effect) {
     }
 }
 
+/// Human readable cause from an effect origin ("ability:x" → the ability's name).
+pub fn origin_label(world: &World, origin: &str) -> String {
+    let c = world.resource::<Content>();
+    let (kind, id) = origin.split_once(':').unwrap_or(("", origin));
+    let name = match kind {
+        "ability" => c.abilities.get(id).map(|d| d.name.clone()),
+        "job" => c.jobs.get(id).map(|d| d.name.clone()),
+        "status" => c.statuses.get(id).map(|d| d.name.clone()),
+        "item" => c.items.get(id).map(|d| d.name.clone()),
+        "trigger" => c.triggers.get(id).map(|d| if d.name.is_empty() { d.id.clone() } else { d.name.clone() }),
+        _ => None,
+    };
+    name.unwrap_or_else(|| origin.to_string())
+}
+
 /// Replaces {subject}, {target} and {flag:x} in messages.
 pub fn substitute(world: &World, msg: &str, subj: Option<Entity>, target: Option<Entity>) -> String {
     let name = |e: Option<Entity>| e.map(|e| crate::infiltration::apparent_name(world, e)).unwrap_or_else(|| "qualcuno".into());
@@ -470,6 +487,13 @@ pub fn eval_condition(world: &mut World, ctx: &EffectCtx, cond: &Condition) -> b
                 .count();
             n as u32 >= *min
         }
+        Condition::HpBelow(r) => subj.is_some_and(|e| {
+            if let Some(b) = world.get::<crate::buildings::Building>(e) {
+                b.hp / b.max_hp < *r
+            } else {
+                world.get::<crate::anatomy::Body>(e).is_some_and(|b| b.health_ratio() < *r)
+            }
+        }),
         Condition::TitleVacant(t) => world.resource::<Titles>().holder(t).is_none(),
         Condition::TreasuryAtLeast { faction, amount } => world.resource::<Factions>().treasury(faction) >= *amount,
         Condition::FactionHoldsItems { faction, items } => {

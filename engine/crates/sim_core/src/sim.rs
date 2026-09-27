@@ -92,6 +92,15 @@ impl SimBuilder {
 
     pub fn build(self) -> Result<Simulation, ContentError> {
         let content = Content::from_packs(self.packs)?;
+        let missing: Vec<String> = content
+            .jobs
+            .values()
+            .filter(|j| !j.handler.is_empty() && !self.ext.job_handlers.contains_key(&j.handler))
+            .map(|j| format!("job {}: handler '{}' non registrato", j.id, j.handler))
+            .collect();
+        if !missing.is_empty() {
+            return Err(ContentError::Invalid(missing));
+        }
         let mut world = World::new();
         let mut params = Params::default();
         for (k, v) in &content.params {

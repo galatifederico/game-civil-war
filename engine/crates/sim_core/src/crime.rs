@@ -165,7 +165,7 @@ pub fn search(world: &mut World, officer: Entity, suspect: Entity) -> Vec<(Strin
             .target(sid_)
             .faction(faction.clone())
             .pos(pos)
-            .news(0.3)
+            .news(0.2)
             .tags(["police"]),
     );
     if total > 0 {

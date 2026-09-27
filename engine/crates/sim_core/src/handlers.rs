@@ -198,10 +198,23 @@ fn demolish(world: &mut World, ctx: &JobCtx) -> JobResult {
 
 /// Farming, breeding, mining: `item` × `qty` into the target building's stock or the worker's inventory.
 fn produce(world: &mut World, ctx: &JobCtx) -> JobResult {
-    let Some(item) = ctx.param_str("item") else { return JobResult::fail("cosa produrre?") };
-    let qty = ctx.param_f("qty", 1.0) as u32;
     let dest = ctx.target.filter(|t| world.get::<crate::inventory::Stock>(*t).is_some()).unwrap_or(ctx.actor);
-    let n = crate::inventory_ops::give(world, dest, item, qty);
+    let outputs: Vec<(String, u32)> = match ctx.param_str("item") {
+        Some(item) => vec![(item.to_string(), ctx.param_f("qty", 1.0) as u32)],
+        // Without an explicit item, work the target building (a field, a pen): yields its passive output.
+        None => world
+            .get::<Building>(dest)
+            .and_then(|b| world.resource::<Content>().buildings.get(&b.def))
+            .map(|d| d.passive.iter().map(|(k, v)| (k.clone(), *v)).collect())
+            .unwrap_or_default(),
+    };
+    if outputs.is_empty() {
+        return JobResult::fail("cosa produrre?");
+    }
+    let mut n = 0;
+    for (item, qty) in outputs {
+        n += crate::inventory_ops::give(world, dest, &item, qty);
+    }
     if n == 0 { JobResult::fail("nessuno spazio") } else { JobResult::ok() }
 }
 

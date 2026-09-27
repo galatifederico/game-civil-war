@@ -92,6 +92,8 @@ pub fn add_shock(world: &mut World, item: Option<&str>, tag: Option<&str>, deman
         let hit = item == Some(id.as_str())
             || tag.is_some_and(|t| content.items.get(id).is_some_and(|d| d.tags.iter().any(|x| x == t)));
         if hit {
+            // The same source (e.g. news about arrests) refreshes its shock instead of stacking it.
+            m.shocks.retain(|s| s.source != source);
             m.shocks.push(Shock { demand, supply, until: tick + duration, source: source.to_string() });
         }
     }

@@ -1,0 +1,41 @@
+// Mappa: superficie di Fidenza e Salsomaggiore, gallerie dei Nani, viscere delle Terme.
+(
+    map: (
+        layers: [
+            (id: "superficie", name: "Fidenza e Salsomaggiore", width: 90, height: 64),
+            (id: "gallerie", name: "Gallerie dei Nani", width: 50, height: 30, underground: true),
+            (id: "viscere", name: "Viscere delle Terme", width: 30, height: 30, underground: true),
+        ],
+        zones: [
+            (id: "piazza_garibaldi", name: "Piazza Garibaldi", layer: "superficie", rect: (30, 20, 14, 10), tags: ["pubblico", "pattuglia", "caldo", "fidenza"]),
+            (id: "cattedrale", name: "Cattedrale di San Donnino", layer: "superficie", rect: (46, 20, 8, 8), tags: ["pubblico", "chiesa", "fidenza"]),
+            (id: "redazione", name: "Redazione della Gazzetta", layer: "superficie", rect: (22, 20, 6, 5), tags: ["fidenza"]),
+            (id: "stazione_polizia", name: "Comando di Polizia", layer: "superficie", rect: (30, 32, 6, 5), tags: ["fidenza", "pattuglia"]),
+            (id: "celle", name: "Celle di Detenzione", layer: "superficie", rect: (36, 33, 3, 3), tags: ["celle"]),
+            (id: "bar_ubriaconi", name: "Bar degli Ubriaconi", layer: "superficie", rect: (22, 30, 7, 6), tags: ["pubblico", "caldo", "fidenza"]),
+            (id: "trono_ubriaconi", name: "Trono degli Ubriaconi", layer: "superficie", rect: (26, 33, 2, 2), tags: ["trono"]),
+            (id: "fidenza_village", name: "Fidenza Village", layer: "superficie", rect: (62, 4, 16, 12), tags: ["pubblico", "shopping"]),
+            (id: "circolo_boomer", name: "Circolo dei Boomer", layer: "superficie", rect: (8, 4, 9, 7), tags: ["boomer"]),
+            (id: "rotonde", name: "Le Rotonde", layer: "superficie", rect: (4, 40, 22, 4), tags: ["rotonda", "pattuglia"]),
+            (id: "casino", name: "Casinò Diablo Tentator", layer: "superficie", rect: (62, 40, 10, 8), tags: ["pubblico", "caldo", "vizio"]),
+            (id: "capannone_regali", name: "Capannone di Babbo Natale Estivo", layer: "superficie", rect: (66, 22, 12, 10), tags: ["logistica"]),
+            (id: "campagna_bassa", name: "Campagna della Bassa", layer: "superficie", rect: (0, 48, 40, 16), tags: ["campi"]),
+            (id: "borgo_templari", name: "Borgo dei Templari", layer: "superficie", rect: (48, 32, 8, 6), tags: ["templari"]),
+            (id: "impero_vegano", name: "Impero Vegano del Monolite", layer: "superficie", rect: (4, 16, 10, 9), tags: ["vegano"]),
+            (id: "fumetteria", name: "Fumetteria della Gilda Nerd", layer: "superficie", rect: (48, 8, 7, 6), tags: ["nerd"]),
+            (id: "salsomaggiore_terme", name: "Terme di Salsomaggiore", layer: "superficie", rect: (46, 50, 18, 12), tags: ["pubblico", "terme", "salso"]),
+            (id: "gallerie", name: "Gallerie dei Nani", layer: "gallerie", rect: (0, 0, 50, 30), tags: ["gallerie", "sotterraneo"]),
+            (id: "miniera", name: "Filone di ferro", layer: "gallerie", rect: (30, 5, 12, 10), tags: ["miniera", "gallerie"]),
+            (id: "tana_dinosauri", name: "Tana dei Dinosauri", layer: "gallerie", rect: (2, 18, 12, 10), tags: ["gallerie", "tana"]),
+            (id: "cripta", name: "Cripta di San Vitale", layer: "viscere", rect: (4, 4, 20, 20), tags: ["cripta", "sotterraneo"]),
+        ],
+        portals: [
+            (name: "Tombino di Piazza Garibaldi", a: ("superficie", 32, 28), b: ("gallerie", 2, 2)),
+            (name: "Scalinata delle Terme", a: ("superficie", 55, 58), b: ("viscere", 2, 2)),
+        ],
+        networks: [
+            (id: "acquedotto", name: "Acquedotto di Fidenza", zones: ["piazza_garibaldi", "cattedrale", "redazione", "stazione_polizia", "bar_ubriaconi", "fidenza_village"]),
+            (id: "fogne_termali", name: "Fogne termali", zones: ["salsomaggiore_terme", "cripta"]),
+        ],
+    ),
+)

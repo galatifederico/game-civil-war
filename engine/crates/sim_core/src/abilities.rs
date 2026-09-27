@@ -65,9 +65,10 @@ pub fn use_ability(world: &mut World, e: Entity, ability: &str, target: Option<E
     let actor = world.get::<SimId>(e).copied();
     let tid = target.and_then(|t| world.get::<SimId>(t).copied());
     let name = crate::infiltration::apparent_name(world, e);
+    let on = target.filter(|t| *t != e).map(|t| format!(" su {}", crate::infiltration::apparent_name(world, t))).unwrap_or_default();
     world.resource_mut::<EventLog>().push(
         tick,
-        EventBuilder::new(kind::ABILITY, format!("{name} usa {}", def.name))
+        EventBuilder::new(kind::ABILITY, format!("{name} usa {}{on}", def.name))
             .actor(actor)
             .target(tid)
             .pos(pos)
