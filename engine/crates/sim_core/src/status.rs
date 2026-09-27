@@ -53,7 +53,7 @@ impl StatusEffects {
 }
 
 fn stage_for(def: &crate::content::StatusDef, severity: f32) -> Option<usize> {
-    def.stages.iter().enumerate().filter(|(_, s)| severity >= s.at).map(|(i, _)| i).last()
+    def.stages.iter().enumerate().filter(|(_, s)| severity >= s.at).map(|(i, _)| i).next_back()
 }
 
 fn sim_id(world: &World, e: Entity) -> Option<SimId> {
@@ -143,20 +143,18 @@ pub fn remove_status(world: &mut World, e: Entity, status: &str, expired: bool) 
 fn update_stage(world: &mut World, e: Entity, status: &str) {
     let Some(def) = world.resource::<Content>().statuses.get(status).cloned() else { return };
     let Some(cur) = world.get::<StatusEffects>(e).and_then(|s| s.active.get(status).cloned()) else { return };
-    if let (Some(next), Some(at)) = (&def.escalates_to, def.escalate_at) {
-        if cur.severity >= at {
+    if let (Some(next), Some(at)) = (&def.escalates_to, def.escalate_at)
+        && cur.severity >= at {
             remove_status(world, e, status, false);
             apply_status(world, e, next, 1.0, None);
             return;
         }
-    }
     let stage = stage_for(&def, cur.severity);
     if stage != cur.stage {
-        if let Some(mut se) = world.get_mut::<StatusEffects>(e) {
-            if let Some(a) = se.active.get_mut(status) {
+        if let Some(mut se) = world.get_mut::<StatusEffects>(e)
+            && let Some(a) = se.active.get_mut(status) {
                 a.stage = stage;
             }
-        }
         if let Some(i) = stage.filter(|i| cur.stage.is_none_or(|c| *i > c)) {
             let st = &def.stages[i];
             let tick = world.resource::<SimClock>().tick;
@@ -235,8 +233,8 @@ pub fn transmute(world: &mut World, e: Entity, race: &str) {
     let old_name = content.races.get(&old).map_or(old.clone(), |r| r.name.clone());
     let plan = content.body_plans.get(&rdef.body_plan).cloned();
     world.entity_mut(e).insert(Race(race.to_string()));
-    if let (Some(plan), Some(body)) = (plan, world.get::<crate::anatomy::Body>(e).cloned()) {
-        if body.plan != plan.id {
+    if let (Some(plan), Some(body)) = (plan, world.get::<crate::anatomy::Body>(e).cloned())
+        && body.plan != plan.id {
             let ratio = body.health_ratio();
             let mut nb = crate::anatomy::Body::from_plan(&plan);
             for p in &mut nb.parts {
@@ -244,7 +242,6 @@ pub fn transmute(world: &mut World, e: Entity, race: &str) {
             }
             world.entity_mut(e).insert(nb);
         }
-    }
     for s in rdef.innate_statuses.clone() {
         apply_status(world, e, &s, 1.0, None);
     }

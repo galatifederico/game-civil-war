@@ -85,12 +85,11 @@ fn oracle_reveal(world: &mut World, _ctx: &EffectCtx, _p: &serde_json::Value) {
         .filter(|e| world.get::<Dead>(*e).is_none())
         .collect();
     let roll = world.resource_mut::<SimRng>().next_f32();
-    if roll < 0.5 {
-        if let Some(i) = world.resource_mut::<SimRng>().index(disguised.len()) {
+    if roll < 0.5
+        && let Some(i) = world.resource_mut::<SimRng>().index(disguised.len()) {
             sim_core::infiltration::expose(world, disguised[i], "profezia dell'Oracolo", Some(oracle));
             return;
         }
-    }
     let content = world.resource::<Content>().clone();
     let relics: Vec<String> = content.items.values().filter(|i| i.tags.iter().any(|t| t == "reliquia_maggiore")).map(|i| i.id.clone()).collect();
     let Some(relic) = world.resource_mut::<SimRng>().pick(&relics).cloned() else { return };

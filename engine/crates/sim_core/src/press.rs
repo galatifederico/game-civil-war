@@ -204,15 +204,14 @@ pub fn publish(
 fn apply_impacts(world: &mut World, author: Option<Entity>, truth: Truth, topics: &[String], subject: Option<Entity>) {
     let content = world.resource::<Content>().clone();
     let b = &content.bindings;
-    if truth == Truth::Real {
-        if let Some(a) = author {
+    if truth == Truth::Real
+        && let Some(a) = author {
             let gain = world.resource::<Params>().f("press.reputation_gain");
             let bounds = content.stat_bounds(&b.press_reputation);
             if let Some(mut s) = world.get_mut::<Stats>(a) {
                 s.add_base(&b.press_reputation, gain, bounds);
             }
         }
-    }
     let author_faction = author.and_then(|a| world.get::<FactionMember>(a)).map(|m| m.faction.clone());
     let subject_faction = subject.and_then(|s| world.get::<FactionMember>(s)).map(|m| m.faction.clone());
     for imp in content.news_impacts.iter().filter(|i| topics.contains(&i.topic)) {
@@ -235,21 +234,19 @@ fn apply_impacts(world: &mut World, author: Option<Entity>, truth: Truth, topics
                 if let Some(mut st) = world.get_mut::<Stats>(s) {
                     st.add_base(&b.press_reputation, imp.subject_reputation * factor, bounds);
                 }
-                if let Some(f) = &subject_faction {
-                    if let Some(fs) = world.resource_mut::<Factions>().states.get_mut(f) {
+                if let Some(f) = &subject_faction
+                    && let Some(fs) = world.resource_mut::<Factions>().states.get_mut(f) {
                         fs.reputation += imp.subject_reputation * factor;
                     }
-                }
             }
             if imp.exposes > 0.0 {
                 crate::infiltration::mod_cover(world, s, -imp.exposes * factor, "inchiesta giornalistica");
             }
         }
-        if imp.relation != 0.0 {
-            if let (Some(a), Some(s)) = (&author_faction, &subject_faction) {
+        if imp.relation != 0.0
+            && let (Some(a), Some(s)) = (&author_faction, &subject_faction) {
                 world.resource_mut::<Factions>().modify_relation(a, s, imp.relation * factor);
             }
-        }
     }
 }
 
@@ -258,7 +255,7 @@ pub fn news_sources(world: &mut World) {
     let tick = world.resource::<SimClock>().tick;
     let sources: Vec<_> = world.resource::<Content>().news_sources.values().cloned().collect();
     for src in sources {
-        if tick < src.start_tick || src.interval == 0 || (tick - src.start_tick) % src.interval != 0 || src.headlines.is_empty() {
+        if tick < src.start_tick || src.interval == 0 || !(tick - src.start_tick).is_multiple_of(src.interval) || src.headlines.is_empty() {
             continue;
         }
         let author = match &src.author {

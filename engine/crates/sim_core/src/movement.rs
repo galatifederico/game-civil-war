@@ -40,11 +40,10 @@ pub fn move_towards(world: &mut World, e: Entity, goal: Position, range: i32) ->
         if next == pos {
             break;
         }
-        if let Some(z) = &tether {
-            if !map.in_zone(z, &next) {
+        if let Some(z) = &tether
+            && !map.in_zone(z, &next) {
                 break;
             }
-        }
         pos = next;
         budget -= 1.0;
     }

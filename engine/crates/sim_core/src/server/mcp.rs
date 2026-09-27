@@ -85,10 +85,7 @@ pub fn handle(sim: &SharedSim, req: Value) -> Option<Value> {
     let id = req.get("id").cloned();
     let method = req.get("method").and_then(|m| m.as_str()).unwrap_or_default().to_string();
     let params = req.get("params").cloned().unwrap_or(Value::Null);
-    let id = match id {
-        Some(id) => id,
-        None => return None, // notification (e.g. notifications/initialized)
-    };
+    let id = id?;
     let resp = match method.as_str() {
         "initialize" => ok(
             &id,

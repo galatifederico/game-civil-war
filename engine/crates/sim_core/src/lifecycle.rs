@@ -132,11 +132,10 @@ pub fn spawn_template(world: &mut World, template: &str, pos: Option<Position>, 
         if let Some(p) = world.resource_mut::<Players>().players.get_mut(player) {
             p.leader = Some(id);
         }
-        if let Some(f) = fac {
-            if let Some(s) = world.resource_mut::<Factions>().states.get_mut(&f) {
+        if let Some(f) = fac
+            && let Some(s) = world.resource_mut::<Factions>().states.get_mut(&f) {
                 s.controlled_by = Some(player.clone());
             }
-        }
     }
     for title in &t.titles {
         world.resource_mut::<Titles>().holders.insert(title.clone(), Some(id));

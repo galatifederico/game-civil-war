@@ -75,11 +75,10 @@ pub fn collections(world: &mut World) {
             if !world.resource_mut::<Progress>().completed.insert((col.id.clone(), key)) {
                 continue;
             }
-            if let Some(f) = &faction {
-                if let Some(s) = world.resource_mut::<Factions>().states.get_mut(f) {
+            if let Some(f) = &faction
+                && let Some(s) = world.resource_mut::<Factions>().states.get_mut(f) {
                     s.victory_points += col.victory_points;
                 }
-            }
             let who = holder.map(|h| crate::effects::name_of(world, h)).or(faction.clone()).unwrap_or_default();
             world.resource_mut::<EventLog>().push(
                 tick,
@@ -142,13 +141,11 @@ pub fn check_victory(world: &mut World) {
                 }
             }
             VictoryKind::HoldTitle(t) => {
-                if let Some(holder) = world.resource::<Titles>().holder(t) {
-                    if let Some(e) = crate::lifecycle::entity_of(world, holder) {
-                        if let Some(l) = world.get::<Leader>(e) {
+                if let Some(holder) = world.resource::<Titles>().holder(t)
+                    && let Some(e) = crate::lifecycle::entity_of(world, holder)
+                        && let Some(l) = world.get::<Leader>(e) {
                             winner = world.resource::<Players>().players.get(&l.player).map(|p| p.faction.clone());
                         }
-                    }
-                }
             }
             VictoryKind::VictoryPoints(n) => {
                 winner = scores.iter().filter(|(_, s)| **s >= *n).max_by_key(|(_, s)| **s).map(|(f, _)| f.clone());

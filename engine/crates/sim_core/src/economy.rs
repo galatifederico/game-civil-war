@@ -70,11 +70,10 @@ pub fn buy(world: &mut World, buyer: Entity, shop_e: Entity, item: &str) -> Resu
     let owner = world.get::<Building>(shop_e).map(|b| b.owner.clone()).unwrap_or(Owner::None);
     earn_owner(world, &owner, price);
     // Food poisoning / contaminated stock.
-    if let Some(c) = world.get::<crate::hygiene::Contaminated>(shop_e).cloned() {
-        if content.items.get(item).is_some_and(|d| d.tags.iter().any(|t| content.bindings.ingestible_tags.contains(t))) {
+    if let Some(c) = world.get::<crate::hygiene::Contaminated>(shop_e).cloned()
+        && content.items.get(item).is_some_and(|d| d.tags.iter().any(|t| content.bindings.ingestible_tags.contains(t))) {
             crate::status::apply_status(world, buyer, &c.status, 1.0, None);
         }
-    }
     let tick = world.resource::<SimClock>().tick;
     let (bid, sid) = (world.get::<SimId>(buyer).copied(), world.get::<SimId>(shop_e).copied());
     let name = crate::infiltration::apparent_name(world, buyer);
@@ -93,7 +92,7 @@ pub fn buy(world: &mut World, buyer: Entity, shop_e: Entity, item: &str) -> Resu
 pub fn payroll(world: &mut World) {
     let tick = world.resource::<SimClock>().tick;
     let period = world.resource::<Params>().get("economy.payroll_period", 24.0).max(1.0) as u64;
-    if tick == 0 || tick % period != 0 {
+    if tick == 0 || !tick.is_multiple_of(period) {
         return;
     }
     let content = world.resource::<Content>().clone();

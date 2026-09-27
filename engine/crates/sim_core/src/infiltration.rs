@@ -280,11 +280,10 @@ pub fn steal_identity(world: &mut World, thief: Entity, victim: Entity) -> Resul
     }
     shapeshift(world, thief, d, Some(victim));
     world.entity_mut(thief).insert(Cover(100.0));
-    if let Some(mut w) = world.get_mut::<WorkPriorities>(thief) {
-        if let Some(v) = wp {
+    if let Some(mut w) = world.get_mut::<WorkPriorities>(thief)
+        && let Some(v) = wp {
             w.overrides = v.matrix();
         }
-    }
     let tick = world.resource::<SimClock>().tick;
     world.resource_mut::<EventLog>().push(
         tick,

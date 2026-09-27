@@ -142,11 +142,10 @@ pub fn search(world: &mut World, officer: Entity, suspect: Entity) -> Vec<(Strin
         if let Some(mut inv) = world.get_mut::<Inventory>(suspect) {
             inv.remove(item, *n);
         }
-        if let Some(b) = evidence {
-            if let Some(mut s) = world.get_mut::<Stock>(b) {
+        if let Some(b) = evidence
+            && let Some(mut s) = world.get_mut::<Stock>(b) {
                 s.add(item, *n);
             }
-        }
     }
     let per_item = world.resource::<Params>().f("crime.contraband_wanted");
     let total: u32 = seized.iter().map(|(_, n)| n).sum();

@@ -155,13 +155,12 @@ pub fn buildings_tick(world: &mut World) {
         let Some(def) = content.buildings.get(&b.def) else { continue };
         let id = *world.get::<SimId>(e).unwrap();
         // Passive production (fields, pens, generators): halted when destroyed.
-        if b.hp > 0.0 && def.passive_interval > 0 && tick % def.passive_interval == 0 && tick > 0 {
-            if let Some(mut s) = world.get_mut::<Stock>(e) {
+        if b.hp > 0.0 && def.passive_interval > 0 && tick.is_multiple_of(def.passive_interval) && tick > 0
+            && let Some(mut s) = world.get_mut::<Stock>(e) {
                 for (item, n) in &def.passive {
                     s.add(item, *n);
                 }
             }
-        }
         // Post one production job per recipe whose inputs are available.
         if let (Some(job), true, Owner::Faction(f)) = (&process_job, b.hp > 0.0, &b.owner) {
             let stock = world.get::<Stock>(e).cloned().unwrap_or_default();

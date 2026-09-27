@@ -185,11 +185,10 @@ pub fn post_job(world: &mut World, job: &str, faction: Option<String>, target: J
 
 /// Can this pawn do this job at all (tags, rank, requirements, matrix)?
 pub fn can_do(world: &mut World, e: Entity, def: &JobDef, check_matrix: bool) -> bool {
-    if let Some(tags) = world.get::<Tags>(e) {
-        if !def.required_tags.iter().all(|t| tags.has(t)) {
+    if let Some(tags) = world.get::<Tags>(e)
+        && !def.required_tags.iter().all(|t| tags.has(t)) {
             return false;
         }
-    }
     if def.min_rank > 0 {
         let lvl = world
             .get::<FactionMember>(e)
@@ -238,11 +237,10 @@ pub fn best_board_job(world: &mut World, e: Entity) -> Option<(f32, BoardJob)> {
     let jobs: Vec<BoardJob> = world.resource::<JobBoard>().jobs.values().filter(|j| open(j)).cloned().collect();
     let mut best: Option<(f32, BoardJob)> = None;
     for j in jobs {
-        if let Some(f) = &j.faction {
-            if !my_factions.contains(f) {
+        if let Some(f) = &j.faction
+            && !my_factions.contains(f) {
                 continue;
             }
-        }
         let Some(def) = content.jobs.get(&j.job) else { continue };
         // Production jobs use the work type of their recipe (brewing, baking, forging…).
         let work_type = recipe_work_type(world, &j).unwrap_or_else(|| def.work_type.clone());
@@ -267,11 +265,10 @@ pub fn start_job(world: &mut World, e: Entity, job: &str, target: JobTarget, boa
     let tick = world.resource::<SimClock>().tick;
     let required = world.resource::<Content>().jobs.get(job).map_or(1.0, |d| d.duration.max(0.0));
     let me = world.get::<SimId>(e).copied();
-    if let Some(id) = board_id {
-        if let Some(j) = world.resource_mut::<JobBoard>().jobs.get_mut(&id) {
+    if let Some(id) = board_id
+        && let Some(j) = world.resource_mut::<JobBoard>().jobs.get_mut(&id) {
             j.reserved_by = me;
         }
-    }
     if let Some(mut t) = world.get_mut::<Task>(e) {
         t.job = Some(ActiveJob { job: job.to_string(), board_id, target, progress: 0.0, required, started: tick, ability: None, payload });
     }
@@ -285,11 +282,10 @@ pub fn release_task(world: &mut World, e: Entity) {
     t.forced = false;
     t.stuck = 0;
     t.label.clear();
-    if let Some(id) = job.and_then(|j| j.board_id) {
-        if let Some(j) = world.resource_mut::<JobBoard>().jobs.get_mut(&id) {
+    if let Some(id) = job.and_then(|j| j.board_id)
+        && let Some(j) = world.resource_mut::<JobBoard>().jobs.get_mut(&id) {
             j.reserved_by = None;
         }
-    }
 }
 
 fn work_rate(world: &World, e: Entity, def: &JobDef) -> f32 {
@@ -325,9 +321,9 @@ pub fn run_jobs(world: &mut World) {
             release_task(world, e);
             continue;
         }
-        if let Some(goal) = active.target.position(world) {
-            if let Some(before) = world.get::<Position>(e).copied() {
-                if !crate::movement::move_towards(world, e, goal, range) {
+        if let Some(goal) = active.target.position(world)
+            && let Some(before) = world.get::<Position>(e).copied()
+                && !crate::movement::move_towards(world, e, goal, range) {
                     let moved = world.get::<Position>(e).copied() != Some(before);
                     let stuck = {
                         let mut t = world.get_mut::<Task>(e).unwrap();
@@ -346,8 +342,6 @@ pub fn run_jobs(world: &mut World) {
                     }
                     continue;
                 }
-            }
-        }
         if let Some(ab) = &active.ability {
             crate::abilities::use_ability(world, e, ab, active.target.entity(world));
             finish(world, e, &active);
@@ -373,11 +367,10 @@ fn finish(world: &mut World, e: Entity, active: &ActiveJob) {
     if let Some(id) = active.board_id {
         world.resource_mut::<JobBoard>().jobs.remove(&id);
     }
-    if let Some(mut q) = world.get_mut::<PersonalQueue>(e) {
-        if active.board_id.is_some() && q.0.front().is_some_and(|j| Some(j.id) == active.board_id) {
+    if let Some(mut q) = world.get_mut::<PersonalQueue>(e)
+        && active.board_id.is_some() && q.0.front().is_some_and(|j| Some(j.id) == active.board_id) {
             q.0.pop_front();
         }
-    }
     if let Some(mut t) = world.get_mut::<Task>(e) {
         t.job = None;
         t.forced = false;

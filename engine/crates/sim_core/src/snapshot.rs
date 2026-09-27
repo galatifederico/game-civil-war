@@ -377,11 +377,10 @@ pub fn fog_of_war(world: &mut World, faction: &str) -> FogView {
         if visible.contains(&id) || crate::infiltration::invisible(world, e) {
             continue;
         }
-        if let Some(p) = world.get::<Position>(e) {
-            if observers.iter().any(|(o, r)| o.within(p, *r)) {
+        if let Some(p) = world.get::<Position>(e)
+            && observers.iter().any(|(o, r)| o.within(p, *r)) {
                 visible.insert(id);
             }
-        }
     }
     FogView { faction: faction.to_string(), observers, visible }
 }

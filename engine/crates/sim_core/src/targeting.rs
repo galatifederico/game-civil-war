@@ -101,23 +101,20 @@ pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId,
         if e == chooser || world.get::<Dead>(e).is_some() {
             continue;
         }
-        if let Some(p) = f.pawn {
-            if p != is_pawn {
+        if let Some(p) = f.pawn
+            && p != is_pawn {
                 continue;
             }
-        }
         // Tethered pawns cannot leave their zone, so they only consider what is inside it.
-        if let Some(z) = &tether {
-            if !pos.is_some_and(|p| map.in_zone(z, &p)) {
+        if let Some(z) = &tether
+            && !pos.is_some_and(|p| map.in_zone(z, &p)) {
                 continue;
             }
-        }
         // Positions in the index are from the start of the pass: good enough for choosing targets.
-        if let (Some(max), Some(a)) = (f.max_distance, me_pos) {
-            if !pos.is_some_and(|b| a.within(&b, max)) {
+        if let (Some(max), Some(a)) = (f.max_distance, me_pos)
+            && !pos.is_some_and(|b| a.within(&b, max)) {
                 continue;
             }
-        }
         if f.visible && !crate::infiltration::can_see(world, chooser, e, perception) {
             continue;
         }
@@ -133,11 +130,10 @@ pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId,
                 continue;
             }
         }
-        if let Some(b) = &f.building {
-            if world.get::<Building>(e).is_none_or(|x| &x.def != b) {
+        if let Some(b) = &f.building
+            && world.get::<Building>(e).is_none_or(|x| &x.def != b) {
                 continue;
             }
-        }
         if let Some(bt) = &f.building_tag {
             let ok = world.get::<Building>(e).and_then(|x| content.buildings.get(&x.def)).is_some_and(|d| d.tags.contains(bt));
             if !ok {
@@ -155,17 +151,15 @@ pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId,
                 continue;
             }
         }
-        if let Some(t) = &f.template {
-            if world.get::<TemplateId>(e).is_none_or(|x| &x.0 != t) {
+        if let Some(t) = &f.template
+            && world.get::<TemplateId>(e).is_none_or(|x| &x.0 != t) {
                 continue;
             }
-        }
         let their = if f.faction.is_some() || f.relation.is_some() { crate::infiltration::apparent_faction(world, e) } else { None };
-        if let Some(fa) = &f.faction {
-            if their.as_ref() != Some(fa) {
+        if let Some(fa) = &f.faction
+            && their.as_ref() != Some(fa) {
                 continue;
             }
-        }
         if let Some(rel) = f.relation {
             let fs = world.resource::<Factions>();
             // Pawns without a faction are "other" but neither hostile nor friendly.
@@ -182,26 +176,22 @@ pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId,
                 continue;
             }
         }
-        if let Some(t) = &f.has_item_tag {
-            if world.get::<Inventory>(e).is_none_or(|i| i.count_tag(&content, t) == 0) {
+        if let Some(t) = &f.has_item_tag
+            && world.get::<Inventory>(e).is_none_or(|i| i.count_tag(&content, t) == 0) {
                 continue;
             }
-        }
-        if let Some(m) = f.min_money {
-            if world.get::<Wallet>(e).is_none_or(|w| w.0 < m) {
+        if let Some(m) = f.min_money
+            && world.get::<Wallet>(e).is_none_or(|w| w.0 < m) {
                 continue;
             }
-        }
-        if let Some(mw) = min_wanted {
-            if world.get::<Wanted>(e).is_none_or(|w| w.level < mw) {
+        if let Some(mw) = min_wanted
+            && world.get::<Wanted>(e).is_none_or(|w| w.level < mw) {
                 continue;
             }
-        }
-        if let Some(s) = &f.has_status {
-            if world.get::<StatusEffects>(e).is_none_or(|x| !x.has(s)) {
+        if let Some(s) = &f.has_status
+            && world.get::<StatusEffects>(e).is_none_or(|x| !x.has(s)) {
                 continue;
             }
-        }
         if let Some(c) = &f.condition {
             let ctx = EffectCtx::new(Some(e), Some(chooser), "filter");
             if !eval_condition(world, &ctx, c) {

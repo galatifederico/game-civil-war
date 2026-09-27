@@ -189,11 +189,10 @@ impl Validator<'_> {
         }
         for bp in c.body_plans.values() {
             for p in &bp.parts {
-                if let Some(parent) = &p.parent {
-                    if !bp.parts.iter().any(|q| &q.id == parent) {
+                if let Some(parent) = &p.parent
+                    && !bp.parts.iter().any(|q| &q.id == parent) {
                         self.errors.push(format!("piano corporeo {}: parte padre '{parent}' non esiste", bp.id));
                     }
-                }
             }
         }
         for r in c.races.values() {
@@ -347,11 +346,10 @@ impl Validator<'_> {
             }
             if let Some(f) = &t.faction {
                 self.check(&c.factions, "fazione", f, &ctx);
-                if let Some(r) = &t.rank {
-                    if c.rank(f, r).is_none() {
+                if let Some(r) = &t.rank
+                    && c.rank(f, r).is_none() {
                         self.errors.push(format!("{ctx}: rango '{r}' non esiste nella fazione '{f}'"));
                     }
-                }
             }
             for s in t.stats.keys() {
                 self.stat(s, &ctx);
@@ -397,11 +395,10 @@ impl Validator<'_> {
                         self.zone(&t.zone, &ctx);
                         self.cond(&t.release, &ctx);
                     }
-                    if let Some(l) = leader_of {
-                        if !players.contains(l) {
+                    if let Some(l) = leader_of
+                        && !players.contains(l) {
                             self.errors.push(format!("{ctx}: giocatore '{l}' non esiste"));
                         }
-                    }
                 }
                 Placement::Building { building, zone, owner_faction, owner_template, .. } => {
                     let ctx = format!("piazzamento edificio {building}");

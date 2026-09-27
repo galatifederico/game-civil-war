@@ -87,11 +87,10 @@ pub fn hygiene_tick(world: &mut World) {
             if let Some((fluid, amount)) = &sd.spills {
                 spill(world, pos, fluid, *amount);
             }
-            if let Some(c) = &sd.contagion {
-                if c.shedding > 0.0 {
+            if let Some(c) = &sd.contagion
+                && c.shedding > 0.0 {
                     *world.resource_mut::<Environment>().cell_mut(pos).pathogens.entry(sid.clone()).or_insert(0.0) += c.shedding;
                 }
-            }
         }
     }
     // 2. Direct contagion (contact / air).

@@ -232,11 +232,10 @@ pub fn apply_effect(world: &mut World, ctx: &EffectCtx, effect: &Effect) {
         }
         Effect::AddClass(c) => {
             if let Some(e) = subj {
-                if let Some(mut cl) = world.get_mut::<Classes>(e) {
-                    if !cl.0.contains(c) {
+                if let Some(mut cl) = world.get_mut::<Classes>(e)
+                    && !cl.0.contains(c) {
                         cl.0.push(c.clone());
                     }
-                }
                 crate::lifecycle::refresh_role(world, e);
             }
         }
@@ -254,11 +253,10 @@ pub fn apply_effect(world: &mut World, ctx: &EffectCtx, effect: &Effect) {
             }
         }
         Effect::VictoryPoints(n) => {
-            if let Some(f) = faction_of(world, subj) {
-                if let Some(s) = world.resource_mut::<Factions>().states.get_mut(&f) {
+            if let Some(f) = faction_of(world, subj)
+                && let Some(s) = world.resource_mut::<Factions>().states.get_mut(&f) {
                     s.victory_points += n;
                 }
-            }
         }
         Effect::ModDissent(amount) => {
             if let Some(mut d) = subj.and_then(|e| world.get_mut::<crate::factions::Dissent>(e)) {
@@ -441,7 +439,7 @@ pub fn eval_condition(world: &mut World, ctx: &EffectCtx, cond: &Condition) -> b
             eval_condition(world, &swapped, c)
         }
         Condition::TickAtLeast(t) => tick >= *t,
-        Condition::Every(n) => *n > 0 && tick % n == 0,
+        Condition::Every(n) => *n > 0 && tick.is_multiple_of(*n),
         Condition::Chance(p) => world.resource_mut::<SimRng>().chance(*p),
         Condition::Flag { flag, min } => world.resource::<Flags>().0.get(flag).is_some_and(|v| v >= min),
         Condition::StatAtLeast { stat, value } => subj.and_then(|e| world.get::<Stats>(e)).is_some_and(|s| s.get(stat) >= *value),

@@ -266,12 +266,11 @@ pub fn think(world: &mut World) {
             }
             ActionKind::Ability { ability, .. } => {
                 start_job(world, e, "", best.target, None, None);
-                if let Some(mut t) = world.get_mut::<Task>(e) {
-                    if let Some(j) = t.job.as_mut() {
+                if let Some(mut t) = world.get_mut::<Task>(e)
+                    && let Some(j) = t.job.as_mut() {
                         j.ability = Some(ability.clone());
                         j.required = 0.0;
                     }
-                }
             }
             ActionKind::Idle => {}
         }

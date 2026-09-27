@@ -63,11 +63,10 @@ pub fn ideology_witnesses(world: &mut World, actor: Entity, job: &JobDef) {
             continue;
         }
         let same = world.get::<FactionMember>(w).is_some_and(|m| m.faction == actor_faction);
-        if same && world.get::<Position>(w).is_some_and(|p| p.within(&pos, range)) {
-            if let Some(mut d) = world.get_mut::<Dissent>(w) {
+        if same && world.get::<Position>(w).is_some_and(|p| p.within(&pos, range))
+            && let Some(mut d) = world.get_mut::<Dissent>(w) {
                 d.0 = (d.0 + amount).min(100.0);
             }
-        }
     }
 }
 

@@ -146,8 +146,8 @@ pub fn recompute_stats(
                 }
             }
         }
-        if let Some(m) = member {
-            if let Some(f) = content.factions.get(&m.faction) {
+        if let Some(m) = member
+            && let Some(f) = content.factions.get(&m.faction) {
                 match f.role {
                     crate::content::FactionRole::Police => {
                         t.insert(police.clone());
@@ -159,7 +159,6 @@ pub fn recompute_stats(
                 }
                 t.extend(f.tags.iter().cloned());
             }
-        }
         for (k, v) in eff.iter_mut() {
             let (lo, hi) = content.stat_bounds(k);
             *v = v.clamp(lo, hi);

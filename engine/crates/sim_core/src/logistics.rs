@@ -55,7 +55,7 @@ fn pending(world: &mut World) -> BTreeSet<(SimId, String)> {
 pub fn post_logistics(world: &mut World) {
     let tick = world.resource::<SimClock>().tick;
     let interval = world.resource::<Params>().get("logistics.interval", 4.0).max(1.0) as u64;
-    if tick % interval != 0 {
+    if !tick.is_multiple_of(interval) {
         return;
     }
     let content = world.resource::<Content>().clone();
@@ -138,11 +138,10 @@ pub fn haul(world: &mut World, ctx: &crate::jobs::JobCtx) -> crate::jobs::JobRes
     let (src_owner, dst_owner) = (owner_of(world, from), owner_of(world, to));
     if src_owner != dst_owner {
         let price = world.resource::<crate::market::Market>().price(&item).unwrap_or(0.0) * n as f64;
-        if let Owner::Faction(f) = &dst_owner {
-            if !world.resource_mut::<crate::factions::Factions>().spend(f, price) {
+        if let Owner::Faction(f) = &dst_owner
+            && !world.resource_mut::<crate::factions::Factions>().spend(f, price) {
                 return JobResult::fail("la fazione non può pagare la merce");
             }
-        }
         crate::economy::earn_owner(world, &src_owner, price);
     }
     crate::inventory_ops::take(world, src, &item, n);

@@ -56,13 +56,11 @@ pub fn tethers(world: &mut World) {
             release(world, e, "condizione di uscita");
             continue;
         }
-        if let Some(p) = world.get::<Position>(e).copied() {
-            if !map.in_zone(&t.zone, &p) {
-                if let Some(z) = map.resolve_zones(&t.zone).first() {
+        if let Some(p) = world.get::<Position>(e).copied()
+            && !map.in_zone(&t.zone, &p)
+                && let Some(z) = map.resolve_zones(&t.zone).first() {
                     world.entity_mut(e).insert(map.zones[*z].clamp(&p));
                 }
-            }
-        }
     }
 }
 
@@ -70,7 +68,7 @@ pub fn spawners(world: &mut World) {
     let tick = world.resource::<SimClock>().tick;
     let spawners: Vec<_> = world.resource::<Content>().spawners.values().cloned().collect();
     for s in spawners {
-        if s.interval == 0 || tick % s.interval != 0 {
+        if s.interval == 0 || !tick.is_multiple_of(s.interval) {
             continue;
         }
         if let Some(summoner) = &s.summoner {
