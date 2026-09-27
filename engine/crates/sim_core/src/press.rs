@@ -48,7 +48,7 @@ pub struct Article {
     pub source_event: Option<u64>,
 }
 
-/// The social feed ("Il Piccione Viaggiatore" in the Fidenza pack).
+/// The social feed (its name comes from the content pack).
 #[derive(Resource, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Feed {
     pub name: String,

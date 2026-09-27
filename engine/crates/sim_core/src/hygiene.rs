@@ -71,7 +71,7 @@ pub fn hygiene_tick(world: &mut World) {
     let (scale, flow, dirt_decay) = (p.f("hygiene.infection_scale"), p.f("hygiene.network_flow"), p.f("hygiene.dirt_decay"));
     let bleed = p.f("health.bleed_threshold");
     let pawns: Vec<Entity> = crate::sorted_entities::<Pawn>(world).into_iter().filter(|e| world.get::<Dead>(*e).is_none()).collect();
-    let blood = content.fluids.keys().find(|f| f.as_str() == "blood").cloned();
+    let blood = content.bindings.blood_fluid.clone().filter(|f| content.fluids.contains_key(f));
     // 1. Spills and shedding from carriers.
     for e in &pawns {
         let Some(pos) = world.get::<Position>(*e).copied() else { continue };

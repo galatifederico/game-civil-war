@@ -71,7 +71,7 @@ pub fn buy(world: &mut World, buyer: Entity, shop_e: Entity, item: &str) -> Resu
     earn_owner(world, &owner, price);
     // Food poisoning / contaminated stock.
     if let Some(c) = world.get::<crate::hygiene::Contaminated>(shop_e).cloned() {
-        if content.items.get(item).is_some_and(|d| d.tags.iter().any(|t| t == "food" || t == "drink" || t == "water")) {
+        if content.items.get(item).is_some_and(|d| d.tags.iter().any(|t| content.bindings.ingestible_tags.contains(t))) {
             crate::status::apply_status(world, buyer, &c.status, 1.0, None);
         }
     }

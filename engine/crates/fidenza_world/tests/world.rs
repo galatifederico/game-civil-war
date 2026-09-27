@@ -134,3 +134,14 @@ fn compendium_lists_the_world() {
     assert!(c["characters"].as_array().unwrap().iter().any(|r| r["id"] == "gerolamo_borgazzi" && r["immortal"] == true));
     assert_eq!(c["feed"], "Il Piccione Viaggiatore");
 }
+
+#[test]
+fn poisoned_stock_infects_buyers() {
+    let mut sim = sim(12);
+    let banco = sim.snapshot(true).entities.iter().find(|e| e.building.as_ref().is_some_and(|b| b.def == "banco_mercato")).unwrap().id;
+    let (_, buyer) = id_of(&mut sim, "commerciante_ricco");
+    sim.execute(SimCommand::ApplyEffect { subject: Some(banco), target: None, effect: Effect::Contaminate { status: "diarrea".into(), load: 3.0 } }).unwrap();
+    let shop = sim.entity(banco).unwrap();
+    sim_core::economy::buy(&mut sim.world, buyer, shop, "pane").expect("purchase");
+    assert!(sim.world.get::<sim_core::status::StatusEffects>(buyer).unwrap().has("diarrea"));
+}

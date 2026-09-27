@@ -73,6 +73,10 @@ pub struct Bindings {
     pub contraband_tag: Id,
     /// Zone tag of the detention cells.
     pub jail_zone_tag: Id,
+    /// Item tags of things that are eaten or drunk (poisoned stock infects whoever buys them).
+    pub ingestible_tags: Vec<String>,
+    /// Fluid spilled by bleeding body parts.
+    pub blood_fluid: Option<Id>,
     pub currency_name: String,
 }
 
@@ -91,6 +95,8 @@ impl Default for Bindings {
             press_tag: "press".into(),
             contraband_tag: "contraband".into(),
             jail_zone_tag: "jail".into(),
+            ingestible_tags: vec!["food".into(), "drink".into(), "water".into()],
+            blood_fluid: Some("blood".into()),
             currency_name: "crediti".into(),
         }
     }

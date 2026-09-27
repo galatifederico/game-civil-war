@@ -19,6 +19,8 @@
         press_tag: "stampa",
         contraband_tag: "contrabbando",
         jail_zone_tag: "celle",
+        ingestible_tags: ["cibo", "bevanda"],
+        blood_fluid: "sangue",
         currency_name: "euro",
     ),
     params: {
@@ -100,7 +102,7 @@
         ]),
     ],
     fluids: [
-        (id: "blood", name: "Sangue", dirtiness: 1.0),
+        (id: "sangue", name: "Sangue", dirtiness: 1.0),
         (id: "vomito", name: "Vomito", dirtiness: 2.0),
         (id: "liquami", name: "Liquami", dirtiness: 3.0, carries: "diarrea"),
         (id: "acqua_termale", name: "Acqua termale", dirtiness: 0.1),
