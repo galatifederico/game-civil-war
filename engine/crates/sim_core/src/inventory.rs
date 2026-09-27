@@ -154,11 +154,11 @@ mod tests {
     use crate::content::ItemDef;
 
     fn content() -> Content {
-        let mut c = Content::default();
+        let mut pack = crate::content::ContentPack::default();
         for (id, cat, max) in [("pane", "cibo", 5), ("salame", "cibo", 3), ("katana", "arma", 1), ("santino", "coll", 10), ("vino", "alcol", 4)] {
-            c.items.insert(id.into(), ItemDef { id: id.into(), category: cat.into(), stack_max: max, ..Default::default() });
+            pack.items.push(ItemDef { id: id.into(), category: cat.into(), stack_max: max, ..Default::default() });
         }
-        c
+        Content::from_packs(vec![pack]).unwrap()
     }
 
     #[test]

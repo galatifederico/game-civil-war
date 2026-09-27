@@ -45,6 +45,28 @@ pub fn transfer(world: &mut World, from: Entity, to: Entity, item: &str, qty: u3
     moved
 }
 
+/// Holdings of every faction in one pass.
+pub fn all_faction_holdings(world: &mut World) -> BTreeMap<String, BTreeMap<String, u32>> {
+    let mut out: BTreeMap<String, BTreeMap<String, u32>> = BTreeMap::new();
+    let mut q = world.query_filtered::<(&FactionMember, &Inventory), Without<Dead>>();
+    for (m, inv) in q.iter(world) {
+        let e = out.entry(m.faction.clone()).or_default();
+        for (i, n) in inv.items() {
+            *e.entry(i.clone()).or_insert(0) += n;
+        }
+    }
+    let mut qb = world.query::<(&Building, &Stock)>();
+    for (b, s) in qb.iter(world) {
+        if let Owner::Faction(f) = &b.owner {
+            let e = out.entry(f.clone()).or_default();
+            for (i, n) in &s.0 {
+                *e.entry(i.clone()).or_insert(0) += n;
+            }
+        }
+    }
+    out
+}
+
 /// Everything a faction holds: members' inventories plus stock of buildings it owns.
 pub fn faction_holdings(world: &mut World, faction: &str) -> BTreeMap<String, u32> {
     let mut out = BTreeMap::new();

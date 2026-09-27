@@ -2,6 +2,7 @@
 //! layers, and sparse per-cell environmental state (dirt, fluids, pathogen load).
 
 use std::collections::{BTreeMap, VecDeque};
+use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -115,21 +116,71 @@ pub struct Network {
     pub name: String,
     pub zones: Vec<usize>,
     pub vector: Vector,
-    /// Status id → contamination load of the whole network.
-    pub load: BTreeMap<String, f32>,
 }
 
-#[derive(Resource, Debug, Clone, Serialize)]
-pub struct WorldMap {
+/// Map geometry: immutable after loading and shared, so cloning [`WorldMap`] is free.
+#[derive(Resource, Debug, Clone)]
+pub struct WorldMap(Arc<MapData>);
+
+impl std::ops::Deref for WorldMap {
+    type Target = MapData;
+    fn deref(&self) -> &MapData {
+        &self.0
+    }
+}
+
+impl Serialize for WorldMap {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(s)
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MapData {
     pub layers: Vec<Layer>,
     pub zones: Vec<Zone>,
     pub portals: Vec<Portal>,
     pub networks: Vec<Network>,
-    /// Sparse environmental state: only non-clean cells are stored.
+}
+
+/// Mutable environmental state: sparse dirty cells and contamination of infrastructure networks.
+#[derive(Resource, Debug, Clone, Default, Serialize)]
+pub struct Environment {
+    /// Only non-clean cells are stored.
     pub cells: BTreeMap<Position, CellState>,
+    /// Network id → status id → contamination load.
+    pub network_load: BTreeMap<String, BTreeMap<String, f32>>,
+}
+
+impl Environment {
+    pub fn cell(&self, p: &Position) -> Option<&CellState> {
+        self.cells.get(p)
+    }
+
+    pub fn cell_mut(&mut self, p: Position) -> &mut CellState {
+        self.cells.entry(p).or_default()
+    }
+
+    /// Drops cells that became clean, keeping the sparse map small.
+    pub fn compact(&mut self) {
+        self.cells.retain(|_, c| !c.is_clean());
+    }
+}
+
+
+/// A random cell of a zone spec, using the shared RNG.
+pub fn random_cell(world: &mut World, spec: &str) -> Option<Position> {
+    let map = world.resource::<WorldMap>().clone();
+    map.random_cell(spec, &mut world.resource_mut::<SimRng>())
 }
 
 impl WorldMap {
+    pub fn from_def(def: Option<&MapDef>) -> Self {
+        Self(Arc::new(MapData::from_def(def)))
+    }
+}
+
+impl MapData {
     pub fn from_def(def: Option<&MapDef>) -> Self {
         let Some(def) = def else {
             return Self {
@@ -137,7 +188,6 @@ impl WorldMap {
                 zones: vec![Zone { id: "world".into(), name: "Mondo".into(), layer: 0, x: 0, y: 0, w: 64, h: 64, tags: vec![] }],
                 portals: vec![],
                 networks: vec![],
-                cells: BTreeMap::new(),
             };
         };
         let layers: Vec<Layer> = def
@@ -169,7 +219,7 @@ impl WorldMap {
                 b: Position::new(layer_idx(&p.b.0), p.b.1, p.b.2),
             })
             .collect();
-        let mut map = Self { layers, zones, portals, networks: vec![], cells: BTreeMap::new() };
+        let mut map = Self { layers, zones, portals, networks: vec![] };
         map.networks = def
             .networks
             .iter()
@@ -178,7 +228,6 @@ impl WorldMap {
                 name: n.name.clone(),
                 zones: n.zones.iter().flat_map(|z| map.resolve_zones(z)).collect(),
                 vector: n.vector,
-                load: BTreeMap::new(),
             })
             .collect();
         map
@@ -295,19 +344,6 @@ impl WorldMap {
             .filter(|(x, y)| x.layer == from.layer && y.layer == step)
             .map(|(x, _)| x)
             .min_by_key(|x| (from.cost(x), *x))
-    }
-
-    pub fn cell(&self, p: &Position) -> Option<&CellState> {
-        self.cells.get(p)
-    }
-
-    pub fn cell_mut(&mut self, p: Position) -> &mut CellState {
-        self.cells.entry(p).or_default()
-    }
-
-    /// Drops cells that became clean, keeping the sparse map small.
-    pub fn compact(&mut self) {
-        self.cells.retain(|_, c| !c.is_clean());
     }
 }
 

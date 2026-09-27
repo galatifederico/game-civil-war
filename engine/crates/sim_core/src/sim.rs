@@ -129,6 +129,7 @@ impl SimBuilder {
         world.insert_resource(crate::dungeon::TriggerState::default());
         world.insert_resource(Progress::default());
         world.insert_resource(WorldMap::from_def(content.map.as_ref()));
+        world.insert_resource(crate::map::Environment::default());
         world.insert_resource(self.ext);
         world.insert_resource(content);
 

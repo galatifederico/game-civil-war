@@ -116,10 +116,18 @@ fn score_action(world: &mut World, e: Entity, a: &ActionDef, tick: u64) -> Optio
     if !eval_condition(world, &ctx, &a.requires) {
         return None;
     }
+    // Cheap early exit: considerations that do not depend on the target are evaluated first.
+    let targetless = |i: &Input| !matches!(i, Input::TargetExists | Input::TargetDistance { .. } | Input::Condition(_) | Input::JobsAvailable { .. } | Input::Random);
+    for c in a.considerations.iter().filter(|c| targetless(&c.input)) {
+        if c.curve.eval(input_value(world, e, &c.input, None, None)) <= 0.0 {
+            return None;
+        }
+    }
     let (target, board) = match &a.kind {
         ActionKind::Job { job, target } => {
-            let def = world.resource::<Content>().jobs.get(job).cloned()?;
-            if !crate::jobs::can_do(world, e, &def, false) {
+            let content = world.resource::<Content>().clone();
+            let def = content.jobs.get(job)?;
+            if !crate::jobs::can_do(world, e, def, false) {
                 return None;
             }
             (crate::targeting::resolve(world, e, target)?, None)
@@ -179,6 +187,7 @@ pub fn think(world: &mut World) {
         (p.f("ai.think_interval").max(0.1), p.f("ai.momentum"), p.f("ai.momentum_decay"))
     };
     let content = world.resource::<Content>().clone();
+    crate::targeting::rebuild_index(world);
     for e in decision_order(world) {
         if world.get::<Detained>(e).is_some() {
             continue;

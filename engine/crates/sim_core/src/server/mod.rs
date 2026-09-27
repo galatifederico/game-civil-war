@@ -331,7 +331,8 @@ async fn ui_activity(State(s): State<AppState>) -> ApiResult {
 async fn ui_map(State(s): State<AppState>) -> ApiResult {
     let sim = s.sim.lock().unwrap();
     let m = sim.world.resource::<WorldMap>();
-    Ok(Json(json!({ "layers": m.layers, "zones": m.zones, "portals": m.portals, "networks": m.networks })))
+    let env = sim.world.resource::<crate::map::Environment>();
+    Ok(Json(json!({ "layers": m.layers, "zones": m.zones, "portals": m.portals, "networks": m.networks, "network_load": env.network_load })))
 }
 
 /// Everything the client needs each frame: apparent entities, feed, market, factions, sprites.
@@ -341,7 +342,7 @@ async fn ui_state(State(s): State<AppState>) -> ApiResult {
     let sprites = sim.world.resource::<SpriteMapping>().clone();
     let cells: Vec<Value> = sim
         .world
-        .resource::<WorldMap>()
+        .resource::<crate::map::Environment>()
         .cells
         .iter()
         .map(|(p, c)| json!({ "pos": p, "dirt": c.dirt, "pathogens": c.pathogens.len() }))

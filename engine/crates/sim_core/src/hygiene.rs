@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::anatomy::Body;
 use crate::content::{Content, Vector};
-use crate::map::{Position, WorldMap};
+use crate::map::{Environment, Position, WorldMap};
 use crate::params::Params;
 use crate::rng::SimRng;
 use crate::stats::{Dead, Pawn};
@@ -21,8 +21,8 @@ pub struct Contaminated {
 
 pub fn spill(world: &mut World, p: Position, fluid: &str, amount: f32) {
     let def = world.resource::<Content>().fluids.get(fluid).cloned();
-    let mut map = world.resource_mut::<WorldMap>();
-    let cell = map.cell_mut(p);
+    let mut env = world.resource_mut::<Environment>();
+    let cell = env.cell_mut(p);
     *cell.fluids.entry(fluid.to_string()).or_insert(0.0) += amount;
     if let Some(d) = def {
         cell.dirt += amount * d.dirtiness;
@@ -33,8 +33,8 @@ pub fn spill(world: &mut World, p: Position, fluid: &str, amount: f32) {
 }
 
 pub fn clean(world: &mut World, p: Position, radius: i32, amount: f32) {
-    let mut map = world.resource_mut::<WorldMap>();
-    for (pos, c) in map.cells.iter_mut() {
+    let mut env = world.resource_mut::<Environment>();
+    for (pos, c) in env.cells.iter_mut() {
         if pos.within(&p, radius) {
             c.dirt = (c.dirt - amount).max(0.0);
             for v in c.fluids.values_mut().chain(c.pathogens.values_mut()) {
@@ -44,7 +44,7 @@ pub fn clean(world: &mut World, p: Position, radius: i32, amount: f32) {
             c.pathogens.retain(|_, v| *v > 0.01);
         }
     }
-    map.compact();
+    env.compact();
 }
 
 /// Contaminates what the entity is: a building's stock (food/water poisoning, and its network), or the
@@ -53,15 +53,14 @@ pub fn contaminate(world: &mut World, e: Entity, status: &str, load: f32) {
     let Some(p) = world.get::<Position>(e).copied() else { return };
     if world.get::<crate::buildings::Building>(e).is_some() {
         world.entity_mut(e).insert(Contaminated { status: status.to_string(), load });
-        let mut map = world.resource_mut::<WorldMap>();
+        let map = world.resource::<WorldMap>().clone();
         let zones: Vec<usize> = (0..map.zones.len()).filter(|i| map.zones[*i].contains(&p)).collect();
-        for n in map.networks.iter_mut() {
-            if n.zones.iter().any(|z| zones.contains(z)) {
-                *n.load.entry(status.to_string()).or_insert(0.0) += load;
-            }
+        let mut env = world.resource_mut::<Environment>();
+        for n in map.networks.iter().filter(|n| n.zones.iter().any(|z| zones.contains(z))) {
+            *env.network_load.entry(n.id.clone()).or_default().entry(status.to_string()).or_insert(0.0) += load;
         }
     } else {
-        *world.resource_mut::<WorldMap>().cell_mut(p).pathogens.entry(status.to_string()).or_insert(0.0) += load;
+        *world.resource_mut::<Environment>().cell_mut(p).pathogens.entry(status.to_string()).or_insert(0.0) += load;
     }
 }
 
@@ -90,7 +89,7 @@ pub fn hygiene_tick(world: &mut World) {
             }
             if let Some(c) = &sd.contagion {
                 if c.shedding > 0.0 {
-                    *world.resource_mut::<WorldMap>().cell_mut(pos).pathogens.entry(sid.clone()).or_insert(0.0) += c.shedding;
+                    *world.resource_mut::<Environment>().cell_mut(pos).pathogens.entry(sid.clone()).or_insert(0.0) += c.shedding;
                 }
             }
         }
@@ -118,9 +117,10 @@ pub fn hygiene_tick(world: &mut World) {
     }
     // 3. Fluids and contaminated cells, water networks.
     let map = world.resource::<WorldMap>().clone();
+    let env = world.resource::<Environment>().clone();
     for e in &pawns {
         let Some(pos) = world.get::<Position>(*e).copied() else { continue };
-        if let Some(cell) = map.cell(&pos) {
+        if let Some(cell) = env.cell(&pos) {
             for (sid, load) in &cell.pathogens {
                 let fluid_vector = content.statuses.get(sid).and_then(|d| d.contagion.as_ref()).is_none_or(|c| c.vectors.contains(&Vector::Fluid));
                 if fluid_vector && world.resource_mut::<SimRng>().chance(load * scale) {
@@ -132,7 +132,7 @@ pub fn hygiene_tick(world: &mut World) {
             if !n.zones.iter().any(|z| map.zones[*z].contains(&pos)) {
                 continue;
             }
-            for (sid, load) in &n.load {
+            for (sid, load) in env.network_load.get(&n.id).into_iter().flatten() {
                 if world.resource_mut::<SimRng>().chance(load * scale) {
                     infections.push((*e, sid.clone(), 1.0, *e));
                 }
@@ -154,8 +154,8 @@ pub fn hygiene_tick(world: &mut World) {
         }
     }
     // 4. Decay.
-    let mut map = world.resource_mut::<WorldMap>();
-    for c in map.cells.values_mut() {
+    let mut env = world.resource_mut::<Environment>();
+    for c in env.cells.values_mut() {
         c.dirt = (c.dirt - dirt_decay).max(0.0);
         for v in c.fluids.values_mut().chain(c.pathogens.values_mut()) {
             *v *= 0.98;
@@ -163,11 +163,11 @@ pub fn hygiene_tick(world: &mut World) {
         c.fluids.retain(|_, v| *v > 0.01);
         c.pathogens.retain(|_, v| *v > 0.01);
     }
-    for n in map.networks.iter_mut() {
-        for v in n.load.values_mut() {
+    for load in env.network_load.values_mut() {
+        for v in load.values_mut() {
             *v *= 1.0 - flow;
         }
-        n.load.retain(|_, v| *v > 0.01);
+        load.retain(|_, v| *v > 0.01);
     }
-    map.compact();
+    env.compact();
 }

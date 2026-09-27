@@ -219,6 +219,9 @@ pub fn best_board_job(world: &mut World, e: Entity) -> Option<(f32, BoardJob)> {
         .and_then(|m| content.rank(&m.faction, &m.rank).map(|r| r.job_priority))
         .unwrap_or(1.0);
     let pos = world.get::<Position>(e).copied();
+    if world.resource::<JobBoard>().jobs.values().all(|j| j.reserved_by.is_some()) {
+        return None;
+    }
     let jobs: Vec<BoardJob> = world.resource::<JobBoard>().jobs.values().filter(|j| j.reserved_by.is_none()).cloned().collect();
     let mut best: Option<(f32, BoardJob)> = None;
     for j in jobs {
@@ -229,14 +232,11 @@ pub fn best_board_job(world: &mut World, e: Entity) -> Option<(f32, BoardJob)> {
         }
         let Some(def) = content.jobs.get(&j.job) else { continue };
         // Production jobs use the work type of their recipe (brewing, baking, forging…).
-        let mut def = def.clone();
-        if let Some(wt) = recipe_work_type(world, &j) {
-            def.work_type = wt;
-        }
-        if !can_do(world, e, &def, true) {
+        let work_type = recipe_work_type(world, &j).unwrap_or_else(|| def.work_type.clone());
+        let prio = if work_type.is_empty() { 4 } else { world.get::<WorkPriorities>(e).map_or(0, |w| w.get(&work_type)) };
+        if prio == 0 || !can_do(world, e, def, false) {
             continue;
         }
-        let prio = world.get::<WorkPriorities>(e).map_or(4, |w| w.get(&def.work_type)).max(1);
         let dist = match (pos, j.target.position(world)) {
             (Some(a), Some(b)) => a.cost(&b) as f32,
             _ => 0.0,

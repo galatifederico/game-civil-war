@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
 use serde::Serialize;
@@ -7,9 +8,26 @@ use super::defs::*;
 use super::loader::ContentError;
 use super::logic::{Condition, Effect, Filter, Selector};
 
-/// All loaded content, indexed by id. Inserted as a resource; read by every system.
-#[derive(Resource, Debug, Clone, Default, Serialize)]
-pub struct Content {
+/// All loaded content, indexed by id. Inserted as a resource; read by every system. Cloning is cheap
+/// (shared, immutable data), so systems clone it to release the world borrow.
+#[derive(Resource, Debug, Clone, Default)]
+pub struct Content(Arc<ContentData>);
+
+impl std::ops::Deref for Content {
+    type Target = ContentData;
+    fn deref(&self) -> &ContentData {
+        &self.0
+    }
+}
+
+impl Serialize for Content {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(s)
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ContentData {
     pub packs: Vec<PackMeta>,
     pub bindings: Bindings,
     pub params: BTreeMap<String, f64>,
@@ -51,7 +69,7 @@ impl Content {
     /// Merges packs in order (later definitions with the same id replace earlier ones) and validates
     /// every cross reference.
     pub fn from_packs(packs: Vec<ContentPack>) -> Result<Self, ContentError> {
-        let mut c = Content::default();
+        let mut c = ContentData::default();
         for p in packs {
             if !p.meta.id.is_empty() {
                 c.packs.push(p.meta.clone());
@@ -100,8 +118,11 @@ impl Content {
             c.sprites.extend(p.sprites);
         }
         let errors = c.validate();
-        if errors.is_empty() { Ok(c) } else { Err(ContentError::Invalid(errors)) }
+        if errors.is_empty() { Ok(Content(Arc::new(c))) } else { Err(ContentError::Invalid(errors)) }
     }
+}
+
+impl ContentData {
 
     pub fn stat_bounds(&self, stat: &str) -> (f32, f32) {
         self.stats.get(stat).map_or((f32::MIN, f32::MAX), |s| (s.min, s.max))
@@ -128,7 +149,7 @@ impl Content {
 }
 
 struct Validator<'a> {
-    c: &'a Content,
+    c: &'a ContentData,
     errors: Vec<String>,
 }
 

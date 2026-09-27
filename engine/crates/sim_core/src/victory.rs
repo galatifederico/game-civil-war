@@ -47,12 +47,14 @@ pub fn collections(world: &mut World) {
     let tick = world.resource::<SimClock>().tick;
     let pawns = crate::sorted_entities::<Inventory>(world);
     let factions: Vec<String> = world.resource::<Factions>().states.keys().cloned().collect();
+    let holdings = crate::inventory_ops::all_faction_holdings(world);
+    let empty = BTreeMap::new();
     for col in content.collections.values() {
         let mut done: Vec<(String, Option<Entity>, Option<String>)> = Vec::new();
         if col.per_faction {
             for f in &factions {
-                let held = crate::inventory_ops::faction_holdings(world, f);
-                if has_all(&held, col, &content) {
+                let held = holdings.get(f).unwrap_or(&empty);
+                if has_all(held, col, &content) {
                     done.push((format!("faction:{f}"), None, Some(f.clone())));
                 }
             }
@@ -102,10 +104,10 @@ fn leader_of(world: &mut World, faction: &str) -> Option<Entity> {
 pub fn relic_points(world: &mut World) -> BTreeMap<String, i64> {
     let content = world.resource::<Content>().clone();
     let factions: Vec<String> = world.resource::<Factions>().states.keys().cloned().collect();
+    let holdings = crate::inventory_ops::all_faction_holdings(world);
     let mut out = BTreeMap::new();
     for f in factions {
-        let held = crate::inventory_ops::faction_holdings(world, &f);
-        let pts: i64 = held.keys().filter_map(|i| content.items.get(i)).map(|d| d.victory_points).sum();
+        let pts: i64 = holdings.get(&f).map_or(0, |held| held.keys().filter_map(|i| content.items.get(i)).map(|d| d.victory_points).sum());
         out.insert(f, pts);
     }
     out
@@ -130,8 +132,9 @@ pub fn check_victory(world: &mut World) {
         let mut winner: Option<String> = None;
         match &v.kind {
             VictoryKind::HoldItems(items) => {
+                let holdings = crate::inventory_ops::all_faction_holdings(world);
                 for f in &factions {
-                    let held = crate::inventory_ops::faction_holdings(world, f);
+                    let Some(held) = holdings.get(f) else { continue };
                     if items.iter().all(|i| held.get(i).copied().unwrap_or(0) > 0) {
                         winner = Some(f.clone());
                         break;

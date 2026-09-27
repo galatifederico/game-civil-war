@@ -14,6 +14,7 @@ use crate::map::{Position, WorldMap};
 use crate::params::Params;
 use crate::rng::SimRng;
 use crate::stats::{Dead, Pawn, TemplateId, Wallet};
+use bevy_ecs::query::Has;
 use crate::status::StatusEffects;
 
 pub fn resolve(world: &mut World, chooser: Entity, sel: &Selector) -> Option<JobTarget> {
@@ -56,22 +57,41 @@ fn threshold(world: &World, t: &Threshold) -> f32 {
     }
 }
 
+/// Snapshot of targetable entities (alive pawns and buildings, in id order) rebuilt once per AI pass,
+/// so that target searches do not re-query and re-sort the world for every action of every pawn.
+#[derive(Resource, Debug, Default, Clone)]
+pub struct TargetIndex {
+    pub tick: Option<u64>,
+    pub entries: Vec<(SimId, Entity, Option<Position>, bool)>,
+}
+
+pub fn rebuild_index(world: &mut World) {
+    let tick = world.resource::<crate::time::SimClock>().tick;
+    let mut q = world.query_filtered::<(Entity, &SimId, Option<&Position>, Has<Pawn>, Has<Building>), Without<Dead>>();
+    let mut entries: Vec<(SimId, Entity, Option<Position>, bool)> = q
+        .iter(world)
+        .filter(|(_, _, _, pawn, building)| *pawn || *building)
+        .map(|(e, id, p, pawn, _)| (*id, e, p.copied(), pawn))
+        .collect();
+    entries.sort_unstable_by_key(|x| x.0);
+    world.insert_resource(TargetIndex { tick: Some(tick), entries });
+}
+
 /// Entities matching a filter from the chooser's point of view, with their positions.
 pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId, Option<Position>)> {
+    let tick = world.resource::<crate::time::SimClock>().tick;
+    if world.get_resource::<TargetIndex>().is_none_or(|i| i.tick != Some(tick)) {
+        rebuild_index(world);
+    }
     let content = world.resource::<Content>().clone();
     let me_pos = world.get::<Position>(chooser).copied();
     let my_faction = world.get::<FactionMember>(chooser).map(|m| m.faction.clone());
     let min_wanted = f.min_wanted.as_ref().map(|t| threshold(world, t));
     let perception = world.resource::<Params>().get("ai.perception_range", 6.0) as i32;
-    let ents = crate::sorted_entities::<SimId>(world);
+    let index = std::mem::take(&mut world.resource_mut::<TargetIndex>().entries);
     let mut out = Vec::new();
-    for e in ents {
+    for &(id, e, pos, is_pawn) in &index {
         if e == chooser || world.get::<Dead>(e).is_some() {
-            continue;
-        }
-        let is_pawn = world.get::<Pawn>(e).is_some();
-        let is_building = world.get::<Building>(e).is_some();
-        if !is_pawn && !is_building {
             continue;
         }
         if let Some(p) = f.pawn {
@@ -79,7 +99,7 @@ pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId,
                 continue;
             }
         }
-        let pos = world.get::<Position>(e).copied();
+        // Positions in the index are from the start of the pass: good enough for choosing targets.
         if let (Some(max), Some(a)) = (f.max_distance, me_pos) {
             if !pos.is_some_and(|b| a.within(&b, max)) {
                 continue;
@@ -91,12 +111,14 @@ pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId,
         if f.not_detained && world.get::<Detained>(e).is_some() {
             continue;
         }
-        let tags = crate::infiltration::visible_tags(world, e);
-        if !f.tags_all.iter().all(|t| tags.contains(t))
-            || (!f.tags_any.is_empty() && !f.tags_any.iter().any(|t| tags.contains(t)))
-            || f.tags_none.iter().any(|t| tags.contains(t))
-        {
-            continue;
+        if !f.tags_all.is_empty() || !f.tags_any.is_empty() || !f.tags_none.is_empty() {
+            let tags = crate::infiltration::visible_tags(world, e);
+            if !f.tags_all.iter().all(|t| tags.contains(t))
+                || (!f.tags_any.is_empty() && !f.tags_any.iter().any(|t| tags.contains(t)))
+                || f.tags_none.iter().any(|t| tags.contains(t))
+            {
+                continue;
+            }
         }
         if let Some(b) = &f.building {
             if world.get::<Building>(e).is_none_or(|x| &x.def != b) {
@@ -125,7 +147,7 @@ pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId,
                 continue;
             }
         }
-        let their = crate::infiltration::apparent_faction(world, e);
+        let their = if f.faction.is_some() || f.relation.is_some() { crate::infiltration::apparent_faction(world, e) } else { None };
         if let Some(fa) = &f.faction {
             if their.as_ref() != Some(fa) {
                 continue;
@@ -173,8 +195,8 @@ pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId,
                 continue;
             }
         }
-        let id = *world.get::<SimId>(e).unwrap();
         out.push((id, pos));
     }
+    world.resource_mut::<TargetIndex>().entries = index;
     out
 }
