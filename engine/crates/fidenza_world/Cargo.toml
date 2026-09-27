@@ -1,0 +1,15 @@
+[package]
+name = "fidenza_world"
+description = "Satirical world of Fidenza and Salsomaggiore: content pack and plugin for sim_core"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+sim_core = { path = "../sim_core" }
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio.workspace = true
+anyhow.workspace = true

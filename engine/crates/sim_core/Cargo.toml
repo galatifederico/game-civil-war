@@ -1,0 +1,23 @@
+[package]
+name = "sim_core"
+description = "Headless, deterministic, data-driven colony-sim engine (ECS on bevy_ecs)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[features]
+default = []
+# Admin REST API, /metrics endpoint and MCP JSON-RPC server.
+server = ["dep:axum", "dep:tokio", "dep:metrics-exporter-prometheus"]
+
+[dependencies]
+bevy_ecs.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+ron.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+metrics.workspace = true
+axum = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+metrics-exporter-prometheus = { workspace = true, optional = true }
