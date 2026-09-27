@@ -144,6 +144,8 @@ pub fn update_market(world: &mut World) {
             m.supply += (s - m.supply) * ema;
             m.demand += (m.pending_demand - m.demand) * ema;
             m.normal_demand += (m.demand - m.normal_demand) * ema * 0.1;
+            // Adaptive expectations: a lasting supply level slowly becomes the new normal.
+            m.reference_supply += (m.supply - m.reference_supply) * ema * 0.05;
             m.pending_demand = 0.0;
             m.shocks.retain(|sh| sh.until > tick);
             let (sd, ss) = m.shocks.iter().fold((1.0f32, 1.0f32), |(d, s), sh| (d * sh.demand, s * sh.supply));

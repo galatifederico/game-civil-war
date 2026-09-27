@@ -142,3 +142,14 @@ fn print_town_log() {
         }
     }
 }
+
+#[test]
+fn board_jobs_longer_than_one_tick_get_finished() {
+    // Regression: a pawn working on a reserved board job used to drop it after one tick.
+    let mut sim = town(21);
+    for _ in 0..3 {
+        sim.execute(SimCommand::PostJob { job: "haul".into(), faction: None, target: None, priority: 5, assignee: None }).unwrap();
+    }
+    sim.run(40);
+    assert!(sim.world.resource::<JobBoard>().jobs.len() < 3, "nobody finished a 3-tick board job");
+}

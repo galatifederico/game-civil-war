@@ -47,7 +47,7 @@
   .up { color: var(--accent); } .down { color: var(--good); }
   .muted { color: var(--muted); }
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-  td { padding: 2px 0; } td.n { text-align: right; }
+  td { padding: 2px 0; } td.n { text-align: right; padding-left: 10px; white-space: nowrap; }
   #tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 12px; display: none; max-width: 260px; }
 </style>
 </head>
@@ -61,7 +61,7 @@
   <label>Livello <select id="layer"></select></label>
   <label>Nebbia di <select id="fog"><option value="">nessuna (admin)</option></select></label>
   <span class="spacer"></span>
-  <button id="theme" title="Tema chiaro/scuro">◐</button>
+  <button id="theme" title="Tema chiaro/scuro">Tema</button>
 </header>
 <main>
   <div>
@@ -152,8 +152,9 @@ function draw() {
   }
   if (!state) return;
   for (const c of state.cells || []) {
-    if (c.pos.layer !== layer) continue;
-    ctx.fillStyle = c.pathogens ? "rgba(120,160,40,.45)" : "rgba(110,80,40,.35)";
+    if (c.pos.layer !== layer || (c.dirt < 0.3 && !c.pathogens)) continue;
+    const alpha = Math.min(0.35, 0.05 + c.dirt * 0.03);
+    ctx.fillStyle = c.pathogens ? `rgba(120,170,40,${alpha + 0.1})` : `rgba(110,80,40,${alpha})`;
     ctx.fillRect(c.pos.x * cell, c.pos.y * cell, cell, cell);
   }
   const ents = state.snapshot.entities.filter((e) => e.pos && e.pos.layer === layer);
