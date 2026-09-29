@@ -26,6 +26,15 @@ public class SimView : MonoBehaviour
     public JObject SelectedAi { get; private set; }
     public string LastCommandResult { get; set; }
 
+    // Player side: who we are, our faction's data, the orders the selected pawn can take.
+    public string PlayerId { get; set; }
+    public JObject PlayerInfo { get; private set; }
+    public JArray SelectedActions { get; private set; }
+    /// Order waiting for a target click (a cell or an entity).
+    public JObject PendingAction { get; set; }
+    public bool FollowCamera { get; set; }
+    bool fogChosen;
+
     Camera cam;
     Transform zonesRoot, cellsRoot, entitiesRoot;
     readonly Dictionary<long, EntityGo> gos = new();
@@ -78,6 +87,13 @@ public class SimView : MonoBehaviour
             var query = string.IsNullOrEmpty(FogFaction) ? "" : "?faction=" + UnityEngine.Networking.UnityWebRequest.EscapeURL(FogFaction);
             yield return Api.Get("/api/ui/state" + query, j => { State = (JObject)j; Error = null; OnState(); }, e => Error = "Server non raggiungibile (" + e + ")");
             yield return Api.Get("/api/control", j => Control = (JObject)j);
+            if (PlayerId == null && State?["snapshot"]?["players"] is JObject players && players.Properties().Any())
+            {
+                PlayerId = players.Properties().First().Name;
+                if (!fogChosen) FogFaction = (string)players[PlayerId]["faction"] ?? "";
+            }
+            if (PlayerId != null)
+                yield return Api.Get("/api/ui/player/" + UnityEngine.Networking.UnityWebRequest.EscapeURL(PlayerId), j => PlayerInfo = (JObject)j, _ => { });
             if (Selected.HasValue)
             {
                 var id = Selected.Value;
@@ -100,7 +116,84 @@ public class SimView : MonoBehaviour
         Selected = id;
         SelectedEntity = null;
         SelectedAi = null;
+        SelectedActions = null;
+        PendingAction = null;
+        if (id.HasValue && IsMine(id.Value))
+            StartCoroutine(Api.Get($"/api/ui/actions/{id.Value}", j => { if (Selected == id) SelectedActions = (JArray)j; }, _ => { }));
     }
+
+    public void ChooseFog(string faction)
+    {
+        FogFaction = faction;
+        fogChosen = true;
+    }
+
+    public long? ChampionId => (long?)PlayerInfo?["champion"];
+
+    /// True for the player's champion and the members of its faction.
+    public bool IsMine(long id) => PlayerInfo?["members"]?.Any(m => (long)m["id"] == id) ?? false;
+
+    public JToken Member(long id) => PlayerInfo?["members"]?.FirstOrDefault(m => (long)m["id"] == id);
+
+    public void SendPlayerOrder(long entity, JObject order)
+    {
+        if (PlayerId == null) return;
+        SendCommand(new JObject { ["type"] = "player_order", ["player"] = PlayerId, ["entity"] = entity, ["order"] = order });
+    }
+
+    public void SendPlayerCommand(JObject cmd)
+    {
+        if (PlayerId == null) return;
+        cmd["player"] = PlayerId;
+        SendCommand(cmd);
+    }
+
+    public void Save() => StartCoroutine(Api.Post("/api/save", new JObject { ["path"] = "saves/quick.json" }, j => LastCommandResult = (string)j["ok"], e => LastCommandResult = e));
+
+    public void Load() => StartCoroutine(Api.Post("/api/load", new JObject { ["path"] = "saves/quick.json" }, j => { LastCommandResult = (string)j["ok"]; Select(null); }, e => LastCommandResult = e));
+
+    public void FocusOn(long id)
+    {
+        if (!gos.TryGetValue(id, out var go)) return;
+        var e = EntityById(id);
+        var layer = (int?)e?["pos"]?["layer"] ?? Layer;
+        if (layer != Layer) SetLayer(layer);
+        var p = go.Target;
+        cam.transform.position = new Vector3(p.x, p.y, -10f);
+        cam.orthographicSize = Mathf.Min(cam.orthographicSize, 14f);
+    }
+
+    /// Resolves a pending order with a clicked cell or entity.
+    void ResolvePending(Vector3 screen)
+    {
+        var a = PendingAction;
+        PendingAction = null;
+        if (a == null || !Selected.HasValue) return;
+        long who = Selected.Value;
+        string kind = (string)a["kind"], id = (string)a["id"], needs = (string)a["needs_target"];
+        var w = cam.ScreenToWorldPoint(screen);
+        var cell = new JObject { ["layer"] = Layer, ["x"] = Mathf.FloorToInt(w.x), ["y"] = Mathf.FloorToInt(-w.y) };
+        long? target = Pick(screen);
+        if (needs == "cell" || kind == "move")
+        {
+            SendPlayerOrder(who, new JObject { ["kind"] = "move", ["pos"] = cell });
+            return;
+        }
+        if (!target.HasValue)
+        {
+            LastCommandResult = "Nessun bersaglio sotto il cursore";
+            return;
+        }
+        SendPlayerOrder(who, OrderFor(kind, id, target));
+    }
+
+    public static JObject OrderFor(string kind, string id, long? target) => kind switch
+    {
+        "job" => new JObject { ["kind"] = "job", ["job"] = id, ["target"] = target.HasValue ? target.Value : null },
+        "ability" => new JObject { ["kind"] = "ability", ["ability"] = id, ["target"] = target.HasValue ? target.Value : null },
+        "follow" => new JObject { ["kind"] = "follow", ["target"] = target ?? 0, ["distance"] = 2 },
+        _ => new JObject { ["kind"] = "stop" },
+    };
 
     // ── Map and layers ────────────────────────────────────────────────────────
 
@@ -119,6 +212,16 @@ public class SimView : MonoBehaviour
             var sr = NewSprite((string)z["name"], zonesRoot, Shapes.Pixel, ZoneColor(z), 1);
             sr.transform.position = new Vector3((int)z["x"], -(int)z["y"], 0);
             sr.transform.localScale = new Vector3((int)z["w"], (int)z["h"], 1);
+        }
+        foreach (var wall in Map["walls"] ?? new JArray())
+        {
+            // [name, layer, x, y, w, h]
+            if ((int)wall[1] != layer) continue;
+            string wname = (string)wall[0];
+            var color = wname.Contains("Torrente") || wname.Contains("Fiume") ? new Color(0.3f, 0.5f, 0.75f) : new Color(0.35f, 0.3f, 0.27f);
+            var sr = NewSprite(wname, zonesRoot, Shapes.Pixel, color, 3);
+            sr.transform.position = new Vector3((int)wall[2], -(int)wall[3], 0);
+            sr.transform.localScale = new Vector3((int)wall[4], (int)wall[5], 1);
         }
         foreach (var p in Map["portals"])
             foreach (var end in new[] { p["a"], p["b"] })
@@ -249,6 +352,10 @@ public class SimView : MonoBehaviour
         go.Outline.sprite = Shapes.Get(shape);
         go.Body.color = Shapes.Parse((string)rs?["color"], Shapes.FromId(race));
         go.Outline.color = outline;
+        bool champion = ChampionId.HasValue && (long)e["id"] == ChampionId.Value;
+        go.Outline.transform.localScale = Vector3.one * (champion ? 1.45f : 1.05f);
+        go.Body.transform.localScale = Vector3.one * (champion ? 1.05f : 0.8f);
+        if (champion) go.Outline.color = new Color(1f, 0.82f, 0.2f);
         var act = e["activity"];
         var flags = act?["flags"]?.Select(f => (string)f).ToList() ?? new List<string>();
         bool dead = (bool?)e["dead"] ?? false;
@@ -340,12 +447,35 @@ public class SimView : MonoBehaviour
             var after = cam.ScreenToWorldPoint(Input.mousePosition);
             cam.transform.position += before - after;
         }
-        if (Input.GetMouseButtonDown(1) || Input.GetMouseButtonDown(2)) dragOrigin = cam.ScreenToWorldPoint(Input.mousePosition);
-        if (Input.GetMouseButton(1) || Input.GetMouseButton(2))
+        if (Input.GetMouseButtonDown(2)) dragOrigin = cam.ScreenToWorldPoint(Input.mousePosition);
+        if (Input.GetMouseButton(2))
             cam.transform.position += dragOrigin - cam.ScreenToWorldPoint(Input.mousePosition);
         var move = new Vector3(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"), 0);
+        if (move.sqrMagnitude > 0) FollowCamera = false;
         cam.transform.position += move * cam.orthographicSize * Time.deltaTime * 1.5f;
-        if (!overUi && Input.GetMouseButtonDown(0)) Select(Pick(Input.mousePosition));
+        if (FollowCamera && ChampionId.HasValue && gos.TryGetValue(ChampionId.Value, out var champ) && champ.Root.activeSelf)
+        {
+            var t = champ.Root.transform.position;
+            cam.transform.position = Vector3.Lerp(cam.transform.position, new Vector3(t.x, t.y, -10f), 1f - Mathf.Exp(-Time.deltaTime * 4f));
+        }
+        if (overUi) return;
+        if (Input.GetMouseButtonDown(0))
+        {
+            if (PendingAction != null) ResolvePending(Input.mousePosition);
+            else Select(Pick(Input.mousePosition));
+        }
+        // Right click with one of our pawns selected: go there.
+        if (Input.GetMouseButtonDown(1) && Selected.HasValue && IsMine(Selected.Value))
+        {
+            PendingAction = new JObject { ["kind"] = "move", ["id"] = "move", ["needs_target"] = "cell" };
+            ResolvePending(Input.mousePosition);
+        }
+        if (Input.GetKeyDown(KeyCode.Escape)) PendingAction = null;
+        if (Input.GetKeyDown(KeyCode.C) && ChampionId.HasValue)
+        {
+            Select(ChampionId);
+            FocusOn(ChampionId.Value);
+        }
     }
 
     /// <summary>Entity under a screen point (pawns win over buildings).</summary>

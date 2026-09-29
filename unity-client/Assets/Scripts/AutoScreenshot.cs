@@ -27,7 +27,17 @@ public class AutoScreenshot : MonoBehaviour
 
     IEnumerator Start()
     {
-        yield return new WaitForSecondsRealtime(after);
+        var view = GetComponent<SimView>();
+        float t0 = Time.realtimeSinceStartup;
+        while (view != null && !view.ChampionId.HasValue && Time.realtimeSinceStartup - t0 < after) yield return null;
+        if (view != null && view.ChampionId.HasValue)
+        {
+            view.Select(view.ChampionId);
+            view.FocusOn(view.ChampionId.Value);
+        }
+        foreach (var a in System.Environment.GetCommandLineArgs())
+            if (a == "--faction-tab") GetComponent<SimHud>()?.ShowFactionTab();
+        yield return new WaitForSecondsRealtime(Mathf.Max(1f, after - (Time.realtimeSinceStartup - t0)));
         yield return new WaitForEndOfFrame();
         ScreenCapture.CaptureScreenshot(path);
         yield return new WaitForSecondsRealtime(1f);

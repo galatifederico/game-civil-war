@@ -189,9 +189,10 @@ fn champion_moves_where_the_player_says_and_squads_follow() {
     let squad: u64 = msg.split_whitespace().nth(1).unwrap().parse().unwrap();
     sim.execute(SimCommand::PlayerSquadOrder { player: "giocatore".into(), squad, order: Some(sim_core::squads::SquadOrder::Follow { target: champ, distance: 3 }) }).unwrap();
     sim.run(60);
+    let champ_pos = *sim.world.get::<Position>(ce).unwrap();
     let near = members.iter().filter(|m| {
         let e = sim.entity(**m).unwrap();
-        sim.world.get::<Dead>(e).is_none() && sim.world.get::<Position>(e).unwrap().within(&goal, 4)
+        sim.world.get::<Dead>(e).is_none() && sim.world.get::<Position>(e).unwrap().within(&champ_pos, 5)
     }).count();
     assert!(near >= 2, "the squad did not follow the champion ({near} near)");
     // Another player's faction cannot be ordered around.
@@ -223,4 +224,13 @@ fn factions_hunt_relics() {
     sim.run(24 * 12);
     let stolen = sim.events().all().iter().filter(|e| e.kind == kind::JOB_DONE && e.message.contains("sottrae")).count();
     assert!(stolen >= 1, "no relic was stolen in 12 days");
+}
+
+#[test]
+fn idle_champion_looks_after_its_needs() {
+    let mut sim = sim(9);
+    let (_, ce) = id_of(&mut sim, "leader_anarchico");
+    sim.run(24 * 6);
+    let needs = sim.world.get::<Needs>(ce).unwrap();
+    assert!(needs.get("fame") > 0.1, "the champion starved: {:?}", needs.0);
 }

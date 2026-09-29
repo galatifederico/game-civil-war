@@ -189,7 +189,12 @@ pub fn think(world: &mut World) {
     let content = world.resource::<Content>().clone();
     crate::targeting::rebuild_index(world);
     for e in decision_order(world) {
-        if world.get::<Detained>(e).is_some() || world.get::<crate::player::Controlled>(e).is_some() {
+        if world.get::<Detained>(e).is_some() {
+            continue;
+        }
+        // Champions only look after their own needs, and only while the player has not given an order.
+        let controlled = world.get::<crate::player::Controlled>(e).is_some();
+        if controlled && world.get::<Task>(e).is_some_and(|t| t.job.is_some() && t.action.is_none()) {
             continue;
         }
         if world.get::<crate::player::Follow>(e).is_some_and(|f| f.strict) {
@@ -210,7 +215,16 @@ pub fn think(world: &mut World) {
             }
             b.think_acc -= interval;
         }
-        let action_ids = world.get::<Brain>(e).unwrap().actions.clone();
+        let mut action_ids = world.get::<Brain>(e).unwrap().actions.clone();
+        if controlled {
+            use crate::content::Selector;
+            action_ids.retain(|a| {
+                content.actions.get(a).is_some_and(|d| {
+                    let wanders = matches!(&d.kind, ActionKind::Job { target: Selector::Zone(_) | Selector::Random(_) | Selector::OwnFactionZone(_), .. });
+                    !wanders && d.considerations.iter().any(|c| matches!(c.input, Input::Need(_)))
+                })
+            });
+        }
         let mut best: Option<Candidate> = None;
         let mut entries = Vec::new();
         for id in &action_ids {

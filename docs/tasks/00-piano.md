@@ -50,7 +50,8 @@ Principi:
 | 16 | [Successione, fusione e diserzione, collezioni, vittoria](16-successione-vittoria.md) | ✅ fatto |
 | 17 | [Telemetria, Admin HTTP, MCP, Compendium](17-server.md) | ✅ fatto |
 | 18 | [Contenuti completi di Fidenza](18-contenuti-fidenza.md) | ✅ fatto (da bilanciare) |
-| 19 | [Client grafico con sprite semplici (ultima)](19-integrazione.md) | ✅ prima versione (sprite semplici) |
+| 19 | [Client grafico con sprite semplici (ultima)](19-integrazione.md) | ✅ web + Unity |
+| 20 | [Campione, ordini, strategia, pathfinding, salvataggi, bilanciamento](20-giocatore-e-bilanciamento.md) | ✅ fatto |
 
 Le task 01-10 formano la "fetta verticale" che fa girare la demo richiesta dal design; le 11-18 completano i
 sottosistemi; la 19 è fuori scopo per ora.
