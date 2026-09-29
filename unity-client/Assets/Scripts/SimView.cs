@@ -48,6 +48,12 @@ public class SimView : MonoBehaviour
     {
         public GameObject Root;
         public SpriteRenderer Body, Outline, BarBg, Bar, Marker;
+        // Chibi layers: base (race), cloth (tinted with the faction colour), accessory (class or crown).
+        public SpriteRenderer Base, Cloth, Acc;
+        public Sprite[] BaseFrames, ClothFrames, AccFrames;
+        public int Dir;
+        public float Anim;
+        public bool Dead;
         public Vector3 Target;
         public bool Building;
     }
@@ -69,7 +75,7 @@ public class SimView : MonoBehaviour
         zonesRoot = new GameObject("Zones").transform;
         cellsRoot = new GameObject("Cells").transform;
         entitiesRoot = new GameObject("Entities").transform;
-        selectionRing = NewSprite("Selection", null, Shapes.Get("ring"), new Color(1f, 0.45f, 0.3f), 20);
+        selectionRing = NewSprite("Selection", null, Shapes.Get("ring"), new Color(1f, 0.45f, 0.3f), 31000);
         selectionRing.enabled = false;
         StartCoroutine(Run());
     }
@@ -232,7 +238,7 @@ public class SimView : MonoBehaviour
                     sr.transform.localScale = Vector3.one * 0.9f;
                 }
         // Fog texture sized to the layer.
-        if (fogRenderer == null) fogRenderer = NewSprite("Fog", null, Shapes.Pixel, Color.white, 50);
+        if (fogRenderer == null) fogRenderer = NewSprite("Fog", null, Shapes.Pixel, Color.white, 32000);
         fogTex = new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
         fogRenderer.sprite = Sprite.Create(fogTex, new Rect(0, 0, w, h), new Vector2(0, 1), 1);
         fogRenderer.transform.position = Vector3.zero;
@@ -326,6 +332,11 @@ public class SimView : MonoBehaviour
             go.Bar.transform.localPosition = new Vector3(-0.45f, -0.5f, 0);
             go.Marker = NewSprite("Marker", root.transform, Shapes.Get("cross"), new Color(0.15f, 0.15f, 0.2f, 0.9f), 14);
             go.Marker.transform.localScale = Vector3.one * 0.7f;
+            var feet = new Vector3(0, -0.45f, 0);
+            go.Base = NewSprite("Chibi", root.transform, null, Color.white, 11);
+            go.Cloth = NewSprite("Cloth", root.transform, null, Color.white, 12);
+            go.Acc = NewSprite("Accessory", root.transform, null, Color.white, 13);
+            foreach (var sr in new[] { go.Base, go.Cloth, go.Acc }) sr.transform.localPosition = feet;
         }
         return go;
     }
@@ -347,6 +358,44 @@ public class SimView : MonoBehaviour
         }
         var race = (string)e["race"];
         var rs = SpriteDef("race:" + race);
+        bool championChibi = ChampionId.HasValue && (long)e["id"] == ChampionId.Value;
+        go.Dead = (bool?)e["dead"] ?? false;
+        go.BaseFrames = Chibi.Load((string)rs?["sheet"]);
+        if (go.BaseFrames != null)
+        {
+            // Chibi mode: an oval "team" shadow in the faction colour under the feet.
+            go.ClothFrames = Chibi.Load((string)rs?["sheet"] + "_cloth");
+            string accSheet = null;
+            foreach (var c in e["classes"] ?? new JArray())
+            {
+                accSheet ??= (string)SpriteDef("class:" + (string)c)?["sheet"];
+            }
+            if (championChibi) accSheet = "acc_corona";
+            go.AccFrames = Chibi.Load(accSheet);
+            go.Body.enabled = false;
+            go.Outline.sprite = Shapes.Get("circle");
+            go.Outline.color = championChibi ? new Color(1f, 0.82f, 0.2f, 0.9f) : new Color(outline.r, outline.g, outline.b, 0.75f);
+            go.Outline.transform.localScale = new Vector3(championChibi ? 1.1f : 0.85f, 0.32f, 1f);
+            go.Outline.transform.localPosition = new Vector3(0, -0.42f, 0);
+            go.Cloth.color = outline;
+            var chibiAct = e["activity"];
+            var chibiFlags = chibiAct?["flags"]?.Select(f => (string)f).ToList() ?? new List<string>();
+            float chibiProgress = (float?)chibiAct?["progress"] ?? 0f;
+            go.Bar.transform.localScale = new Vector3(0.9f * Mathf.Clamp01(chibiProgress), 0.1f, 1);
+            go.Bar.enabled = go.BarBg.enabled = !go.Dead && chibiProgress > 0f;
+            go.BarBg.transform.localPosition = go.Bar.transform.localPosition = new Vector3(-0.45f, 0.95f, 0);
+            go.Marker.enabled = chibiFlags.Contains("detained") || chibiFlags.Contains("knocked_out");
+            go.Marker.transform.localPosition = new Vector3(0, 0.2f, 0);
+            go.Marker.color = chibiFlags.Contains("knocked_out") ? new Color(1f, 0.9f, 0.3f, 0.9f) : new Color(0.2f, 0.25f, 0.6f, 0.9f);
+            var tint = go.Dead ? new Color(0.55f, 0.55f, 0.55f, 0.6f) : Color.white;
+            go.Base.color = tint;
+            go.Acc.color = tint;
+            if (go.Dead) go.Cloth.color = new Color(0.4f, 0.4f, 0.4f, 0.6f);
+            var rot = go.Dead || chibiFlags.Contains("knocked_out") ? Quaternion.Euler(0, 0, 90) : Quaternion.identity;
+            foreach (var sr in new[] { go.Base, go.Cloth, go.Acc }) sr.transform.localRotation = rot;
+            return;
+        }
+        go.Body.enabled = true;
         var shape = (string)rs?["shape"];
         go.Body.sprite = Shapes.Get(shape);
         go.Outline.sprite = Shapes.Get(shape);
@@ -423,8 +472,32 @@ public class SimView : MonoBehaviour
     void Update()
     {
         foreach (var go in gos.Values)
-            if (go.Root.activeSelf)
-                go.Root.transform.position = Vector3.Lerp(go.Root.transform.position, go.Target, 1f - Mathf.Exp(-Time.deltaTime * 8f));
+        {
+            if (!go.Root.activeSelf) continue;
+            var before = go.Root.transform.position;
+            go.Root.transform.position = Vector3.Lerp(before, go.Target, 1f - Mathf.Exp(-Time.deltaTime * 8f));
+            if (go.BaseFrames == null) continue;
+            var delta = go.Target - before;
+            bool moving = delta.sqrMagnitude > 0.0025f && !go.Dead;
+            go.Dir = Chibi.Direction(delta, go.Dir);
+            go.Anim = moving ? go.Anim + Time.deltaTime * 6f : 0f;
+            // idle, step A, idle, step B …
+            int[] cycle = { 0, 1, 0, 2 };
+            int pose = moving ? cycle[(int)go.Anim % 4] : 0;
+            int i = go.Dir * 3 + pose;
+            go.Base.sprite = go.BaseFrames[i];
+            go.Cloth.sprite = go.ClothFrames?[i];
+            go.Acc.sprite = go.AccFrames?[i];
+            // Depth: lower on the map is drawn in front.
+            int order = 100 + Mathf.RoundToInt(-go.Root.transform.position.y * 4f) * 8;
+            go.Outline.sortingOrder = order;
+            go.Base.sortingOrder = order + 1;
+            go.Cloth.sortingOrder = order + 2;
+            go.Acc.sortingOrder = order + 3;
+            go.Marker.sortingOrder = order + 4;
+            go.BarBg.sortingOrder = order + 5;
+            go.Bar.sortingOrder = order + 6;
+        }
         if (Selected.HasValue && gos.TryGetValue(Selected.Value, out var sel) && sel.Root.activeSelf)
         {
             selectionRing.enabled = true;

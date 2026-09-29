@@ -34,6 +34,9 @@ public class AutoScreenshot : MonoBehaviour
         {
             view.Select(view.ChampionId);
             view.FocusOn(view.ChampionId.Value);
+            foreach (var a in System.Environment.GetCommandLineArgs())
+                if (a.StartsWith("--zoom=") && float.TryParse(a.Substring(7), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z))
+                    Camera.main.orthographicSize = z;
         }
         foreach (var a in System.Environment.GetCommandLineArgs())
             if (a == "--faction-tab") GetComponent<SimHud>()?.ShowFactionTab();
