@@ -24,7 +24,9 @@ pub fn resolve(world: &mut World, chooser: Entity, sel: &Selector) -> Option<Job
         Selector::Nearest(f) => {
             let me = world.get::<Position>(chooser).copied();
             let mut c = candidates(world, chooser, f);
-            c.sort_by_key(|(id, p)| (me.zip(*p).map_or(0, |(a, b)| a.cost(&b)), *id));
+            let map = world.resource::<WorldMap>().clone();
+            let hop = world.resource::<Params>().get("move.map_hop_cost", 25.0) as i32;
+            c.sort_by_key(|(id, p)| (me.zip(*p).map_or(0, |(a, b)| map.travel_cost(&a, &b, hop)), *id));
             c.first().map(|(id, _)| JobTarget::Entity(*id))
         }
         Selector::Random(f) => {
@@ -94,6 +96,7 @@ pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId,
     let min_wanted = f.min_wanted.as_ref().map(|t| threshold(world, t));
     let perception = world.resource::<Params>().get("ai.perception_range", 6.0) as i32;
     let hostile_threshold = world.resource::<Params>().get("social.hostile_threshold", -30.0) as f32;
+    let hop_cost = world.resource::<Params>().get("move.map_hop_cost", 25.0) as i32;
     let tether = world.get::<crate::dungeon::Tethered>(chooser).map(|t| t.0.zone.clone());
     let map = world.resource::<WorldMap>().clone();
     let index = std::mem::take(&mut world.resource_mut::<TargetIndex>().entries);
@@ -113,7 +116,7 @@ pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId,
             }
         // Positions in the index are from the start of the pass: good enough for choosing targets.
         if let (Some(max), Some(a)) = (f.max_distance, me_pos)
-            && !pos.is_some_and(|b| a.within(&b, max)) {
+            && !pos.is_some_and(|b| map.travel_cost(&a, &b, hop_cost) <= max) {
                 continue;
             }
         if f.visible && !crate::infiltration::can_see(world, chooser, e, perception) {

@@ -249,7 +249,10 @@ pub fn best_board_job(world: &mut World, e: Entity) -> Option<(f32, BoardJob)> {
             continue;
         }
         let dist = match (pos, j.target.position(world)) {
-            (Some(a), Some(b)) => a.cost(&b) as f32,
+            (Some(a), Some(b)) => {
+                let hop = world.resource::<crate::params::Params>().get("move.map_hop_cost", 25.0) as i32;
+                world.resource::<crate::map::WorldMap>().travel_cost(&a, &b, hop) as f32
+            }
             _ => 0.0,
         };
         let score = (5 - prio as i32) as f32 / 4.0 * (1.0 + j.priority as f32 * 0.1) * rank_mult / (1.0 + dist / 20.0);

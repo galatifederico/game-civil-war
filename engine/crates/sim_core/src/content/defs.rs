@@ -601,6 +601,8 @@ pub struct BuildingDef {
     pub id: Id,
     pub name: String,
     pub description: String,
+    /// Cells it occupies around its anchor (door): width centred on it, height upwards. (1, 1) = just the anchor.
+    pub footprint: Option<(i32, i32)>,
     pub hp: f32,
     pub tags: Vec<String>,
     pub recipes: Vec<RecipeDef>,
@@ -624,7 +626,7 @@ pub struct BuildingDef {
     pub income: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapDef {
     pub layers: Vec<LayerDef>,
@@ -638,6 +640,61 @@ pub struct MapDef {
     /// Impassable rectangles (walls, rivers…): (layer, x, y, width, height).
     #[serde(default)]
     pub walls: Vec<WallDef>,
+    /// Maps side by side: walking off a border leads to the neighbouring map.
+    #[serde(default)]
+    pub edges: Vec<EdgeDef>,
+    /// Characters of tile maps (`LayerDef::tiles`): terrain type and whether it can be walked on.
+    #[serde(default)]
+    pub legend: Vec<TileDef>,
+    /// Static decorations drawn by clients (building facades, trees…); they block their footprint.
+    #[serde(default)]
+    pub props: Vec<PropDef>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Side {
+    North,
+    South,
+    East,
+    West,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EdgeDef {
+    /// Map `a`'s `side` touches map `b`'s opposite side.
+    pub a: Id,
+    pub side: Side,
+    pub b: Id,
+    /// Shift of `b`'s coordinates along the border.
+    #[serde(default)]
+    pub offset: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TileDef {
+    pub ch: char,
+    pub id: Id,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default = "yes")]
+    pub walkable: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PropDef {
+    pub layer: Id,
+    pub sprite: String,
+    /// Anchor cell (bottom centre of the sprite).
+    pub at: (i32, i32),
+    /// Blocked cells around the anchor: width centred on it, height upwards. (0, 0) = not solid.
+    #[serde(default)]
+    pub footprint: (i32, i32),
+    /// The anchor stays walkable (a door).
+    #[serde(default)]
+    pub door: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -648,15 +705,29 @@ pub struct WallDef {
     pub rect: (i32, i32, i32, i32),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LayerDef {
     pub id: Id,
     pub name: String,
+    /// Size in cells (taken from `tiles` when they are given).
+    #[serde(default)]
     pub width: i32,
+    #[serde(default)]
     pub height: i32,
     #[serde(default)]
     pub underground: bool,
+    #[serde(default)]
+    pub indoor: bool,
+    /// Tags of the map itself (every map is also a zone with its own id).
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Tile rows, one character per cell (see `MapDef::legend`).
+    #[serde(default)]
+    pub tiles: Vec<String>,
+    /// File with the tile rows, relative to the pack folder (read by the loader).
+    #[serde(default)]
+    pub tiles_file: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

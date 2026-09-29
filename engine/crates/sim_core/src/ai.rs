@@ -73,7 +73,10 @@ fn input_value(world: &mut World, e: Entity, input: &Input, target: Option<&JobT
         Input::TargetDistance { max } => {
             let me = world.get::<Position>(e).copied();
             match (me, target.and_then(|t| t.position(world))) {
-                (Some(a), Some(b)) => a.cost(&b) as f32 / max.max(0.0001),
+                (Some(a), Some(b)) => {
+                    let hop = world.resource::<Params>().get("move.map_hop_cost", 25.0) as i32;
+                    world.resource::<crate::map::WorldMap>().travel_cost(&a, &b, hop) as f32 / max.max(0.0001)
+                }
                 _ => 1.0,
             }
         }

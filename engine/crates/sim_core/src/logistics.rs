@@ -72,6 +72,7 @@ pub fn post_logistics(world: &mut World) {
         q.iter(world).map(|(id, s)| (*id, s.catalog.keys().cloned().collect())).collect()
     };
     let mut planned = pending(world);
+    let map = world.resource::<crate::map::WorldMap>().clone();
     let mut needs: Vec<(usize, String, u32)> = Vec::new();
     for (i, s) in sites.iter().enumerate() {
         if !s.alive {
@@ -103,7 +104,7 @@ pub fn post_logistics(world: &mut World) {
         let source = sites
             .iter()
             .filter(|s| s.id != dest.id && s.alive && s.stock.count(&item) > 0 && produces(&content, &s.def, &item))
-            .min_by_key(|s| (s.owner != dest.owner, dest.pos.zip(s.pos).map_or(0, |(a, b)| a.cost(&b)), s.id));
+            .min_by_key(|s| (s.owner != dest.owner, dest.pos.zip(s.pos).map_or(0, |(a, b)| map.travel_cost(&a, &b, 25)), s.id));
         let Some(src) = source else { continue };
         let qty = qty.min(src.stock.count(&item)).min(batch).max(1);
         let faction = match &dest.owner {

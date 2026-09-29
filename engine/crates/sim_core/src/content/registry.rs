@@ -100,6 +100,9 @@ impl Content {
                         cur.portals.extend(m.portals);
                         cur.networks.extend(m.networks);
                         cur.walls.extend(m.walls);
+                        cur.edges.extend(m.edges);
+                        cur.legend.extend(m.legend);
+                        cur.props.extend(m.props);
                     }
                 }
             }
@@ -117,6 +120,22 @@ impl Content {
             c.victory.extend(p.victory);
             merge(&mut c.global_modifiers, p.global_modifiers, |d| &d.id);
             c.sprites.extend(p.sprites);
+        }
+        if let Some(m) = c.map.as_mut() {
+            for l in m.layers.iter_mut() {
+                if !l.tiles.is_empty() {
+                    l.height = l.tiles.len() as i32;
+                    l.width = l.tiles.iter().map(|r| r.chars().count()).max().unwrap_or(0) as i32;
+                }
+            }
+            // Every map is also a zone with its own id and tags.
+            let extra: Vec<ZoneDef> = m
+                .layers
+                .iter()
+                .filter(|l| !m.zones.iter().any(|z| z.id == l.id))
+                .map(|l| ZoneDef { id: l.id.clone(), name: l.name.clone(), layer: l.id.clone(), rect: (0, 0, l.width, l.height), tags: l.tags.clone() })
+                .collect();
+            m.zones.extend(extra);
         }
         let errors = c.validate();
         if errors.is_empty() { Ok(Content(Arc::new(c))) } else { Err(ContentError::Invalid(errors)) }
@@ -337,6 +356,28 @@ impl Validator<'_> {
                 for (l, _, _) in [&p.a, &p.b] {
                     if !m.layers.iter().any(|x| &x.id == l) {
                         self.errors.push(format!("portale {}: livello '{l}' non esiste", p.name));
+                    }
+                }
+            }
+            for e in &m.edges {
+                for l in [&e.a, &e.b] {
+                    if !m.layers.iter().any(|x| &x.id == l) {
+                        self.errors.push(format!("bordo {}-{}: mappa '{l}' non esiste", e.a, e.b));
+                    }
+                }
+            }
+            for p in &m.props {
+                if !m.layers.iter().any(|x| x.id == p.layer) {
+                    self.errors.push(format!("decorazione {}: mappa '{}' non esiste", p.sprite, p.layer));
+                }
+            }
+            for l in &m.layers {
+                for row in &l.tiles {
+                    for ch in row.chars() {
+                        if !m.legend.iter().any(|t| t.ch == ch) {
+                            self.errors.push(format!("mappa {}: carattere '{ch}' non è nella legenda", l.id));
+                            break;
+                        }
                     }
                 }
             }

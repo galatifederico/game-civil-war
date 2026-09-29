@@ -40,7 +40,18 @@ pub fn load_pack_dir(dir: impl AsRef<Path>) -> Result<Vec<ContentPack>, ContentE
         .map(|p| {
             let text = std::fs::read_to_string(p)
                 .map_err(|source| ContentError::Io { path: p.clone(), source })?;
-            parse_pack(&text, p)
+            let mut pack = parse_pack(&text, p)?;
+            // Tile maps kept in their own text files.
+            if let Some(map) = pack.map.as_mut() {
+                for layer in map.layers.iter_mut() {
+                    if let Some(f) = &layer.tiles_file {
+                        let path = dir.join(f);
+                        let rows = std::fs::read_to_string(&path).map_err(|source| ContentError::Io { path: path.clone(), source })?;
+                        layer.tiles = rows.lines().map(|l| l.trim_end().to_string()).filter(|l| !l.is_empty()).collect();
+                    }
+                }
+            }
+            Ok(pack)
         })
         .collect()
 }

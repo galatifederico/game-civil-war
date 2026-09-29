@@ -20,6 +20,7 @@ pub const DEFAULTS: &[(&str, f64, &str)] = &[
     ("ai.perception_range", 6.0, "Raggio di percezione di base (celle)"),
     ("move.base_speed", 1.0, "Passi per tick con speed = 1"),
     ("move.max_path_nodes", 20000.0, "Nodi massimi esplorati da A* per un percorso"),
+    ("move.map_hop_cost", 25.0, "Costo (in caselle) di ogni passaggio da una mappa all'altra, per le scelte dell'AI"),
     ("crime.witness_base", 0.6, "Probabilità base che un testimone noti un crimine"),
     ("crime.report_multiplier", 1.0, "Moltiplicatore del livello di ricercato per crimine denunciato"),
     ("crime.unwitnessed_multiplier", 0.0, "Quota di ricercato anche senza testimoni"),
