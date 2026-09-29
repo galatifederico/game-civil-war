@@ -32,6 +32,26 @@ public static class Chibi
         return frames;
     }
 
+    static readonly Dictionary<string, Sprite> Singles = new();
+
+    /// <summary>A whole texture as one sprite with the pivot at the bottom centre (buildings).</summary>
+    public static Sprite LoadSingle(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+        if (Singles.TryGetValue(name, out var s)) return s;
+        var tex = Resources.Load<Texture2D>("Sprites/" + name);
+        if (tex != null)
+        {
+            tex.filterMode = FilterMode.Point;
+            s = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0f), PixelsPerUnit);
+        }
+        Singles[name] = s;
+        return s;
+    }
+
+    /// <summary>Sorting order for a map row: lower on the map is drawn in front.</summary>
+    public static int OrderForY(float worldY) => 100 + Mathf.RoundToInt(-worldY * 4f) * 8;
+
     /// <summary>0 down, 1 left, 2 right, 3 up from a world-space movement.</summary>
     public static int Direction(Vector3 delta, int current)
     {

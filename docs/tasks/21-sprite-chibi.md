@@ -19,3 +19,14 @@ Richiesta del 2026-09-29. Stato: ✅ prima versione.
   al tappeto) ruotate.
 
 Prossimi passi: edifici e terreno in pixel art (oggi sono ancora quadrati colorati), ritratti per la scheda.
+
+## Edifici (2026-09-29)
+
+- Generatore `tools/sprites/buildings.py`: 38 edifici in pixel art stile Pokémon (vista 3/4, tetti a file di
+  tegole, muri chiari, finestre azzurre con riflesso, porta sulla casella dell'edificio, insegna con icona 5×5).
+  Case e botteghe 3×3 caselle, grandi strutture 4×4 (Cattedrale con campanile, Outlet, Capannone, Sala giochi);
+  disegni propri per campi (colture per tipo), porcilaia, mulino a vento, cupole di vetro (idroponica, terme),
+  Monolite di Soia, banchi del mercato, trono, gnomo spia, cassaforte, altare, serbatoio dell'acquedotto.
+- Collegati nei dati (`building:<id>` → `sheet: "bld_<id>"`); nel client la porta sta sulla casella dove lavorano
+  le pedine, l'edificio si scurisce quando è danneggiato e condivide l'ordinamento per profondità con le pedine.
+- Rigenerare: `python3 tools/sprites/buildings.py unity-client/Assets/Resources/Sprites --preview anteprima.png`.

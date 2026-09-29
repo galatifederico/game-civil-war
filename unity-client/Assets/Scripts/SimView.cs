@@ -350,6 +350,20 @@ public class SimView : MonoBehaviour
         {
             var def = (string)e["building"]?["def"];
             var sp = SpriteDef("building:" + def) ?? SpriteDef("building:default");
+            var pic = Chibi.LoadSingle((string)SpriteDef("building:" + def)?["sheet"]);
+            if (pic != null)
+            {
+                // Pixel-art building: the door stands on the building's cell, the rest rises behind it.
+                go.Body.sprite = pic;
+                go.Body.transform.localScale = Vector3.one;
+                go.Body.transform.localPosition = new Vector3(0, -0.5f, 0);
+                bool ruined = (float?)e["building"]?["hp"] <= 0f;
+                float hpRatio = Mathf.Clamp01(((float?)e["building"]?["hp"] ?? 1f) / Mathf.Max(1f, (float?)e["building"]?["max_hp"] ?? 1f));
+                go.Body.color = ruined ? new Color(0.35f, 0.33f, 0.32f) : Color.Lerp(new Color(0.6f, 0.55f, 0.5f), Color.white, 0.4f + 0.6f * hpRatio);
+                go.Body.sortingOrder = Chibi.OrderForY(go.Target.y) - 1;
+                go.Outline.enabled = false;
+                return;
+            }
             go.Body.color = Shapes.Parse((string)sp?["color"], new Color(0.63f, 0.53f, 0.5f));
             bool destroyed = (float?)e["building"]?["hp"] <= 0f;
             go.Body.color = destroyed ? go.Body.color * 0.45f : go.Body.color;
@@ -489,7 +503,7 @@ public class SimView : MonoBehaviour
             go.Cloth.sprite = go.ClothFrames?[i];
             go.Acc.sprite = go.AccFrames?[i];
             // Depth: lower on the map is drawn in front.
-            int order = 100 + Mathf.RoundToInt(-go.Root.transform.position.y * 4f) * 8;
+            int order = Chibi.OrderForY(go.Root.transform.position.y);
             go.Outline.sortingOrder = order;
             go.Base.sortingOrder = order + 1;
             go.Cloth.sortingOrder = order + 2;
@@ -577,7 +591,7 @@ public class SimView : MonoBehaviour
 
     public Vector3 CellCenter(JToken pos) => new((int)pos["x"] + 0.5f, -(int)pos["y"] - 0.5f, 0);
 
-    Vector3 BuildingCenter(JToken pos) => new((int)pos["x"] + 1f, -(int)pos["y"] - 1f, 0);
+    Vector3 BuildingCenter(JToken pos) => CellCenter(pos);
 
     static SpriteRenderer NewSprite(string name, Transform parent, Sprite sprite, Color color, int order)
     {
