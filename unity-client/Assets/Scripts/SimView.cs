@@ -216,13 +216,23 @@ public class SimView : MonoBehaviour
         foreach (Transform c in zonesRoot) Destroy(c.gameObject);
         var l = Layers[layer];
         int w = (int)l["width"], h = (int)l["height"];
-        var ground = NewSprite("Ground", zonesRoot, Shapes.Pixel, new Color(0.84f, 0.8f, 0.7f), 0);
-        ground.transform.localScale = new Vector3(w, h, 1);
-        foreach (var z in Map["zones"].Where(z => (int)z["layer"] == layer))
+        var tileTex = TileMap.Build(l, Map["legend"] as JObject);
+        if (tileTex != null)
         {
-            var sr = NewSprite((string)z["name"], zonesRoot, Shapes.Pixel, ZoneColor(z), 1);
-            sr.transform.position = new Vector3((int)z["x"], -(int)z["y"], 0);
-            sr.transform.localScale = new Vector3((int)z["w"], (int)z["h"], 1);
+            // Pixel-art terrain composed from the map's tiles.
+            var ground = NewSprite("Terrain", zonesRoot, Sprite.Create(tileTex, new Rect(0, 0, tileTex.width, tileTex.height), new Vector2(0, 1), Chibi.PixelsPerUnit), Color.white, 0);
+            ground.transform.position = Vector3.zero;
+        }
+        else
+        {
+            var ground = NewSprite("Ground", zonesRoot, Shapes.Pixel, new Color(0.84f, 0.8f, 0.7f), 0);
+            ground.transform.localScale = new Vector3(w, h, 1);
+            foreach (var z in Map["zones"].Where(z => (int)z["layer"] == layer))
+            {
+                var sr = NewSprite((string)z["name"], zonesRoot, Shapes.Pixel, ZoneColor(z), 1);
+                sr.transform.position = new Vector3((int)z["x"], -(int)z["y"], 0);
+                sr.transform.localScale = new Vector3((int)z["w"], (int)z["h"], 1);
+            }
         }
         foreach (var wall in Map["walls"] ?? new JArray())
         {
@@ -235,13 +245,17 @@ public class SimView : MonoBehaviour
             sr.transform.localScale = new Vector3((int)wall[4], (int)wall[5], 1);
         }
         foreach (var p in Map["portals"])
+        {
+            // Borders between maps and building doors need no marker; other passages (manholes, stairs) do.
+            if (((string)p["name"]).Contains("→")) continue;
             foreach (var end in new[] { p["a"], p["b"] })
-                if ((int)end["layer"] == layer)
+                if ((int)end["layer"] == layer && !IsBuildingDoor(end))
                 {
-                    var sr = NewSprite("Portal", zonesRoot, Shapes.Get("diamond"), new Color(0.85f, 0.3f, 0.2f), 6);
+                    var sr = NewSprite("Passage", zonesRoot, Shapes.Get("circle"), new Color(0.2f, 0.18f, 0.2f, 0.85f), 6);
                     sr.transform.position = CellCenter(end);
-                    sr.transform.localScale = Vector3.one * 0.9f;
+                    sr.transform.localScale = Vector3.one * 0.8f;
                 }
+        }
         // Fog texture sized to the layer.
         if (fogRenderer == null) fogRenderer = NewSprite("Fog", null, Shapes.Pixel, Color.white, 32000);
         fogTex = new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
@@ -250,6 +264,19 @@ public class SimView : MonoBehaviour
         fogInitialized = false;
         FitCamera(w, h);
         if (State != null) OnState();
+    }
+
+    bool IsBuildingDoor(JToken pos) =>
+        State?["snapshot"]?["entities"]?.Any(e => (string)e["kind"] == "building" && e["pos"]?.Type == JTokenType.Object
+            && (int)e["pos"]["layer"] == (int)pos["layer"] && (int)e["pos"]["x"] == (int)pos["x"] && (int)e["pos"]["y"] == (int)pos["y"]) ?? false;
+
+    /// Index of a map by id.
+    public int LayerIndex(string id)
+    {
+        if (Layers == null) return -1;
+        for (int i = 0; i < Layers.Count; i++)
+            if ((string)Layers[i]["id"] == id) return i;
+        return -1;
     }
 
     static Color ZoneColor(JToken z)
@@ -545,6 +572,8 @@ public class SimView : MonoBehaviour
         var move = new Vector3(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"), 0);
         if (move.sqrMagnitude > 0) FollowCamera = false;
         cam.transform.position += move * cam.orthographicSize * Time.deltaTime * 1.5f;
+        if (FollowCamera && ChampionId.HasValue && EntityById(ChampionId.Value)?["pos"] is JObject cp && (int)cp["layer"] != Layer)
+            SetLayer((int)cp["layer"]);
         if (FollowCamera && ChampionId.HasValue && gos.TryGetValue(ChampionId.Value, out var champ) && champ.Root.activeSelf)
         {
             var t = champ.Root.transform.position;

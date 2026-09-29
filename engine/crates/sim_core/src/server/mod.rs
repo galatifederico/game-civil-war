@@ -524,7 +524,8 @@ async fn ui_map(State(s): State<AppState>) -> ApiResult {
     let sim = s.sim.lock().unwrap();
     let m = sim.world.resource::<WorldMap>();
     let env = sim.world.resource::<crate::map::Environment>();
-    Ok(Json(json!({ "layers": m.layers, "zones": m.zones, "portals": m.portals, "networks": m.networks, "network_load": env.network_load })))
+    Ok(Json(json!({ "layers": m.layers, "zones": m.zones, "portals": m.portals, "networks": m.networks, "network_load": env.network_load,
+                     "legend": m.legend, "props": m.props })))
 }
 
 #[derive(Deserialize, Default)]

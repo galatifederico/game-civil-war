@@ -53,6 +53,7 @@ Principi:
 | 19 | [Client grafico con sprite semplici (ultima)](19-integrazione.md) | ✅ web + Unity |
 | 20 | [Campione, ordini, strategia, pathfinding, salvataggi, bilanciamento](20-giocatore-e-bilanciamento.md) | ✅ fatto |
 | 21 | [Sprite chibi in pixel art (stile Pokémon)](21-sprite-chibi.md) | ✅ prima versione |
+| 22 | [Regione in mappe contigue, terreno in pixel art](22-mappe-contigue.md) | ✅ prima versione |
 
 Le task 01-10 formano la "fetta verticale" che fa girare la demo richiesta dal design; le 11-18 completano i
 sottosistemi; la 19 è fuori scopo per ora.

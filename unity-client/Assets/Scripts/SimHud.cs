@@ -20,6 +20,9 @@ public class SimHud : MonoBehaviour
     Texture2D panelTex, barTex, barFillTex;
     int speedIndex = 1;
     int tab;
+    bool mapMenu;
+    Vector2 mapScroll;
+    Rect mapRect;
     static readonly (string name, int ms)[] Speeds = { ("Lenta", 1000), ("Normale", 400), ("Veloce", 120), ("Turbo", 30) };
     static readonly string[] Tabs = { "Mondo", "La mia fazione" };
 
@@ -30,7 +33,7 @@ public class SimHud : MonoBehaviour
     public bool IsOverUi(Vector3 mouse)
     {
         var p = new Vector2(mouse.x, Screen.height - mouse.y) / scale;
-        return topRect.Contains(p) || rightRect.Contains(p);
+        return topRect.Contains(p) || rightRect.Contains(p) || (mapMenu && mapRect.Contains(p));
     }
 
     static Texture2D Tex(Color c)
@@ -80,6 +83,28 @@ public class SimHud : MonoBehaviour
         GUILayout.EndHorizontal();
         GUILayout.EndArea();
 
+        if (mapMenu && view.Layers != null)
+        {
+            // Map list grouped as in the data: outdoors, interiors, underground.
+            mapRect = new Rect(420, 34, 280, Mathf.Min(h - 60, 22 * view.Layers.Count + 20));
+            GUILayout.BeginArea(mapRect, box);
+            mapScroll = GUILayout.BeginScrollView(mapScroll);
+            for (int i = 0; i < view.Layers.Count; i++)
+            {
+                var l = view.Layers[i];
+                string kind = (bool?)l["underground"] == true ? "⤓ " : (bool?)l["indoor"] == true ? "⌂ " : "";
+                var st = new GUIStyle(button) { alignment = TextAnchor.MiddleLeft, fontStyle = i == view.Layer ? FontStyle.Bold : FontStyle.Normal };
+                if (GUILayout.Button(kind + (string)l["name"], st))
+                {
+                    view.SetLayer(i);
+                    view.FollowCamera = false;
+                    mapMenu = false;
+                }
+            }
+            GUILayout.EndScrollView();
+            GUILayout.EndArea();
+        }
+
         float pw = Mathf.Min(400, w * 0.42f);
         rightRect = new Rect(w - pw, 34, pw, h - 34);
         GUILayout.BeginArea(rightRect, box);
@@ -119,12 +144,8 @@ public class SimHud : MonoBehaviour
             speedIndex = (speedIndex + 1) % Speeds.Length;
             view.SendControl(new JObject { ["tick_ms"] = Speeds[speedIndex].ms });
         }
-        if (view.Layers != null)
-            for (int i = 0; i < view.Layers.Count; i++)
-            {
-                var style = new GUIStyle(button) { fontStyle = i == view.Layer ? FontStyle.Bold : FontStyle.Normal };
-                if (GUILayout.Button((string)view.Layers[i]["name"], style)) view.SetLayer(i);
-            }
+        if (view.Layers != null && GUILayout.Button("Mappa: " + (string)view.Layers[view.Layer]["name"] + " ▾", button, GUILayout.Width(250)))
+            mapMenu = !mapMenu;
         var factions = Factions();
         string fogName = string.IsNullOrEmpty(view.FogFaction) ? "nessuna" : FactionName(view.FogFaction);
         if (GUILayout.Button("Nebbia: " + fogName, button, GUILayout.Width(200)) && factions.Count > 0)

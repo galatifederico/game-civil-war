@@ -14,5 +14,6 @@ public class PixelSpriteImport : AssetPostprocessor
         ti.alphaIsTransparency = true;
         ti.npotScale = TextureImporterNPOTScale.None;
         ti.wrapMode = UnityEngine.TextureWrapMode.Clamp;
+        ti.isReadable = true; // tiles are composed into map textures at runtime
     }
 }

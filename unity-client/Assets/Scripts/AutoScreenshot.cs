@@ -40,6 +40,16 @@ public class AutoScreenshot : MonoBehaviour
         }
         foreach (var a in System.Environment.GetCommandLineArgs())
             if (a == "--faction-tab") GetComponent<SimHud>()?.ShowFactionTab();
+        foreach (var a in System.Environment.GetCommandLineArgs())
+            if (a.StartsWith("--map=") && view != null)
+            {
+                int i = view.LayerIndex(a.Substring(6));
+                if (i >= 0)
+                {
+                    view.FollowCamera = false;
+                    view.SetLayer(i);
+                }
+            }
         yield return new WaitForSecondsRealtime(Mathf.Max(1f, after - (Time.realtimeSinceStartup - t0)));
         yield return new WaitForEndOfFrame();
         ScreenCapture.CaptureScreenshot(path);
