@@ -33,6 +33,9 @@ public class SimView : MonoBehaviour
     /// Order waiting for a target click (a cell or an entity).
     public JObject PendingAction { get; set; }
     public bool FollowCamera { get; set; }
+    /// Feed filter: "important" (default), "mine", "all" or a category id.
+    public string FeedFilter { get; set; } = "important";
+    public JObject Feed { get; private set; }
     bool fogChosen;
 
     Camera cam;
@@ -100,6 +103,8 @@ public class SimView : MonoBehaviour
             }
             if (PlayerId != null)
                 yield return Api.Get("/api/ui/player/" + UnityEngine.Networking.UnityWebRequest.EscapeURL(PlayerId), j => PlayerInfo = (JObject)j, _ => { });
+            var who = PlayerId == null ? "" : "&player=" + UnityEngine.Networking.UnityWebRequest.EscapeURL(PlayerId);
+            yield return Api.Get("/api/ui/feed?limit=12&filter=" + FeedFilter + who, j => Feed = (JObject)j, _ => { });
             if (Selected.HasValue)
             {
                 var id = Selected.Value;

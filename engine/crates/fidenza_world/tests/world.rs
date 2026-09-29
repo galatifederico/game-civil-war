@@ -284,3 +284,17 @@ fn payroll_adapts_instead_of_bankrupting() {
     assert!(t > 0.0, "police treasury should never be emptied by salaries");
     assert!(sim.events().of_kind(kind::PAYROLL).any(|e| e.message.contains("% pagati") && e.message.contains("Polizia")));
 }
+
+#[test]
+fn feed_separates_news_from_noise() {
+    let mut sim = sim(10);
+    sim.run(72);
+    let feed = sim.world.resource::<Feed>();
+    assert!(feed.articles.iter().all(|a| !a.category.is_empty()));
+    let fakes: Vec<_> = feed.articles.iter().filter(|a| a.truth == sim_core::content::Truth::Fake).collect();
+    assert!(!fakes.is_empty());
+    assert!(fakes.iter().all(|a| a.category == "chiacchiere" && a.importance < 0.7), "fake news must be low-importance gossip");
+    // The player's view never marks fake news.
+    let snap = sim.snapshot(false);
+    assert!(snap.feed.iter().all(|a| a.truth != sim_core::content::Truth::Fake));
+}

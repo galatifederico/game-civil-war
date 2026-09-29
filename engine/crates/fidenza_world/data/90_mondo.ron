@@ -185,6 +185,22 @@
             "collection_completed": ["Colpo grosso: {message}"],
         },
         publish_work: 2,
+        important_threshold: 0.7,
+        default_category: "varie",
+        categories: [
+            (id: "chiacchiere", name: "Chiacchiere", weight: 0.5,
+             topics: ["bufala", "propaganda", "gossip", "oracolo"]),
+            (id: "politica", name: "Politica", weight: 1.1,
+             topics: ["succession", "succession_open", "politics", "alliance", "merge", "defection", "politica", "victory"]),
+            (id: "cronaca", name: "Cronaca",
+             topics: ["crime", "arrest", "seizure", "search", "bribe", "death", "mutilation", "exposed", "violence", "furto_sacrilego", "knocked_out"]),
+            (id: "salute", name: "Salute",
+             topics: ["epidemia", "pig_mutation", "transmutation", "infection", "contagion", "malattia"]),
+            (id: "economia", name: "Economia",
+             topics: ["economy", "unpaid", "structure_damage", "consequence", "collection_completed", "market", "shopping"]),
+            (id: "eventi", name: "Eventi",
+             topics: ["tether_released", "surface_raid", "allerta", "trigger", "masterpiece", "reliquia", "global"]),
+        ],
     ),
     news_sources: [
         (id: "propaganda_chiesa", author: "vescovo", start_tick: 20, interval: 36, truth: Propaganda, headlines: [

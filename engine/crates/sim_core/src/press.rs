@@ -46,6 +46,22 @@ pub struct Article {
     pub topics: Vec<String>,
     pub subject: Option<SimId>,
     pub source_event: Option<u64>,
+    /// Feed category (cronaca, politica, economia…), from the content pack.
+    #[serde(default)]
+    pub category: String,
+    /// 0..1: how much it matters; the default feed view hides the unimportant ones.
+    #[serde(default)]
+    pub importance: f32,
+    /// Factions the story is about (for the "about you" filter).
+    #[serde(default)]
+    pub factions: Vec<String>,
+}
+
+impl Article {
+    /// Whether the article concerns a faction (its members, its leader, its deeds).
+    pub fn concerns(&self, faction: &str) -> bool {
+        self.factions.iter().any(|f| f == faction)
+    }
 }
 
 /// The social feed (its name comes from the content pack).
@@ -165,6 +181,34 @@ pub fn publish(
     let author_name = author.map_or_else(|| "Anonimo".into(), |a| crate::infiltration::apparent_name(world, a));
     let outlet = author.and_then(|a| world.get::<FactionMember>(a)).map(|m| m.faction.clone());
     let subject_id = subject.and_then(|s| world.get::<SimId>(s).copied());
+    // Category and importance.
+    let press = world.resource::<Content>().press.clone();
+    let cat = press.categories.iter().find(|c| c.topics.iter().any(|t| topics.contains(t)));
+    let category = cat.map(|c| c.id.clone()).unwrap_or_else(|| if press.default_category.is_empty() { "varie".into() } else { press.default_category.clone() });
+    let base = source_event
+        .and_then(|id| world.resource::<EventLog>().all().iter().rev().find(|e| e.id == id).map(|e| e.newsworthiness))
+        .unwrap_or(match truth {
+            Truth::Real => 0.6,
+            Truth::Propaganda => 0.3,
+            Truth::Fake => 0.25,
+        });
+    let importance = (base * cat.and_then(|c| c.weight).unwrap_or(1.0)).clamp(0.0, 1.0);
+    let mut factions: Vec<String> = Vec::new();
+    if let Some(f) = subject.and_then(|s| world.get::<FactionMember>(s)).map(|m| m.faction.clone()) {
+        factions.push(f);
+    }
+    if let Some(ev) = source_event.and_then(|id| world.resource::<EventLog>().all().iter().rev().find(|e| e.id == id).cloned()) {
+        if let Some(f) = ev.faction {
+            factions.push(f);
+        }
+        for who in [ev.actor, ev.target].into_iter().flatten() {
+            if let Some(f) = world.resource::<crate::ids::IdIndex>().get(who).and_then(|e| world.get::<FactionMember>(e)).map(|m| m.faction.clone()) {
+                factions.push(f);
+            }
+        }
+    }
+    factions.sort();
+    factions.dedup();
     let id = {
         let mut feed = world.resource_mut::<Feed>();
         let id = feed.articles.len() as u64 + 1;
@@ -179,6 +223,9 @@ pub fn publish(
             topics: topics.clone(),
             subject: subject_id,
             source_event,
+            category,
+            importance,
+            factions,
         });
         id
     };
@@ -186,7 +233,8 @@ pub fn publish(
     let label = match truth {
         Truth::Real => "",
         Truth::Propaganda => " [propaganda]",
-        Truth::Fake => " [fake news]",
+        // Fake news look like any other article: readers cannot tell.
+        Truth::Fake => "",
     };
     world.resource_mut::<EventLog>().push(
         tick,

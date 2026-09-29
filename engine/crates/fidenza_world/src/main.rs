@@ -199,7 +199,7 @@ fn main() {
     println!("\n── {} (ultimi articoli) ──", feed.name);
     for a in feed.articles.iter().rev().take(8) {
         let tag = match a.truth {
-            sim_core::content::Truth::Fake => " [FAKE]",
+            sim_core::content::Truth::Fake => "",
             sim_core::content::Truth::Propaganda => " [propaganda]",
             _ => "",
         };

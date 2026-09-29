@@ -159,14 +159,34 @@ public class SimHud : MonoBehaviour
     {
         var snap = view.State["snapshot"];
         Section((string)snap["feed_name"] ?? "Feed");
-        foreach (var a in snap["feed"].Take(6))
+        // Filters: important news by default, so the gossip does not bury what matters.
+        var filters = new List<(string id, string name)> { ("important", "Importanti"), ("mine", "Per te") };
+        if (view.Feed?["categories"] is JArray cats)
+            filters.AddRange(cats.Select(c => ((string)c["id"], $"{c["name"]} ({c["count"]})")));
+        filters.Add(("all", "Tutto"));
+        int perRow = 3;
+        for (int i = 0; i < filters.Count; i += perRow)
         {
-            string truth = (string)a["truth"];
-            bool isFake = truth == "Fake";
-            string tag = isFake ? "FAKE · " : truth == "Propaganda" ? "PROPAGANDA · " : "";
-            GUILayout.Label($"[{a["tick"]}] {tag}{a["headline"]}", isFake ? fake : label, GUILayout.Width(width));
-            GUILayout.Label("— " + a["author_name"], small);
+            GUILayout.BeginHorizontal();
+            foreach (var (id, name) in filters.Skip(i).Take(perRow))
+            {
+                var st = new GUIStyle(button) { fontStyle = view.FeedFilter == id ? FontStyle.Bold : FontStyle.Normal };
+                if (GUILayout.Button(view.FeedFilter == id ? "▸ " + name : name, st, GUILayout.Width(width / perRow - 4)))
+                    view.FeedFilter = id;
+            }
+            GUILayout.EndHorizontal();
         }
+        var articles = view.Feed?["articles"] as JArray;
+        if (articles == null || articles.Count == 0)
+            GUILayout.Label("Niente da segnalare.", small);
+        else
+            foreach (var a in articles.Take(8))
+            {
+                string tag = ((bool?)a["propaganda"] ?? false) ? "PROPAGANDA · " : "";
+                bool mine = (bool?)a["mine"] ?? false;
+                GUILayout.Label($"[{a["tick"]}] {tag}{a["headline"]}", mine ? good : label, GUILayout.Width(width));
+                GUILayout.Label($"— {a["author_name"]} · {a["category"]}", small);
+            }
 
         Section("Cronaca");
         foreach (var e in view.State["recent_events"].Where(e => (string)e["kind"] != "article").Take(8))

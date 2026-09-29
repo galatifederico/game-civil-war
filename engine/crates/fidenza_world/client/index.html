@@ -71,7 +71,7 @@
   </div>
   <aside>
     <section id="sel"><h2>Pedina selezionata</h2><div class="muted">Nessuna.</div></section>
-    <section><h2 id="feedname">Feed</h2><ul class="list" id="feed"></ul></section>
+    <section><h2 id="feedname">Feed</h2><select id="feedfilter"></select><ul class="list" id="feed"></ul></section>
     <section><h2>Cronaca</h2><ul class="list" id="events"></ul></section>
     <section><h2>Mercato</h2><table id="market"></table></section>
     <section><h2>Fazioni</h2><table id="factions"></table></section>
@@ -83,7 +83,7 @@ const $ = (id) => document.getElementById(id);
 const api = (path, opts) => fetch(path, opts).then((r) => r.ok ? r.json() : r.text().then((t) => Promise.reject(t)));
 const post = (path, body) => api(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
-let map = null, state = null, selected = null, cell = 10, layer = 0;
+let map = null, state = null, selected = null, cell = 10, layer = 0, feedFilter = "important", playerId = null;
 const canvas = $("map"), ctx = canvas.getContext("2d");
 
 try {
@@ -287,7 +287,11 @@ function renderPanels() {
   const s = state.snapshot;
   $("clock").textContent = `tick ${s.tick} · giorno ${Math.floor(s.tick / 24) + 1}, ore ${s.tick % 24}:00`;
   $("feedname").textContent = s.feed_name || "Feed";
-  $("feed").innerHTML = s.feed.map((a) => `<li><span class="tick">${a.tick}</span>${a.truth === "Fake" ? '<span class="fake">FAKE</span> ' : ""}${esc(a.headline)} <span class="muted">— ${esc(a.author_name)}</span></li>`).join("");
+  api("/api/ui/feed?limit=15&filter=" + feedFilter + (playerId ? "&player=" + encodeURIComponent(playerId) : "")).then((f) => {
+    const opts = [["important", "Importanti"], ["mine", "Per te"], ...f.categories.map((c) => [c.id, `${c.name} (${c.count})`]), ["all", "Tutto"]];
+    $("feedfilter").innerHTML = opts.map(([id, n]) => `<option value="${id}"${id === feedFilter ? " selected" : ""}>${esc(n)}</option>`).join("");
+    $("feed").innerHTML = f.articles.map((a) => `<li><span class="tick">${a.tick}</span>${a.propaganda ? "<b>PROPAGANDA</b> " : ""}${esc(a.headline)} <span class="muted">— ${esc(a.author_name)} · ${esc(a.category)}</span></li>`).join("") || "<li class='muted'>Niente da segnalare.</li>";
+  }, () => {});
   $("events").innerHTML = state.recent_events.filter((e) => e.kind !== "article").slice(0, 25).map((e) => `<li><span class="tick">${e.tick}</span>${esc(e.message)}</li>`).join("");
   const moved = s.market.map((m) => ({ ...m, d: (m.price - m.base) / m.base })).sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).slice(0, 8);
   $("market").innerHTML = moved.map((m) => `<tr><td>${esc(m.name)}</td><td class="n">${m.price.toFixed(2)} €</td><td class="n ${m.d > 0 ? "up" : "down"}">${(m.d * 100).toFixed(0)}%</td></tr>`).join("");
@@ -317,6 +321,8 @@ async function boot() {
   const factions = snap.snapshot.factions;
   $("fog").innerHTML += factions.map((f) => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("");
   const mine = Object.values(players)[0];
+  if (mine) playerId = mine.id;
+  $("feedfilter").onchange = () => { feedFilter = $("feedfilter").value; refresh(); };
   if (mine) $("fog").value = mine.faction;
   $("fog").onchange = refresh;
   const ctl = await api("/api/control");

@@ -80,6 +80,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/ui/state", get(ui_state))
         .route("/ui/", get(ui_page))
         .route("/api/ui/player/{player}", get(ui_player))
+        .route("/api/ui/feed", get(ui_feed))
         .route("/api/ui/actions/{id}", get(ui_actions))
         .route("/api/save", post(save_game))
         .route("/api/load", post(load_game))
@@ -183,6 +184,62 @@ async fn ui_player(State(s): State<AppState>, Path(player): Path<String>) -> Api
         "player": p, "faction": p.faction, "treasury": state.treasury, "victory_points": state.victory_points,
         "champion": p.leader, "members": members, "squads": squads, "ranks": ranks, "work_types": work_types,
     })))
+}
+
+#[derive(Deserialize)]
+struct FeedQ {
+    /// "important" (default), "mine", "all" or a category id.
+    #[serde(default)]
+    filter: Option<String>,
+    player: Option<String>,
+    #[serde(default = "twenty")]
+    limit: usize,
+}
+
+fn twenty() -> usize {
+    20
+}
+
+/// The social feed seen by a player: filtered, newest first, with fake news indistinguishable.
+async fn ui_feed(State(s): State<AppState>, Query(q): Query<FeedQ>) -> ApiResult {
+    let sim = s.sim.lock().unwrap();
+    let content = sim.content();
+    let feed = sim.world.resource::<Feed>();
+    let faction = q.player.as_ref().and_then(|p| sim.world.resource::<Players>().players.get(p)).map(|p| p.faction.clone());
+    let threshold = if content.press.important_threshold > 0.0 { content.press.important_threshold } else { 0.6 };
+    let filter = q.filter.clone().unwrap_or_else(|| "important".into());
+    let mine = |a: &crate::press::Article| faction.as_ref().is_some_and(|f| a.concerns(f));
+    let articles: Vec<Value> = feed
+        .articles
+        .iter()
+        .rev()
+        .filter(|a| match filter.as_str() {
+            "all" => true,
+            "important" => a.importance >= threshold || mine(a),
+            "mine" => mine(a),
+            cat => a.category == cat,
+        })
+        .take(q.limit.min(200))
+        .map(|a| {
+            json!({
+                "id": a.id, "tick": a.tick, "headline": a.headline, "author_name": a.author_name,
+                "category": a.category, "importance": a.importance, "mine": mine(a),
+                // Propaganda is signed by its faction; fake news look real.
+                "propaganda": a.truth == crate::content::Truth::Propaganda,
+            })
+        })
+        .collect();
+    let mut counts = std::collections::BTreeMap::<&str, usize>::new();
+    for a in &feed.articles {
+        *counts.entry(a.category.as_str()).or_default() += 1;
+    }
+    let categories: Vec<Value> = content
+        .press
+        .categories
+        .iter()
+        .map(|c| json!({ "id": c.id, "name": c.name, "count": counts.get(c.id.as_str()).copied().unwrap_or(0) }))
+        .collect();
+    Ok(Json(json!({ "name": feed.name, "filter": filter, "categories": categories, "articles": articles })))
 }
 
 /// Orders a pawn can receive: its jobs (from its AI actions) and abilities, plus moving and following.

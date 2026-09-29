@@ -849,6 +849,22 @@ pub struct PressDef {
     pub default_headline: String,
     /// Work units needed to write an article.
     pub publish_work: f32,
+    /// Feed categories in priority order: an article goes to the first one sharing a topic with it.
+    pub categories: Vec<FeedCategoryDef>,
+    /// Category of articles matching none of the above.
+    pub default_category: String,
+    /// Minimum importance shown by the "important" filter (articles about the reader always pass).
+    pub important_threshold: f32,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct FeedCategoryDef {
+    pub id: String,
+    pub name: String,
+    pub topics: Vec<String>,
+    /// Importance multiplier for the category (e.g. gossip counts less).
+    pub weight: Option<f32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

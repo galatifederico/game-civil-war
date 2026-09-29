@@ -334,7 +334,19 @@ pub fn snapshot(world: &mut World, truth: bool) -> WorldSnapshot {
             .collect(),
         disruption: market.disruption,
         feed_name: feed.name.clone(),
-        feed: feed.articles.iter().rev().take(20).cloned().collect(),
+        feed: feed
+            .articles
+            .iter()
+            .rev()
+            .take(20)
+            .map(|a| {
+                let mut a = a.clone();
+                if !truth && a.truth == crate::content::Truth::Fake {
+                    a.truth = crate::content::Truth::Real;
+                }
+                a
+            })
+            .collect(),
         players: serde_json::to_value(&world.resource::<Players>().players).unwrap_or_default(),
         titles: world.resource::<Titles>().holders.clone(),
         modifiers: world.resource::<GlobalModifiers>().active.iter().map(|m| m.name.clone()).collect(),
