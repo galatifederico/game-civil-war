@@ -111,9 +111,25 @@ fn buy(world: &mut World, ctx: &JobCtx) -> JobResult {
     }
 }
 
-/// Takes money (param `amount`) or, failing that, a random item from the target.
+/// Takes an item with tag `tag` (param) from a pawn or a building; otherwise money (param `amount`)
+/// or, failing that, a random item.
 fn steal(world: &mut World, ctx: &JobCtx) -> JobResult {
     let Some(t) = target_alive(world, ctx) else { return JobResult::fail("nessuna vittima") };
+    if let Some(tag) = ctx.param_str("tag") {
+        let content = world.resource::<Content>().clone();
+        let items: Vec<String> = match world.get::<crate::inventory::Stock>(t) {
+            Some(s) => s.0.keys().cloned().collect(),
+            None => world.get::<Inventory>(t).map(|i| i.items().map(|(k, _)| k.clone()).collect()).unwrap_or_default(),
+        };
+        let Some(item) = items.into_iter().find(|i| content.items.get(i).is_some_and(|d| d.tags.iter().any(|x| x == tag))) else {
+            return JobResult::fail("l'oggetto non è più qui");
+        };
+        if crate::inventory_ops::transfer(world, t, ctx.actor, &item, 1) == 0 {
+            return JobResult::fail("non ha spazio per portarlo via");
+        }
+        let (thief, victim) = (crate::infiltration::apparent_name(world, ctx.actor), crate::effects::name_of(world, t));
+        return JobResult::ok_msg(format!("{thief} sottrae {} a {victim}", content.items[&item].name));
+    }
     let amount = ctx.param_f("amount", 20.0);
     let taken = world.get::<Wallet>(t).map_or(0.0, |w| w.0.min(amount));
     let (thief, victim) = (crate::infiltration::apparent_name(world, ctx.actor), crate::infiltration::apparent_name(world, t));

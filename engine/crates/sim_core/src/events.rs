@@ -122,7 +122,7 @@ impl EventBuilder {
     }
 }
 
-#[derive(Resource, Debug, Default)]
+#[derive(Resource, Debug, Default, Serialize, Deserialize)]
 pub struct EventLog {
     events: Vec<SimEvent>,
     next_id: u64,

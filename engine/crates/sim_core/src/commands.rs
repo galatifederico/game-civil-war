@@ -40,6 +40,12 @@ pub enum SimCommand {
     Promote { entity: SimId, rank: String },
     SetRelation { a: String, b: String, value: f32 },
     SetSprite { id: String, sprite: SpriteDef },
+    /// A player's order to its champion or to a member of its faction (members may refuse).
+    PlayerOrder { player: String, entity: SimId, order: crate::player::Order },
+    /// A player's order to one of its squads.
+    PlayerSquadOrder { player: String, squad: u64, order: Option<SquadOrder> },
+    /// A player creates a squad from members of its faction (the champion leads it).
+    PlayerCreateSquad { player: String, name: String, members: Vec<SimId> },
     Publish { headline: String, #[serde(default)] truth: Truth, #[serde(default)] topics: Vec<String>, #[serde(default)] author: Option<SimId> },
 }
 
@@ -47,7 +53,7 @@ fn one() -> u32 {
     1
 }
 
-#[derive(Resource, Debug, Default)]
+#[derive(Resource, Debug, Default, Serialize, Deserialize)]
 pub struct CommandQueue {
     pub pending: VecDeque<(u64, SimCommand)>,
     next: u64,
@@ -229,6 +235,33 @@ pub fn apply(world: &mut World, cmd: SimCommand) -> Result<String, String> {
         SimCommand::SetSprite { id, sprite } => {
             world.resource_mut::<SpriteMapping>().0.insert(id.clone(), sprite);
             Ok(format!("sprite di {id} aggiornato"))
+        }
+        SimCommand::PlayerOrder { player, entity, order } => crate::player::give_order(world, &player, entity, order),
+        SimCommand::PlayerSquadOrder { player, squad, order } => {
+            let faction = world.resource::<crate::factions::Players>().players.get(&player).map(|p| p.faction.clone()).ok_or("giocatore inesistente")?;
+            let own = world.resource::<Squads>().squads.get(&squad).is_some_and(|s| s.faction.as_deref() == Some(faction.as_str()));
+            if !own {
+                return Err("non è una tua squadra".into());
+            }
+            apply(world, SimCommand::SquadOrder { squad, order })
+        }
+        SimCommand::PlayerCreateSquad { player, name, members } => {
+            let p = world.resource::<crate::factions::Players>().players.get(&player).cloned().ok_or("giocatore inesistente")?;
+            let mut ok = Vec::new();
+            for m in members {
+                let e = entity(world, m)?;
+                if world.get::<FactionMember>(e).is_some_and(|f| f.faction == p.faction) {
+                    ok.push(m);
+                }
+            }
+            if ok.is_empty() {
+                return Err("nessun membro valido".into());
+            }
+            let id = world.resource_mut::<Squads>().create(name.clone(), Some(p.faction), ok.clone(), "squadra del giocatore".into());
+            if let Some(s) = world.resource_mut::<Squads>().squads.get_mut(&id) {
+                s.leader = p.leader;
+            }
+            Ok(format!("squadra {id} '{name}' con {} membri", ok.len()))
         }
         SimCommand::Publish { headline, truth, topics, author } => {
             let a = author.map(|i| entity(world, i)).transpose()?;

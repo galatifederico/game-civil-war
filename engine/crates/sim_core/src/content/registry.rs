@@ -99,6 +99,7 @@ impl Content {
                         cur.zones.extend(m.zones);
                         cur.portals.extend(m.portals);
                         cur.networks.extend(m.networks);
+                        cur.walls.extend(m.walls);
                     }
                 }
             }
@@ -304,6 +305,10 @@ impl Validator<'_> {
             for z in &f.zones {
                 self.zone(z, &ctx);
             }
+            for g in &f.goals {
+                self.check(&c.jobs, "job", &g.job, &ctx);
+                self.cond(&g.requires, &ctx);
+            }
         }
         for b in c.buildings.values() {
             let ctx = format!("edificio {}", b.id);
@@ -330,6 +335,11 @@ impl Validator<'_> {
                     if !m.layers.iter().any(|x| &x.id == l) {
                         self.errors.push(format!("portale {}: livello '{l}' non esiste", p.name));
                     }
+                }
+            }
+            for w in &m.walls {
+                if !m.layers.iter().any(|l| l.id == w.layer) {
+                    self.errors.push(format!("muro {}: livello '{}' non esiste", w.name, w.layer));
                 }
             }
             for n in &m.networks {

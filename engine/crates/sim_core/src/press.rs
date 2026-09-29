@@ -29,7 +29,7 @@ pub struct Scoop {
     pub tags: Vec<String>,
 }
 
-#[derive(Component, Debug, Clone, Default)]
+#[derive(Component, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Notebook {
     pub scoops: Vec<Scoop>,
 }
@@ -55,7 +55,7 @@ pub struct Feed {
     pub articles: Vec<Article>,
 }
 
-#[derive(Resource, Debug, Clone, Default)]
+#[derive(Resource, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PressCursor(pub u64);
 
 /// Journalists within range record newsworthy events they can see.

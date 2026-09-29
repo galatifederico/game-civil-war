@@ -9,7 +9,7 @@ use crate::market::Market;
 use crate::stats::{Dead, Pawn};
 use crate::time::SimClock;
 
-#[derive(Resource, Default)]
+#[derive(Resource, Default, serde::Serialize, serde::Deserialize)]
 pub struct TelemetryCursor(pub u64);
 
 pub fn record_metrics(world: &mut World) {

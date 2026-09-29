@@ -26,6 +26,15 @@ pub struct IdIndex {
 }
 
 impl IdIndex {
+    pub fn next_id(&self) -> u64 {
+        self.next
+    }
+
+    /// Restores the counter after loading a save.
+    pub fn set_next(&mut self, next: u64) {
+        self.next = next;
+    }
+
     pub fn allocate(&mut self) -> SimId {
         self.next += 1;
         SimId(self.next)

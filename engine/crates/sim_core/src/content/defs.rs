@@ -533,6 +533,21 @@ pub struct FactionDef {
     /// Zones this faction patrols / considers home.
     pub zones: Vec<Id>,
     pub tags: Vec<String>,
+    /// Strategic goals pursued by AI-run factions (player factions decide by themselves).
+    pub goals: Vec<GoalDef>,
+}
+
+/// "Get items with this tag that we do not hold": posts faction jobs targeting whoever holds them.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct GoalDef {
+    pub item_tag: String,
+    pub job: Id,
+    pub interval: u64,
+    pub priority: i32,
+    pub max_open: u32,
+    /// Only while this holds (evaluated without subject: flags, ticks, titles…).
+    pub requires: Condition,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -593,6 +608,17 @@ pub struct MapDef {
     /// Infrastructure networks (water, sewers…) linking zones.
     #[serde(default)]
     pub networks: Vec<NetworkDef>,
+    /// Impassable rectangles (walls, rivers…): (layer, x, y, width, height).
+    #[serde(default)]
+    pub walls: Vec<WallDef>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WallDef {
+    pub name: String,
+    pub layer: Id,
+    pub rect: (i32, i32, i32, i32),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

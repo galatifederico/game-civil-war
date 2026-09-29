@@ -153,3 +153,19 @@ fn board_jobs_longer_than_one_tick_get_finished() {
     sim.run(40);
     assert!(sim.world.resource::<JobBoard>().jobs.len() < 3, "nobody finished a 3-tick board job");
 }
+
+#[test]
+fn save_load_continues_identically() {
+    let mut a = town(33);
+    a.run(30);
+    let save = a.save();
+    let json = serde_json::to_string(&save).unwrap();
+    let save: sim_core::save::SaveGame = serde_json::from_str(&json).unwrap();
+    let mut b = Simulation::builder(999);
+    b.load_pack_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/town")).unwrap();
+    let mut b = b.build_from_save(&save).unwrap();
+    assert_eq!(a.state_hash(), b.state_hash(), "state differs right after loading");
+    a.run(40);
+    b.run(40);
+    assert_eq!(a.state_hash(), b.state_hash(), "runs diverged after loading");
+}

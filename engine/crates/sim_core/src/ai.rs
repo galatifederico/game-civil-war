@@ -32,7 +32,7 @@ pub struct ScoreEntry {
     pub target: Option<JobTarget>,
 }
 
-#[derive(Component, Debug, Clone, Default)]
+#[derive(Component, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Brain {
     pub actions: Vec<String>,
     pub current: Option<String>,
@@ -189,7 +189,10 @@ pub fn think(world: &mut World) {
     let content = world.resource::<Content>().clone();
     crate::targeting::rebuild_index(world);
     for e in decision_order(world) {
-        if world.get::<Detained>(e).is_some() {
+        if world.get::<Detained>(e).is_some() || world.get::<crate::player::Controlled>(e).is_some() {
+            continue;
+        }
+        if world.get::<crate::player::Follow>(e).is_some_and(|f| f.strict) {
             continue;
         }
         crate::squads::apply_squad_order(world, e);

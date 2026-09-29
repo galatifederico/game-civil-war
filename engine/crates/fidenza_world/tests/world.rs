@@ -145,3 +145,16 @@ fn poisoned_stock_infects_buyers() {
     sim_core::economy::buy(&mut sim.world, buyer, shop, "pane").expect("purchase");
     assert!(sim.world.get::<sim_core::status::StatusEffects>(buyer).unwrap().has("diarrea"));
 }
+
+#[test]
+fn fidenza_save_load_continues_identically() {
+    let mut a = sim(17);
+    a.run(40);
+    let save = a.save();
+    let mut b = sim_core::sim::SimBuilder::new(0);
+    b.add_plugin(&fidenza_world::FidenzaPlugin::default()).unwrap();
+    let mut b = b.build_from_save(&save).unwrap();
+    a.run(40);
+    b.run(40);
+    assert_eq!(a.state_hash(), b.state_hash());
+}

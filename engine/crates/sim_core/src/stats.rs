@@ -10,26 +10,26 @@ use crate::inventory::Inventory;
 use crate::status::StatusEffects;
 
 /// Marker of agents (pawns). Buildings and virtual entities are not pawns.
-#[derive(Component, Debug, Clone, Copy, Default)]
+#[derive(Component, Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub struct Pawn;
 
 /// Entities that exist without a body or position (e.g. an AI in the network).
-#[derive(Component, Debug, Clone, Copy, Default)]
+#[derive(Component, Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub struct Virtual;
 
-#[derive(Component, Debug, Clone)]
+#[derive(Component, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DisplayName(pub String);
 
-#[derive(Component, Debug, Clone)]
+#[derive(Component, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TemplateId(pub String);
 
-#[derive(Component, Debug, Clone)]
+#[derive(Component, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Race(pub String);
 
-#[derive(Component, Debug, Clone, Default)]
+#[derive(Component, Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Classes(pub Vec<String>);
 
-#[derive(Component, Debug, Clone, Copy, Default)]
+#[derive(Component, Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub struct Immortal;
 
 #[derive(Component, Debug, Clone, Serialize, Deserialize)]
@@ -43,7 +43,7 @@ pub struct Wallet(pub f64);
 
 /// Tags: `base` from the template and effects, `effective` recomputed every tick adding race, classes,
 /// statuses and faction role.
-#[derive(Component, Debug, Clone, Default)]
+#[derive(Component, Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Tags {
     pub base: BTreeSet<String>,
     pub effective: BTreeSet<String>,
@@ -56,7 +56,7 @@ impl Tags {
 }
 
 /// Statistics: `base` holds permanent values (template + effects), `effective` adds every modifier.
-#[derive(Component, Debug, Clone, Default)]
+#[derive(Component, Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Stats {
     pub base: BTreeMap<String, f32>,
     pub effective: BTreeMap<String, f32>,
@@ -84,7 +84,7 @@ impl Stats {
 }
 
 /// Needs in 0..1 (1 = satisfied).
-#[derive(Component, Debug, Clone, Default)]
+#[derive(Component, Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Needs(pub BTreeMap<String, f32>);
 
 impl Needs {

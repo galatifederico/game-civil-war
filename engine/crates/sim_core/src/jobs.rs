@@ -84,7 +84,7 @@ impl JobBoard {
 }
 
 /// Local queue of jobs assigned to one entity (orders from the player, squad leader…).
-#[derive(Component, Debug, Clone, Default)]
+#[derive(Component, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PersonalQueue(pub VecDeque<BoardJob>);
 
 /// WorkPriorityMatrix row: work type → 1 (highest) … 4 (lowest); 0 disables.
@@ -120,7 +120,7 @@ pub struct ActiveJob {
 }
 
 /// What a pawn is doing right now.
-#[derive(Component, Debug, Clone, Default)]
+#[derive(Component, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Task {
     pub action: Option<String>,
     pub label: String,
@@ -306,8 +306,10 @@ pub fn run_jobs(world: &mut World) {
         }
         let Some(active) = world.get::<Task>(e).and_then(|t| t.job.clone()) else { continue };
         let content = world.resource::<Content>();
+        let pure_move = active.job.is_empty() && active.ability.is_none();
         let (range, def) = match &active.ability {
             Some(a) => (content.abilities.get(a).map_or(1, |d| d.range), None),
+            None if pure_move => (if matches!(active.target, JobTarget::Entity(_)) { active.required.max(1.0) as i32 } else { 0 }, None),
             None => match content.jobs.get(&active.job) {
                 Some(d) => (d.range, Some(d.clone())),
                 None => {
@@ -344,6 +346,10 @@ pub fn run_jobs(world: &mut World) {
                 }
         if let Some(ab) = &active.ability {
             crate::abilities::use_ability(world, e, ab, active.target.entity(world));
+            finish(world, e, &active);
+            continue;
+        }
+        if pure_move {
             finish(world, e, &active);
             continue;
         }

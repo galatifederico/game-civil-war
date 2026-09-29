@@ -19,7 +19,7 @@ use crate::time::SimClock;
 #[derive(Component, Debug, Clone, Serialize, Deserialize)]
 pub struct Tethered(pub Tether);
 
-#[derive(Component, Debug, Clone)]
+#[derive(Component, Debug, Clone, Serialize, Deserialize)]
 pub struct SpawnedBy(pub String);
 
 #[derive(Resource, Debug, Clone, Default, Serialize, Deserialize)]

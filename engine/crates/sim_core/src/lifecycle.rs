@@ -127,7 +127,7 @@ pub fn spawn_template(world: &mut World, template: &str, pos: Option<Position>, 
         world.entity_mut(e).insert(crate::dungeon::Tethered(tether));
     }
     if let Some(player) = &ov.leader_of {
-        world.entity_mut(e).insert(Leader { player: player.clone() });
+        world.entity_mut(e).insert((Leader { player: player.clone() }, crate::player::Controlled));
         let fac = world.get::<FactionMember>(e).map(|m| m.faction.clone());
         if let Some(p) = world.resource_mut::<Players>().players.get_mut(player) {
             p.leader = Some(id);

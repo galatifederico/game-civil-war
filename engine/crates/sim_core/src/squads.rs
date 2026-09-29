@@ -20,6 +20,12 @@ pub enum SquadOrder {
     Job { job: String, target: Option<SimId> },
     /// Stand still.
     Hold,
+    /// Stay close to an entity (usually the player's champion).
+    Follow { target: SimId, #[serde(default = "three")] distance: i32 },
+}
+
+fn three() -> i32 {
+    3
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -85,6 +91,25 @@ pub fn apply_squad_order(world: &mut World, e: Entity) {
             (job.clone().unwrap_or_else(|| "patrol".into()), JobTarget::Cell(p))
         }
         SquadOrder::Job { job, target } => (job.clone(), target.map_or(JobTarget::None, JobTarget::Entity)),
+        SquadOrder::Follow { target, distance } => {
+            let near = world.resource::<crate::ids::IdIndex>().get(*target).and_then(|t| world.get::<crate::map::Position>(t).copied());
+            let me = world.get::<crate::map::Position>(e).copied();
+            if let (Some(t), Some(m)) = (near, me) {
+                if m.within(&t, *distance) {
+                    return;
+                }
+            }
+            release_task(world, e);
+            start_job(world, e, "", JobTarget::Entity(*target), None, None);
+            if let Some(mut t) = world.get_mut::<Task>(e) {
+                if let Some(j) = t.job.as_mut() {
+                    j.required = *distance as f32;
+                }
+                t.forced = true;
+                t.label = "Segue la squadra".into();
+            }
+            return;
+        }
         SquadOrder::Hold => {
             release_task(world, e);
             if let Some(mut t) = world.get_mut::<Task>(e) {
@@ -94,7 +119,7 @@ pub fn apply_squad_order(world: &mut World, e: Entity) {
             return;
         }
     };
-    if !world.resource::<crate::content::Content>().jobs.contains_key(&job) {
+    if !job.is_empty() && !world.resource::<crate::content::Content>().jobs.contains_key(&job) {
         return;
     }
     release_task(world, e);

@@ -12,7 +12,7 @@ use crate::map::Position;
 use crate::stats::{Classes, Race};
 use crate::time::SimClock;
 
-#[derive(Component, Debug, Clone, Default)]
+#[derive(Component, Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct AbilityCooldowns(pub BTreeMap<String, u64>);
 
 /// Abilities an entity has from race, classes and statuses' granted tags.

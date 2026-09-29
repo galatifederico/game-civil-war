@@ -1,7 +1,8 @@
 //! Spatial model: stacked grid layers (surface, underground…), rectangular zones, portals between
 //! layers, and sparse per-cell environmental state (dirt, fluids, pathogen load).
 
-use std::collections::{BTreeMap, VecDeque};
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BinaryHeap, VecDeque};
 use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
@@ -141,12 +142,18 @@ pub struct MapData {
     pub zones: Vec<Zone>,
     pub portals: Vec<Portal>,
     pub networks: Vec<Network>,
+    /// Impassable rectangles: (name, layer, x, y, w, h).
+    pub walls: Vec<(String, u16, i32, i32, i32, i32)>,
+    /// Per layer, row-major: true = impassable.
+    #[serde(skip)]
+    blocked: Vec<Vec<bool>>,
 }
 
 /// Mutable environmental state: sparse dirty cells and contamination of infrastructure networks.
-#[derive(Resource, Debug, Clone, Default, Serialize)]
+#[derive(Resource, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Environment {
     /// Only non-clean cells are stored.
+    #[serde(with = "cells_as_list")]
     pub cells: BTreeMap<Position, CellState>,
     /// Network id → status id → contamination load.
     pub network_load: BTreeMap<String, BTreeMap<String, f32>>,
@@ -168,6 +175,20 @@ impl Environment {
 }
 
 
+mod cells_as_list {
+    use super::{CellState, Position};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::BTreeMap;
+
+    pub fn serialize<S: Serializer>(m: &BTreeMap<Position, CellState>, s: S) -> Result<S::Ok, S::Error> {
+        m.iter().collect::<Vec<_>>().serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<BTreeMap<Position, CellState>, D::Error> {
+        Ok(Vec::<(Position, CellState)>::deserialize(d)?.into_iter().collect())
+    }
+}
+
 /// A random cell of a zone spec, using the shared RNG.
 pub fn random_cell(world: &mut World, spec: &str) -> Option<Position> {
     let map = world.resource::<WorldMap>().clone();
@@ -188,6 +209,8 @@ impl MapData {
                 zones: vec![Zone { id: "world".into(), name: "Mondo".into(), layer: 0, x: 0, y: 0, w: 64, h: 64, tags: vec![] }],
                 portals: vec![],
                 networks: vec![],
+                walls: vec![],
+                blocked: vec![vec![false; 64 * 64]],
             };
         };
         let layers: Vec<Layer> = def
@@ -219,7 +242,19 @@ impl MapData {
                 b: Position::new(layer_idx(&p.b.0), p.b.1, p.b.2),
             })
             .collect();
-        let mut map = Self { layers, zones, portals, networks: vec![] };
+        let walls: Vec<(String, u16, i32, i32, i32, i32)> =
+            def.walls.iter().map(|w| (w.name.clone(), layer_idx(&w.layer), w.rect.0, w.rect.1, w.rect.2, w.rect.3)).collect();
+        let mut blocked: Vec<Vec<bool>> = layers.iter().map(|l| vec![false; (l.width * l.height).max(0) as usize]).collect();
+        for (_, l, x, y, w, h) in &walls {
+            let lw = layers[*l as usize].width;
+            let lh = layers[*l as usize].height;
+            for yy in (*y).max(0)..(y + h).min(lh) {
+                for xx in (*x).max(0)..(x + w).min(lw) {
+                    blocked[*l as usize][(yy * lw + xx) as usize] = true;
+                }
+            }
+        }
+        let mut map = Self { layers, zones, portals, networks: vec![], walls, blocked };
         map.networks = def
             .networks
             .iter()
@@ -231,6 +266,110 @@ impl MapData {
             })
             .collect();
         map
+    }
+
+    pub fn blocked(&self, p: &Position) -> bool {
+        let Some(l) = self.layers.get(p.layer as usize) else { return true };
+        if p.x < 0 || p.y < 0 || p.x >= l.width || p.y >= l.height {
+            return true;
+        }
+        self.blocked[p.layer as usize][(p.y * l.width + p.x) as usize]
+    }
+
+    /// A* over the layered grid (8 directions, no corner cutting, portals as edges). Returns the steps
+    /// after `from` until a cell within `range` of `goal`, or None if unreachable within `max_nodes`.
+    pub fn find_path(&self, from: Position, goal: Position, range: i32, allowed: &dyn Fn(&Position) -> bool, max_nodes: usize) -> Option<Vec<Position>> {
+        let portal_ends: Vec<(Position, Position)> = self.portals.iter().flat_map(|p| [(p.a, p.b), (p.b, p.a)]).collect();
+        let h = |p: &Position| -> i32 {
+            if p.layer == goal.layer {
+                (p.distance(&goal).unwrap_or(0) - range).max(0)
+            } else {
+                portal_ends.iter().filter(|(a, _)| a.layer == p.layer).map(|(a, _)| a.cost(p) + 1).min().unwrap_or(0)
+            }
+        };
+        // Dense arrays over all layers: index = layer offset + y * width + x.
+        let offsets: Vec<usize> = self
+            .layers
+            .iter()
+            .scan(0usize, |acc, l| {
+                let o = *acc;
+                *acc += (l.width * l.height).max(0) as usize;
+                Some(o)
+            })
+            .collect();
+        let total: usize = self.layers.iter().map(|l| (l.width * l.height).max(0) as usize).sum();
+        let idx = |p: &Position| offsets[p.layer as usize] + (p.y * self.layers[p.layer as usize].width + p.x) as usize;
+        let mut g = vec![i32::MAX; total];
+        let mut came = vec![usize::MAX; total];
+        let mut open = BinaryHeap::new();
+        g[idx(&from)] = 0;
+        open.push(Reverse((h(&from), 0, from)));
+        let mut expanded = 0;
+        while let Some(Reverse((_, cost, cur))) = open.pop() {
+            let ci = idx(&cur);
+            if cost > g[ci] {
+                continue;
+            }
+            if cur.within(&goal, range) {
+                let mut path = Vec::new();
+                let mut c = cur;
+                while c != from {
+                    path.push(c);
+                    let pi = came[idx(&c)];
+                    if pi == usize::MAX {
+                        break;
+                    }
+                    c = self.position_of(pi, &offsets);
+                }
+                path.reverse();
+                return Some(path);
+            }
+            expanded += 1;
+            if expanded > max_nodes {
+                return None;
+            }
+            let mut next: [Option<Position>; 12] = [None; 12];
+            let mut k = 0;
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let n = Position::new(cur.layer, cur.x + dx, cur.y + dy);
+                    if self.blocked(&n) || !allowed(&n) {
+                        continue;
+                    }
+                    if dx != 0 && dy != 0 && (self.blocked(&Position::new(cur.layer, cur.x + dx, cur.y)) || self.blocked(&Position::new(cur.layer, cur.x, cur.y + dy))) {
+                        continue;
+                    }
+                    next[k] = Some(n);
+                    k += 1;
+                }
+            }
+            for (a, b) in &portal_ends {
+                if *a == cur && allowed(b) && k < next.len() {
+                    next[k] = Some(*b);
+                    k += 1;
+                }
+            }
+            for n in next.iter().take(k).flatten() {
+                let ni = idx(n);
+                let nc = cost + 1;
+                if nc < g[ni] {
+                    g[ni] = nc;
+                    came[ni] = ci;
+                    open.push(Reverse((nc + h(n), nc, *n)));
+                }
+            }
+        }
+        None
+    }
+
+    fn position_of(&self, index: usize, offsets: &[usize]) -> Position {
+        let layer = offsets.iter().rposition(|o| *o <= index).unwrap_or(0);
+        let local = (index - offsets[layer]) as i32;
+        let w = self.layers[layer].width;
+        Position::new(layer as u16, local % w, local / w)
     }
 
     pub fn zone(&self, id: &str) -> Option<&Zone> {
@@ -361,7 +500,23 @@ mod tests {
             zones: vec![ZoneDef { id: "mine".into(), name: "Mine".into(), layer: "down".into(), rect: (0, 0, 5, 5), tags: vec!["dark".into()] }],
             portals: vec![PortalDef { name: "stairs".into(), a: ("up".into(), 10, 10), b: ("down".into(), 2, 2) }],
             networks: vec![],
+            walls: vec![],
         }))
+    }
+
+    #[test]
+    fn astar_goes_around_walls() {
+        let m = MapData::from_def(Some(&MapDef {
+            layers: vec![LayerDef { id: "up".into(), name: "Up".into(), width: 20, height: 20, underground: false }],
+            zones: vec![],
+            portals: vec![],
+            networks: vec![],
+            walls: vec![crate::content::WallDef { name: "muro".into(), layer: "up".into(), rect: (10, 0, 1, 18) }],
+        }));
+        let path = m.find_path(Position::new(0, 5, 5), Position::new(0, 15, 5), 0, &|_| true, 10_000).unwrap();
+        assert!(path.iter().all(|p| !m.blocked(p)));
+        assert!(path.iter().any(|p| p.y >= 18), "must go around the wall's end");
+        assert_eq!(*path.last().unwrap(), Position::new(0, 15, 5));
     }
 
     #[test]

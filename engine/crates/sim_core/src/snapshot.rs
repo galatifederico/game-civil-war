@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use bevy_ecs::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::ai::{Brain, ScoreEntry};
 use crate::anatomy::Body;
@@ -24,7 +24,7 @@ use crate::time::SimClock;
 use crate::victory::Progress;
 
 /// What a pawn is doing, ready for the client: action, progress bar, emotional state.
-#[derive(Component, Debug, Clone, Default, Serialize, PartialEq)]
+#[derive(Component, Debug, Clone, Default, Serialize, PartialEq, Deserialize)]
 pub struct ActivityState {
     pub action: Option<String>,
     pub label: String,

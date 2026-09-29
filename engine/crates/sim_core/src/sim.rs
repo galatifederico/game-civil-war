@@ -39,13 +39,14 @@ pub struct SimBuilder {
     ext: Extensions,
     systems: Vec<SystemAdder>,
     plugins: Vec<String>,
+    skip_placements: bool,
 }
 
 impl SimBuilder {
     pub fn new(seed: u64) -> Self {
         let mut ext = Extensions::default();
         crate::handlers::register_core(&mut ext);
-        Self { seed, packs: Vec::new(), ext, systems: Vec::new(), plugins: Vec::new() }
+        Self { seed, packs: Vec::new(), ext, systems: Vec::new(), plugins: Vec::new(), skip_placements: false }
     }
 
     pub fn add_pack(&mut self, pack: ContentPack) -> &mut Self {
@@ -88,6 +89,14 @@ impl SimBuilder {
     pub fn add_systems(&mut self, f: impl FnOnce(&mut Schedule) + Send + 'static) -> &mut Self {
         self.systems.push(Box::new(f));
         self
+    }
+
+    /// Builds the simulation and restores a save instead of placing the initial population.
+    pub fn build_from_save(mut self, save: &crate::save::SaveGame) -> Result<Simulation, ContentError> {
+        self.skip_placements = true;
+        let mut sim = self.build()?;
+        crate::save::load(&mut sim.world, save).map_err(|e| ContentError::Invalid(vec![e]))?;
+        Ok(sim)
     }
 
     pub fn build(self) -> Result<Simulation, ContentError> {
@@ -142,11 +151,11 @@ impl SimBuilder {
         schedule.add_systems((crate::stats::recompute_stats, crate::stats::decay_needs, low_needs).chain().in_set(SimSet::Derive));
         schedule.add_systems((crate::status::tick_statuses, crate::anatomy::natural_healing, crate::hygiene::hygiene_tick).chain().in_set(SimSet::Health));
         schedule.add_systems((crate::dungeon::tethers, crate::dungeon::spawners, crate::dungeon::triggers).chain().in_set(SimSet::World));
-        schedule.add_systems(crate::ai::think.in_set(SimSet::Ai));
+        schedule.add_systems((crate::player::follow_system, crate::ai::think).chain().in_set(SimSet::Ai));
         schedule.add_systems((crate::jobs::run_jobs, crate::crime::crime_upkeep).chain().in_set(SimSet::Act));
         schedule.add_systems((crate::buildings::buildings_tick, crate::logistics::post_logistics, crate::market::update_market, crate::economy::payroll).chain().in_set(SimSet::Economy));
         schedule.add_systems(
-            (crate::social::defections, crate::social::merges, crate::social::succession, crate::victory::collections, crate::victory::check_victory)
+            (crate::strategy::faction_goals, crate::social::defections, crate::social::merges, crate::social::succession, crate::victory::collections, crate::victory::check_victory)
                 .chain()
                 .in_set(SimSet::Social),
         );
@@ -157,7 +166,9 @@ impl SimBuilder {
         }
 
         let mut sim = Simulation { world, schedule, plugins: self.plugins };
-        sim.place_initial();
+        if !self.skip_placements {
+            sim.place_initial();
+        }
         Ok(sim)
     }
 }
@@ -290,6 +301,19 @@ impl Simulation {
 
     pub fn snapshot(&mut self, truth: bool) -> WorldSnapshot {
         crate::snapshot::snapshot(&mut self.world, truth)
+    }
+
+    pub fn save(&mut self) -> crate::save::SaveGame {
+        crate::save::save(&mut self.world)
+    }
+
+    pub fn save_to_file(&mut self, path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+        let json = serde_json::to_vec(&self.save()).map_err(std::io::Error::other)?;
+        std::fs::write(path, json)
+    }
+
+    pub fn read_save(path: impl AsRef<std::path::Path>) -> std::io::Result<crate::save::SaveGame> {
+        serde_json::from_slice(&std::fs::read(path)?).map_err(std::io::Error::other)
     }
 
     pub fn state_hash(&mut self) -> u64 {
