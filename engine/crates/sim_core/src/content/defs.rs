@@ -191,6 +191,9 @@ pub struct RaceDef {
     /// Can take other forms (see ShapeshiftFramework).
     #[serde(default)]
     pub shapeshifter: bool,
+    /// Needs that do not apply to this race (machines do not eat, beasts find their own food…).
+    #[serde(default)]
+    pub needs_exempt: Vec<Id>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -235,10 +235,17 @@ pub fn best_board_job(world: &mut World, e: Entity) -> Option<(f32, BoardJob)> {
         return None;
     }
     let jobs: Vec<BoardJob> = world.resource::<JobBoard>().jobs.values().filter(|j| open(j)).cloned().collect();
+    // Tethered pawns only take jobs inside their zone.
+    let tether = world.get::<crate::dungeon::Tethered>(e).map(|t| t.0.zone.clone());
+    let map = world.resource::<crate::map::WorldMap>().clone();
     let mut best: Option<(f32, BoardJob)> = None;
     for j in jobs {
         if let Some(f) = &j.faction
             && !my_factions.contains(f) {
+                continue;
+            }
+        if let (Some(z), Some(p)) = (&tether, j.target.position(world))
+            && !map.in_zone(z, &p) {
                 continue;
             }
         let Some(def) = content.jobs.get(&j.job) else { continue };

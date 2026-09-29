@@ -211,6 +211,8 @@ pub enum Selector {
     Random(Filter),
     /// A random cell inside a zone (or inside any zone with the tag, with `Zone("#tag")`).
     Zone(String),
+    /// A random walkable cell within this many cells, on the chooser's own map (a stroll).
+    Nearby(i32),
     /// The zone that holds the entity's post (e.g. the throne or a patrol route of its faction).
     OwnFactionZone(String),
 }

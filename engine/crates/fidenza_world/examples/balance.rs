@@ -33,6 +33,9 @@ fn main() {
             let broke = living.iter().filter(|e| e.money < 3.0).count() as f64 / living.len().max(1) as f64;
             let food: f64 = snap.entities.iter().filter_map(|e| e.building.as_ref()).filter(|b| !b.sells.is_empty())
                 .map(|b| b.stock.iter().filter(|(i, _)| ["pane", "salumi", "carne", "ortaggi", "fake_meat"].contains(&i.as_str())).map(|(_, n)| *n as f64).sum::<f64>()).sum();
+            let svago = living.iter().map(|e| *e.needs.get("svago").unwrap_or(&1.0) as f64).sum::<f64>() / living.len().max(1) as f64;
+            let riposo = living.iter().map(|e| *e.needs.get("riposo").unwrap_or(&1.0) as f64).sum::<f64>() / living.len().max(1) as f64;
+            if day % 3 == 1 { println!("  [seed {seed} giorno {day}] svago {svago:.2} riposo {riposo:.2}"); }
             hunger.entry(day).or_default().push((fame, broke, food));
             let wallets_alive: f64 = pawns.iter().filter(|e| !e.dead).map(|e| e.money).sum();
             let wallets_dead: f64 = pawns.iter().filter(|e| e.dead).map(|e| e.money).sum();

@@ -187,9 +187,14 @@ pub fn stat_recovery(content: Res<Content>, mut q: Query<&mut Stats, (With<Pawn>
 }
 
 /// Needs decay, modulated by statuses (`need_rates` multiply the base decay).
-pub fn decay_needs(content: Res<Content>, mut q: Query<(&mut Needs, &StatusEffects), (With<Pawn>, Without<Dead>)>) {
-    for (mut needs, statuses) in &mut q {
+pub fn decay_needs(content: Res<Content>, mut q: Query<(&mut Needs, &StatusEffects, &Race), (With<Pawn>, Without<Dead>)>) {
+    for (mut needs, statuses, race) in &mut q {
+        let exempt = content.races.get(&race.0).map(|r| r.needs_exempt.clone()).unwrap_or_default();
         for (nid, nd) in &content.needs {
+            if exempt.contains(nid) {
+                needs.0.insert(nid.clone(), 1.0);
+                continue;
+            }
             let mut rate = 1.0;
             for (sid, st) in &statuses.active {
                 if let Some(sd) = content.statuses.get(sid) {

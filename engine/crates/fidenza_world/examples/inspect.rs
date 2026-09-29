@@ -20,7 +20,7 @@ fn main() {
     };
     if let Some((_, e)) = found {
         if let Some(v) = sim_core::snapshot::entity_view(&sim.world, e, true) {
-            println!("inventario: {:?} bisogni: {:?}", v.inventory, v.needs);
+            println!("id {} pos {:?} inventario: {:?} bisogni: {:?}", v.id, v.pos, v.inventory, v.needs);
         }
         println!("── AI di {template} ──\n{}", serde_json::to_string_pretty(&sim_core::snapshot::ai_inspect(&sim.world, e)).unwrap());
     }

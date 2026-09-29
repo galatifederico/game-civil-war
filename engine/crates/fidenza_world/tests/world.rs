@@ -165,12 +165,13 @@ fn champion_moves_where_the_player_says_and_squads_follow() {
     let mut sim = sim(3);
     let (champ, ce) = id_of(&mut sim, "leader_anarchico");
     assert!(sim.world.get::<sim_core::player::Controlled>(ce).is_some(), "the leader is the player's champion");
-    // Across the Stirone river: the path must use a bridge.
-    let goal = Position::new(0, 70, 30);
-    sim.execute(SimCommand::PlayerOrder { player: "giocatore".into(), entity: champ, order: Order::Move { pos: goal } }).unwrap();
+    // To another map (Piazza → Borgo → Quartiere Nerd): borders and walls on the way.
     let map = sim.world.resource::<WorldMap>().clone();
+    let layer = map.layers.iter().position(|l| l.id == "fumetteria").unwrap() as u16;
+    let goal = Position::new(layer, 12, 20);
+    sim.execute(SimCommand::PlayerOrder { player: "giocatore".into(), entity: champ, order: Order::Move { pos: goal } }).unwrap();
     let mut touched_wall = false;
-    for _ in 0..80 {
+    for _ in 0..120 {
         sim.tick();
         let p = *sim.world.get::<Position>(ce).unwrap();
         touched_wall |= map.blocked(&p);

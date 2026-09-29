@@ -96,6 +96,7 @@ impl SimBuilder {
         self.skip_placements = true;
         let mut sim = self.build()?;
         crate::save::load(&mut sim.world, save).map_err(|e| ContentError::Invalid(vec![e]))?;
+        block_building_footprints(&mut sim.world);
         Ok(sim)
     }
 
@@ -170,6 +171,21 @@ impl SimBuilder {
             sim.place_initial();
         }
         Ok(sim)
+    }
+}
+
+/// Buildings are solid except for their door (the anchor cell).
+fn block_building_footprints(world: &mut World) {
+    let content = world.resource::<Content>().clone();
+    let mut cells = Vec::new();
+    let mut q = world.query::<(&Building, &Position)>();
+    for (b, p) in q.iter(world) {
+        if let Some((w, h)) = content.buildings.get(&b.def).and_then(|d| d.footprint) {
+            cells.extend(crate::map::footprint_cells(*p, w, h).into_iter().filter(|c| c != p));
+        }
+    }
+    if !cells.is_empty() {
+        world.resource_mut::<WorldMap>().make_mut().block(&cells);
     }
 }
 
@@ -256,18 +272,7 @@ impl Simulation {
                 crate::buildings::spawn_building(world, building, pos, name.clone(), owner);
             }
         }
-        // Buildings are solid except for their door (the anchor cell).
-        let content = world.resource::<Content>().clone();
-        let mut cells = Vec::new();
-        let mut q = world.query::<(&Building, &Position)>();
-        for (b, p) in q.iter(world) {
-            if let Some((w, h)) = content.buildings.get(&b.def).and_then(|d| d.footprint) {
-                cells.extend(crate::map::footprint_cells(*p, w, h).into_iter().filter(|c| c != p));
-            }
-        }
-        if !cells.is_empty() {
-            world.resource_mut::<WorldMap>().make_mut().block(&cells);
-        }
+        block_building_footprints(world);
         // Derived state ready before the first tick (stats, tags, activity).
         let mut init = Schedule::default();
         init.set_executor(SingleThreadedExecutor::new());

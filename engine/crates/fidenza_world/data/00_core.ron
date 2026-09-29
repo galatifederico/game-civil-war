@@ -61,10 +61,10 @@
         (id: "reputazione_stampa", name: "Reputazione Stampa", min: -100, default: 0),
     ],
     needs: [
-        (id: "fame", name: "Fame", decay: 0.009, low_threshold: 0.1,
+        (id: "fame", name: "Fame", decay: 0.007, low_threshold: 0.1,
          effects_when_low: [ModStat(stat: "morale", amount: -0.6)]),
         (id: "riposo", name: "Riposo", decay: 0.02),
-        (id: "svago", name: "Svago", decay: 0.01, low_threshold: 0.15,
+        (id: "svago", name: "Svago", decay: 0.008, low_threshold: 0.15,
          effects_when_low: [ModStat(stat: "umore", amount: -0.6), ModStat(stat: "morale", amount: -0.3)]),
     ],
     body_plans: [

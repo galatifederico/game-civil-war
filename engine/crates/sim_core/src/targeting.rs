@@ -43,6 +43,22 @@ pub fn resolve(world: &mut World, chooser: Entity, sel: &Selector) -> Option<Job
                 _ => Some(JobTarget::Cell(cell)),
             }
         }
+        Selector::Nearby(r) => {
+            let me = world.get::<Position>(chooser).copied()?;
+            let map = world.resource::<WorldMap>().clone();
+            let tether = world.get::<crate::dungeon::Tethered>(chooser).map(|t| t.0.zone.clone());
+            for _ in 0..12 {
+                let (dx, dy) = {
+                    let mut rng = world.resource_mut::<SimRng>();
+                    (rng.range_i32(-r, *r), rng.range_i32(-r, *r))
+                };
+                let p = map.clamp(Position::new(me.layer, me.x + dx, me.y + dy));
+                if p != me && !map.blocked(&p) && tether.as_ref().is_none_or(|z| map.in_zone(z, &p)) {
+                    return Some(JobTarget::Cell(p));
+                }
+            }
+            None
+        }
         Selector::OwnFactionZone(tag) => {
             let f = world.get::<FactionMember>(chooser).map(|m| m.faction.clone())?;
             let zones = world.resource::<Content>().factions.get(&f)?.zones.clone();
