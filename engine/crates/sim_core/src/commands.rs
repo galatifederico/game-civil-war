@@ -42,6 +42,9 @@ pub enum SimCommand {
     SetSprite { id: String, sprite: SpriteDef },
     /// A player's order to its champion or to a member of its faction (members may refuse).
     PlayerOrder { player: String, entity: SimId, order: crate::player::Order },
+    /// A player proposes an alliance: accepted when the other faction's relation is at least
+    /// `social.alliance_threshold` (players accept each other's automatically).
+    PlayerAlliance { player: String, faction: String },
     /// A player's order to one of its squads.
     PlayerSquadOrder { player: String, squad: u64, order: Option<SquadOrder> },
     /// A player creates a squad from members of its faction (the champion leads it).
@@ -235,6 +238,24 @@ pub fn apply(world: &mut World, cmd: SimCommand) -> Result<String, String> {
         SimCommand::SetSprite { id, sprite } => {
             world.resource_mut::<SpriteMapping>().0.insert(id.clone(), sprite);
             Ok(format!("sprite di {id} aggiornato"))
+        }
+        SimCommand::PlayerAlliance { player, faction } => {
+            let mine = world.resource::<crate::factions::Players>().players.get(&player).map(|p| p.faction.clone()).ok_or("giocatore inesistente")?;
+            if mine == faction || !world.resource::<Content>().factions.contains_key(&faction) {
+                return Err("fazione non valida".into());
+            }
+            let f = world.resource::<Factions>();
+            if f.allied(&mine, &faction) {
+                return Ok("già alleati".into());
+            }
+            let needed = world.resource::<Params>().get("social.alliance_threshold", 40.0) as f32;
+            let rel = f.relation(&faction, &mine);
+            let other_player = f.states.get(&faction).is_some_and(|s| s.controlled_by.is_some());
+            if rel < needed && !other_player {
+                return Err(format!("rifiutata: relazione {rel:.0}, serve almeno {needed:.0}"));
+            }
+            crate::social::ally(world, &mine, &faction);
+            Ok("alleanza stretta".into())
         }
         SimCommand::PlayerOrder { player, entity, order } => crate::player::give_order(world, &player, entity, order),
         SimCommand::PlayerSquadOrder { player, squad, order } => {

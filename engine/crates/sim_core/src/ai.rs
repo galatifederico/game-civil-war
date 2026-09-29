@@ -189,7 +189,7 @@ pub fn think(world: &mut World) {
     let content = world.resource::<Content>().clone();
     crate::targeting::rebuild_index(world);
     for e in decision_order(world) {
-        if world.get::<Detained>(e).is_some() {
+        if world.get::<Detained>(e).is_some() || world.get::<crate::player::KnockedOut>(e).is_some() {
             continue;
         }
         // Champions only look after their own needs, and only while the player has not given an order.

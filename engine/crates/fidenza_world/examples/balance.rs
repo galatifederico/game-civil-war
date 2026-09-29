@@ -13,6 +13,7 @@ fn main() {
     let mut rows: BTreeMap<u64, Vec<[f64; 8]>> = BTreeMap::new();
     let mut endings = Vec::new();
     let mut hunger: BTreeMap<u64, Vec<(f64, f64, f64)>> = BTreeMap::new();
+    let mut money: BTreeMap<u64, Vec<(f64, f64, f64)>> = BTreeMap::new();
     for seed in 1..=seeds {
         let mut sim = fidenza_world::build(seed).unwrap();
         let morale = sim.content().bindings.morale.clone();
@@ -33,6 +34,9 @@ fn main() {
             let food: f64 = snap.entities.iter().filter_map(|e| e.building.as_ref()).filter(|b| !b.sells.is_empty())
                 .map(|b| b.stock.iter().filter(|(i, _)| ["pane", "salumi", "carne", "ortaggi", "fake_meat"].contains(&i.as_str())).map(|(_, n)| *n as f64).sum::<f64>()).sum();
             hunger.entry(day).or_default().push((fame, broke, food));
+            let wallets_alive: f64 = pawns.iter().filter(|e| !e.dead).map(|e| e.money).sum();
+            let wallets_dead: f64 = pawns.iter().filter(|e| e.dead).map(|e| e.money).sum();
+            money.entry(day).or_default().push((treasury, wallets_alive, wallets_dead));
             rows.entry(day).or_default().push([alive, today("death"), today("spawn"), avg_morale, price_index, treasury, today("crime"), refused + today("article")]);
         }
         let holdings = sim_core::inventory_ops::all_faction_holdings(&mut sim.world);
@@ -56,6 +60,12 @@ fn main() {
     for (day, v) in hunger.iter().step_by(3) {
         let n = v.len() as f64;
         println!("{day:>6} {:>5.2} {:>9.2} {:>16.0}", v.iter().map(|x| x.0).sum::<f64>() / n, v.iter().map(|x| x.1).sum::<f64>() / n, v.iter().map(|x| x.2).sum::<f64>() / n);
+    }
+    println!("giorno  tesori  portafogli_vivi  portafogli_morti  totale");
+    for (day, v) in money.iter().step_by(3) {
+        let n = v.len() as f64;
+        let (a, b, c) = (v.iter().map(|x| x.0).sum::<f64>() / n, v.iter().map(|x| x.1).sum::<f64>() / n, v.iter().map(|x| x.2).sum::<f64>() / n);
+        println!("{day:>6} {a:>7.0} {b:>16.0} {c:>17.0} {:>7.0}", a + b + c);
     }
     for e in endings {
         println!("{e}");

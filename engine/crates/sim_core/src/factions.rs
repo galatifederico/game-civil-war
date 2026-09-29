@@ -38,6 +38,9 @@ pub struct FactionState {
     /// Salary overrides per rank (PayrollEngine configuration matrix).
     pub salaries: BTreeMap<String, f64>,
     pub unpaid_periods: u32,
+    /// Allied factions: never hostile to each other (player factions ally instead of merging).
+    #[serde(default)]
+    pub allies: BTreeSet<String>,
 }
 
 #[derive(Resource, Debug, Clone, Default, Serialize, Deserialize)]
@@ -130,11 +133,15 @@ impl Factions {
 
     /// Hostile when the relation is at or below `threshold` (parameter `social.hostile_threshold`).
     pub fn hostile_at(&self, a: &str, b: &str, threshold: f32) -> bool {
-        a != b && self.relation(a, b) <= threshold
+        a != b && !self.allied(a, b) && self.relation(a, b) <= threshold
+    }
+
+    pub fn allied(&self, a: &str, b: &str) -> bool {
+        self.states.get(a).is_some_and(|s| s.allies.contains(b))
     }
 
     pub fn friendly(&self, a: &str, b: &str) -> bool {
-        a == b || self.relation(a, b) >= 30.0
+        a == b || self.allied(a, b) || self.relation(a, b) >= 30.0
     }
 }
 

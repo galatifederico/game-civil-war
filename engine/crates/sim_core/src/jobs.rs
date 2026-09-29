@@ -301,7 +301,7 @@ fn work_rate(world: &World, e: Entity, def: &JobDef) -> f32 {
 pub fn run_jobs(world: &mut World) {
     let pawns = crate::sorted_entities::<Task>(world);
     for e in pawns {
-        if world.get::<Dead>(e).is_some() || world.get::<crate::crime::Detained>(e).is_some() {
+        if world.get::<Dead>(e).is_some() || world.get::<crate::crime::Detained>(e).is_some() || world.get::<crate::player::KnockedOut>(e).is_some() {
             continue;
         }
         let Some(active) = world.get::<Task>(e).and_then(|t| t.job.clone()) else { continue };
@@ -408,6 +408,10 @@ fn complete_job(world: &mut World, e: Entity, active: &ActiveJob, def: &JobDef) 
     if result.ok {
         let ectx = EffectCtx::new(Some(e), target, format!("job:{}", def.id));
         apply_effects(world, &ectx, &def.effects);
+        // Paid work: `wage` in the job params (minted; the guild share goes to the faction).
+        if let Some(w) = def.params.get("wage").and_then(|v| v.as_f64()).filter(|w| *w > 0.0) {
+            crate::economy::earn(world, e, w);
+        }
         if let Some(crime) = &def.crime {
             crate::crime::commit(world, e, crime, target, pos);
         }

@@ -34,6 +34,7 @@
         "market.change_event": 0.08,
         "social.hostile_threshold": -60.0,
         "logistics.batch": 8.0,
+        "economy.guild_income_share": 0.5,
         "health.natural_heal": 0.15,
     },
     stats: [

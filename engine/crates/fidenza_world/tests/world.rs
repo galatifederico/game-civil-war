@@ -234,3 +234,53 @@ fn idle_champion_looks_after_its_needs() {
     let needs = sim.world.get::<Needs>(ce).unwrap();
     assert!(needs.get("fame") > 0.1, "the champion starved: {:?}", needs.0);
 }
+
+#[test]
+fn champion_is_knocked_out_instead_of_dying() {
+    let mut sim = sim(6);
+    let (champ, ce) = id_of(&mut sim, "leader_anarchico");
+    let (killer, ke) = id_of(&mut sim, "ninja");
+    let money_before = sim.world.get::<Wallet>(ce).unwrap().0;
+    let killer_money = sim.world.get::<Wallet>(ke).unwrap().0;
+    sim.execute(SimCommand::ApplyEffect { subject: Some(champ), target: Some(killer), effect: Effect::Damage { amount: 500.0, part: Some("testa".into()) } }).unwrap();
+    assert!(sim.world.get::<Dead>(ce).is_none(), "a champion must never die");
+    assert!(sim.world.get::<sim_core::player::KnockedOut>(ce).is_some());
+    let lost = money_before - sim.world.get::<Wallet>(ce).unwrap().0;
+    assert!(lost > 0.0 && (sim.world.get::<Wallet>(ke).unwrap().0 - killer_money - lost).abs() < 0.01, "the knocker takes the lost money");
+    // Out of action: orders are refused.
+    assert!(sim.execute(SimCommand::PlayerOrder { player: "giocatore".into(), entity: champ, order: sim_core::player::Order::Stop }).is_err());
+    sim.execute(SimCommand::ApplyEffect { subject: Some(champ), target: None, effect: Effect::Kill }).unwrap();
+    assert!(sim.world.get::<Dead>(ce).is_none());
+    sim.run(14);
+    assert!(sim.world.get::<sim_core::player::KnockedOut>(ce).is_none(), "the champion gets back up");
+    assert!(sim.events().of_kind("recovered").count() >= 1);
+}
+
+#[test]
+fn player_faction_only_makes_alliances() {
+    let mut sim = sim(7);
+    sim.execute(SimCommand::SetRelation { a: "anarchici_commercio".into(), b: "ubriaconi".into(), value: 100.0 }).unwrap();
+    sim.run(3);
+    let f = sim.world.resource::<Factions>();
+    assert!(f.states["anarchici_commercio"].absorbed_into.is_none());
+    assert!(f.states["ubriaconi"].absorbed_into.is_none(), "players do not absorb either");
+    assert!(f.allied("anarchici_commercio", "ubriaconi"));
+    // Forced merge attempts become alliances too.
+    sim_core::social::merge(&mut sim.world, "cda_fidenza_village", "anarchici_commercio");
+    assert!(sim.world.resource::<Factions>().states["anarchici_commercio"].absorbed_into.is_none());
+    // Alliance proposals: refused with low relations, accepted with good ones.
+    assert!(sim.execute(SimCommand::PlayerAlliance { player: "giocatore".into(), faction: "chiesa".into() }).is_err());
+    sim.execute(SimCommand::SetRelation { a: "anarchici_commercio".into(), b: "chiesa".into(), value: 60.0 }).unwrap();
+    sim.execute(SimCommand::PlayerAlliance { player: "giocatore".into(), faction: "chiesa".into() }).unwrap();
+    assert!(sim.world.resource::<Factions>().allied("chiesa", "anarchici_commercio"));
+}
+
+#[test]
+fn payroll_adapts_instead_of_bankrupting() {
+    let mut sim = sim(8);
+    sim.world.resource_mut::<Factions>().states.get_mut("polizia_neutra").unwrap().treasury = 60.0;
+    sim.run(24 * 3 + 1);
+    let t = sim.world.resource::<Factions>().treasury("polizia_neutra");
+    assert!(t > 0.0, "police treasury should never be emptied by salaries");
+    assert!(sim.events().of_kind(kind::PAYROLL).any(|e| e.message.contains("% pagati") && e.message.contains("Polizia")));
+}

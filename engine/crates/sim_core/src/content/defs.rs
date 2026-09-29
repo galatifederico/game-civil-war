@@ -618,6 +618,10 @@ pub struct BuildingDef {
     pub passive_interval: u64,
     /// Removes fog of war around it for the owner's faction (radius in cells).
     pub vision: i32,
+    /// Goods sold outside the world every `economy.export_interval` ticks (money comes in from outside).
+    pub exports: Vec<Id>,
+    /// Money earned every `economy.export_interval` ticks from visitors (tourism, gambling…).
+    pub income: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

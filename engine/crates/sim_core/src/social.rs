@@ -13,6 +13,9 @@ use crate::stats::{Dead, Pawn};
 use crate::time::SimClock;
 
 pub fn change_faction(world: &mut World, e: Entity, faction: &str, reason: &str) {
+    if world.get::<Leader>(e).is_some() {
+        return; // a champion always stays with its player's faction
+    }
     let content = world.resource::<Content>();
     if !content.factions.contains_key(faction) {
         return;
@@ -131,24 +134,48 @@ pub fn merges(world: &mut World) {
                 continue;
             }
             let (pa, pb) = (factions.states[*a].controlled_by.is_some(), factions.states[*b].controlled_by.is_some());
-            let (absorber, absorbed) = match (pa, pb) {
-                (true, true) => continue,
-                (true, false) => (a, b),
-                (false, true) => (b, a),
-                _ => {
-                    let (ca, cb) = (count.get(*a).copied().unwrap_or(0), count.get(*b).copied().unwrap_or(0));
-                    if ca >= cb { (a, b) } else { (b, a) }
+            // A player's faction is never absorbed and never absorbs: it only makes alliances.
+            if pa || pb {
+                if !factions.allied(a, b) {
+                    ally(world, a, b);
+                    return;
                 }
-            };
+                continue;
+            }
+            // Between AI factions the larger one absorbs the smaller.
+            let (ca, cb) = (count.get(*a).copied().unwrap_or(0), count.get(*b).copied().unwrap_or(0));
+            let (absorber, absorbed) = if ca >= cb { (a, b) } else { (b, a) };
             merge(world, absorber, absorbed);
             return; // one merge per tick keeps things readable and deterministic
         }
     }
 }
 
+/// Two factions become allies (both directions).
+pub fn ally(world: &mut World, a: &str, b: &str) {
+    let tick = world.resource::<SimClock>().tick;
+    {
+        let mut f = world.resource_mut::<Factions>();
+        for (x, y) in [(a, b), (b, a)] {
+            if let Some(s) = f.states.get_mut(x) {
+                s.allies.insert(y.to_string());
+            }
+        }
+    }
+    let content = world.resource::<Content>();
+    let n = |f: &str| content.factions.get(f).map_or(f.to_string(), |d| d.name.clone());
+    let msg = format!("Alleanza tra {} e {}", n(a), n(b));
+    world.resource_mut::<EventLog>().push(
+        tick,
+        EventBuilder::new("alliance", msg).faction(Some(a.to_string())).news(0.8).tags(["alliance", "politics"]),
+    );
+}
+
 pub fn merge(world: &mut World, absorber: &str, absorbed: &str) {
-    if world.resource::<Factions>().states.get(absorbed).is_some_and(|s| s.controlled_by.is_some()) {
-        return; // the player can never be absorbed
+    let player_involved = |f: &str| world.resource::<Factions>().states.get(f).is_some_and(|s| s.controlled_by.is_some());
+    if player_involved(absorbed) || player_involved(absorber) {
+        ally(world, absorber, absorbed); // players only make alliances
+        return;
     }
     let tick = world.resource::<SimClock>().tick;
     let content = world.resource::<Content>().clone();
@@ -235,7 +262,8 @@ pub fn succession(world: &mut World) {
                 }
                 msg += &format!(" (+{} punti vittoria)", t.victory_points);
             }
-            if t.grants_faction_control {
+            let owned_by_other = world.resource::<Factions>().states.get(&t.faction).and_then(|s| s.controlled_by.clone()).is_some_and(|o| &o != p);
+            if t.grants_faction_control && !owned_by_other {
                 if let Some(s) = world.resource_mut::<Factions>().states.get_mut(&t.faction) {
                     s.controlled_by = Some(p.clone());
                 }

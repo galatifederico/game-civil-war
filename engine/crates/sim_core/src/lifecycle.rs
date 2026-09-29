@@ -189,6 +189,10 @@ pub fn kill(world: &mut World, e: Entity, cause: &str, killer: Option<Entity>) {
     if world.get::<Dead>(e).is_some() {
         return;
     }
+    if world.get::<Leader>(e).is_some() {
+        crate::player::knock_out(world, e, cause, killer);
+        return;
+    }
     if world.get::<Immortal>(e).is_some() {
         if let Some(mut b) = world.get_mut::<Body>(e) {
             for p in b.parts.iter_mut().filter(|p| p.vital) {
@@ -199,6 +203,12 @@ pub fn kill(world: &mut World, e: Entity, cause: &str, killer: Option<Entity>) {
     }
     let tick = world.resource::<SimClock>().tick;
     release_task(world, e);
+    // Inheritance: the wallet goes to the faction's guild treasury.
+    let inherited = world.get::<Wallet>(e).map_or(0.0, |w| w.0);
+    if let (Some(f), true) = (world.get::<FactionMember>(e).map(|m| m.faction.clone()), inherited > 0.0) {
+        world.resource_mut::<Factions>().add_treasury(&f, inherited);
+        world.get_mut::<Wallet>(e).unwrap().0 = 0.0;
+    }
     world.entity_mut(e).insert(Dead { tick, cause: cause.to_string() });
     world.entity_mut(e).remove::<crate::crime::Detained>();
     let id = world.get::<SimId>(e).copied();

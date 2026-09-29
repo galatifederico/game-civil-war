@@ -151,9 +151,9 @@ impl SimBuilder {
         schedule.add_systems((crate::stats::stat_recovery, crate::stats::recompute_stats, crate::stats::decay_needs, low_needs).chain().in_set(SimSet::Derive));
         schedule.add_systems((crate::status::tick_statuses, crate::anatomy::natural_healing, crate::hygiene::hygiene_tick).chain().in_set(SimSet::Health));
         schedule.add_systems((crate::dungeon::tethers, crate::dungeon::spawners, crate::dungeon::triggers).chain().in_set(SimSet::World));
-        schedule.add_systems((crate::player::follow_system, crate::ai::think).chain().in_set(SimSet::Ai));
+        schedule.add_systems((crate::player::wake_up, crate::player::follow_system, crate::ai::think).chain().in_set(SimSet::Ai));
         schedule.add_systems((crate::jobs::run_jobs, crate::crime::crime_upkeep).chain().in_set(SimSet::Act));
-        schedule.add_systems((crate::buildings::buildings_tick, crate::logistics::post_logistics, crate::market::update_market, crate::economy::payroll).chain().in_set(SimSet::Economy));
+        schedule.add_systems((crate::buildings::buildings_tick, crate::logistics::post_logistics, crate::market::update_market, crate::economy::exports, crate::economy::payroll).chain().in_set(SimSet::Economy));
         schedule.add_systems(
             (crate::strategy::faction_goals, crate::social::defections, crate::social::merges, crate::social::succession, crate::victory::collections, crate::victory::check_victory)
                 .chain()

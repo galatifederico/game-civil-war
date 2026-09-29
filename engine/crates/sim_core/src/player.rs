@@ -67,6 +67,9 @@ pub fn give_order(world: &mut World, player: &str, id: SimId, order: Order) -> R
     if world.get::<Dead>(e).is_some() {
         return Err("è morto".into());
     }
+    if world.get::<KnockedOut>(e).is_some() {
+        return Err("è svenuto, riprova tra poco".into());
+    }
     let p = world.resource::<Players>().players.get(player).cloned().ok_or_else(|| format!("giocatore '{player}' inesistente"))?;
     let champion = world.get::<Leader>(e).is_some_and(|l| l.player == player);
     let member = world.get::<FactionMember>(e).is_some_and(|m| m.faction == p.faction);
@@ -182,6 +185,60 @@ pub fn follow_system(world: &mut World) {
         let busy = world.get::<Task>(e).is_some_and(|t| t.job.is_some() && t.forced);
         if !me.within(&tp, f.distance) && !busy {
             move_near(world, e, f.target, f.distance);
+        }
+    }
+}
+
+/// A champion never dies: it is knocked out for a while instead.
+#[derive(Component, Debug, Clone, Serialize, Deserialize)]
+pub struct KnockedOut {
+    pub until: u64,
+}
+
+/// What happens to a champion instead of dying: out of action for `player.knockout_ticks`, loses
+/// `player.knockout_money_loss` of its money (to whoever knocked it out), wakes up with patched wounds.
+pub fn knock_out(world: &mut World, e: Entity, cause: &str, by: Option<Entity>) {
+    let tick = world.resource::<SimClock>().tick;
+    let p = world.resource::<Params>();
+    let (ticks, loss) = (p.get("player.knockout_ticks", 12.0) as u64, p.get("player.knockout_money_loss", 0.2).clamp(0.0, 1.0));
+    release_task(world, e);
+    world.entity_mut(e).remove::<Follow>();
+    let lost = world.get::<crate::stats::Wallet>(e).map_or(0.0, |w| (w.0 * loss * 100.0).round() / 100.0);
+    if let Some(mut w) = world.get_mut::<crate::stats::Wallet>(e) {
+        w.0 -= lost;
+    }
+    if let Some(mut w) = by.filter(|b| *b != e).and_then(|b| world.get_mut::<crate::stats::Wallet>(b)) {
+        w.0 += lost;
+    }
+    if let Some(mut b) = world.get_mut::<crate::anatomy::Body>(e) {
+        for part in b.parts.iter_mut().filter(|p| !p.missing) {
+            part.hp = part.hp.max(part.max_hp * 0.3);
+        }
+    }
+    world.entity_mut(e).insert(KnockedOut { until: tick + ticks });
+    let name = crate::effects::name_of(world, e);
+    let (id, by_id) = (world.get::<SimId>(e).copied(), by.and_then(|b| world.get::<SimId>(b).copied()));
+    let pos = world.get::<Position>(e).copied();
+    world.resource_mut::<EventLog>().push(
+        tick,
+        EventBuilder::new("knocked_out", format!("{name} va al tappeto ({cause}): fuori gioco per {ticks} tick, perde {lost:.0}"))
+            .actor(by_id)
+            .target(id)
+            .pos(pos)
+            .news(0.7)
+            .tags(["champion", "violence"]),
+    );
+}
+
+/// Knocked-out champions wake up.
+pub fn wake_up(world: &mut World) {
+    let tick = world.resource::<SimClock>().tick;
+    for e in crate::sorted_entities::<KnockedOut>(world) {
+        if world.get::<KnockedOut>(e).is_some_and(|k| k.until <= tick) {
+            world.entity_mut(e).remove::<KnockedOut>();
+            let name = crate::effects::name_of(world, e);
+            let id = world.get::<SimId>(e).copied();
+            world.resource_mut::<EventLog>().push(tick, EventBuilder::new("recovered", format!("{name} si rialza")).target(id).tags(["champion"]));
         }
     }
 }

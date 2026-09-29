@@ -242,13 +242,7 @@ fn process(world: &mut World, ctx: &JobCtx) -> JobResult {
     };
     let Some(b) = crate::lifecycle::entity_of(world, bid) else { return JobResult::fail("edificio sparito") };
     match crate::buildings::process_recipe(world, b, ri) {
-        Ok(msg) => {
-            let wage = ctx.param_f("wage", 0.0);
-            if wage > 0.0 {
-                crate::economy::earn(world, ctx.actor, wage);
-            }
-            JobResult::ok_msg(msg)
-        }
+        Ok(msg) => JobResult::ok_msg(msg),
         Err(e) => JobResult::fail(e),
     }
 }

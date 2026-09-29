@@ -59,9 +59,10 @@ pub fn update_activity(world: &mut World) {
         Option<&Detained>,
         Option<&Disguise>,
         &StatusEffects,
+        Option<&crate::player::KnockedOut>,
         &mut ActivityState,
     )>();
-    for (task, stats, pos, dead, detained, disguise, statuses, mut act) in q.iter_mut(world) {
+    for (task, stats, pos, dead, detained, disguise, statuses, knocked, mut act) in q.iter_mut(world) {
         let morale = stats.get(&morale_stat);
         let (progress, job, target) = task.job.as_ref().map_or((0.0, None, None), |j| {
             let p = if j.required > 0.0 { (j.progress / j.required).clamp(0.0, 1.0) } else { 0.0 };
@@ -81,9 +82,14 @@ pub fn update_activity(world: &mut World) {
         if disguise.is_some() {
             flags.push("disguised".to_string());
         }
+        if knocked.is_some() {
+            flags.push("knocked_out".to_string());
+        }
         flags.extend(statuses.active.keys().cloned());
         let label = if dead.is_some() {
             "Morto".to_string()
+        } else if knocked.is_some() {
+            "Al tappeto".to_string()
         } else if detained.is_some() {
             "In cella".to_string()
         } else if task.label.is_empty() {

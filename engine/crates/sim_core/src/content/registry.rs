@@ -320,6 +320,9 @@ impl Validator<'_> {
             for i in b.sells.keys().chain(b.stock.keys()).chain(b.cost.keys()).chain(b.passive.keys()) {
                 self.check(&c.items, "oggetto", i, &ctx);
             }
+            for i in &b.exports {
+                self.check(&c.items, "oggetto", i, &ctx);
+            }
             for dc in &b.consequences {
                 self.effects(&dc.effects, &ctx);
             }

@@ -145,14 +145,18 @@ pub fn damage(world: &mut World, e: Entity, amount: f32, part: Option<&str>, sou
         }
     };
     let Some(i) = idx else { return DamageOutcome::Nothing };
-    let immortal = world.get::<Immortal>(e).is_some();
+    let immortal = world.get::<Immortal>(e).is_some() || world.get::<crate::factions::Leader>(e).is_some();
+    let champion = world.get::<crate::factions::Leader>(e).is_some();
     let before = body.parts[i].hp;
     body.parts[i].hp -= amount;
     let part_name = body.parts[i].name.clone();
     let severe_ratio = world.resource::<Params>().f("health.bleed_threshold");
     let outcome = if body.parts[i].hp <= 0.0 {
         if body.parts[i].vital {
-            if immortal {
+            if champion {
+                body.parts[i].hp = 0.0;
+                DamageOutcome::Killed { part: part_name.clone() }
+            } else if immortal {
                 body.parts[i].hp = 1.0;
                 DamageOutcome::Wounded { part: part_name.clone() }
             } else {

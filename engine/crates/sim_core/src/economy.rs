@@ -88,65 +88,157 @@ pub fn buy(world: &mut World, buyer: Entity, shop_e: Entity, item: &str) -> Resu
     Ok(price)
 }
 
-/// Pays salaries every `economy.payroll_period` ticks from each faction's treasury.
+/// Exports and tourism: money entering the world. Every `economy.export_interval` ticks each working
+/// building sells up to `economy.export_batch` units of its export goods at the market price and earns
+/// its visitor income; both go to the owner (a faction's guild treasury).
+pub fn exports(world: &mut World) {
+    let tick = world.resource::<SimClock>().tick;
+    let p = world.resource::<Params>().clone();
+    let interval = p.get("economy.export_interval", 24.0).max(1.0) as u64;
+    if tick == 0 || !tick.is_multiple_of(interval) {
+        return;
+    }
+    let (batch, factor) = (p.get("economy.export_batch", 6.0) as u32, p.get("economy.export_price", 0.9));
+    let content = world.resource::<Content>().clone();
+    let mut totals: std::collections::BTreeMap<String, f64> = Default::default();
+    for e in crate::sorted_entities::<Building>(world) {
+        let b = world.get::<Building>(e).unwrap().clone();
+        let Some(def) = content.buildings.get(&b.def) else { continue };
+        if b.hp <= 0.0 || (def.exports.is_empty() && def.income <= 0.0) {
+            continue;
+        }
+        let mut earned = def.income * (b.hp / b.max_hp) as f64;
+        for item in &def.exports {
+            let n = world.get::<crate::inventory::Stock>(e).map_or(0, |s| s.count(item)).min(batch);
+            if n == 0 {
+                continue;
+            }
+            let price = world.resource::<Market>().price(item).unwrap_or(0.0) * factor;
+            world.get_mut::<crate::inventory::Stock>(e).unwrap().remove(item, n);
+            earned += price * n as f64;
+        }
+        if earned > 0.0 {
+            earn_owner(world, &b.owner, earned);
+            if let Owner::Faction(f) = &b.owner {
+                *totals.entry(f.clone()).or_default() += earned;
+            }
+        }
+    }
+    for (f, total) in totals {
+        let name = content.factions.get(&f).map_or(f.clone(), |d| d.name.clone());
+        world.resource_mut::<EventLog>().push(
+            tick,
+            EventBuilder::new("exports", format!("{name}: incassi da export e visitatori {total:.0}")).faction(Some(f)).tags(["economy"]),
+        );
+    }
+}
+
+/// PayrollEngine, every `economy.payroll_period` ticks:
+/// - salaries are paid from the guild treasury, scaled down (never below `economy.min_pay_ratio`) when the
+///   treasury holds less than `economy.payroll_reserve` periods of payroll, instead of going bankrupt;
+///   the missing part raises dissent proportionally;
+/// - members whose savings exceed `economy.savings_cap` salaries pay `economy.guild_contribution` of the
+///   excess back to the guild (the GuildTreasury centralizes the members' wealth). Champions are exempt.
 pub fn payroll(world: &mut World) {
     let tick = world.resource::<SimClock>().tick;
-    let period = world.resource::<Params>().get("economy.payroll_period", 24.0).max(1.0) as u64;
+    let p = world.resource::<Params>().clone();
+    let period = p.get("economy.payroll_period", 24.0).max(1.0) as u64;
     if tick == 0 || !tick.is_multiple_of(period) {
         return;
     }
     let content = world.resource::<Content>().clone();
-    let unpaid_dissent = world.resource::<Params>().f("economy.unpaid_dissent");
-    let mut members: Vec<(String, SimId, Entity, String)> = Vec::new();
-    let mut q = world.query_filtered::<(Entity, &SimId, &FactionMember), (Without<Dead>, Without<Virtual>)>();
-    for (e, id, m) in q.iter(world) {
-        members.push((m.faction.clone(), *id, e, m.rank.clone()));
-    }
-    members.sort_by(|a, b| (&a.0, a.1).cmp(&(&b.0, b.1)));
-    let mut paid: std::collections::BTreeMap<String, (f64, u32, u32)> = Default::default();
-    for (f, _, e, rank) in members {
+    let unpaid_dissent = p.f("economy.unpaid_dissent");
+    let reserve = p.get("economy.payroll_reserve", 5.0).max(0.0);
+    let min_ratio = p.get("economy.min_pay_ratio", 0.3).clamp(0.0, 1.0);
+    let savings_cap = p.get("economy.savings_cap", 6.0).max(0.0);
+    let contribution = p.get("economy.guild_contribution", 0.25).clamp(0.0, 1.0);
+    let mut by_faction: std::collections::BTreeMap<String, Vec<(Entity, f64, bool)>> = Default::default();
+    let mut q = world.query_filtered::<(Entity, &SimId, &FactionMember, Option<&crate::factions::Leader>), (Without<Dead>, Without<Virtual>)>();
+    let mut members: Vec<(SimId, Entity, FactionMember, bool)> = q.iter(world).map(|(e, id, m, l)| (*id, e, m.clone(), l.is_some())).collect();
+    members.sort_by_key(|m| m.0);
+    for (_, e, m, champion) in members {
         let salary = world
             .resource::<Factions>()
             .states
-            .get(&f)
-            .and_then(|s| s.salaries.get(&rank).copied())
-            .or_else(|| content.rank(&f, &rank).map(|r| r.salary))
+            .get(&m.faction)
+            .and_then(|s| s.salaries.get(&m.rank).copied())
+            .or_else(|| content.rank(&m.faction, &m.rank).map(|r| r.salary))
             .unwrap_or(0.0);
-        if salary <= 0.0 {
+        by_faction.entry(m.faction.clone()).or_default().push((e, salary, champion));
+    }
+    for (f, list) in by_faction {
+        let total: f64 = list.iter().map(|(_, s, _)| *s).sum();
+        let treasury = world.resource::<Factions>().treasury(&f);
+        let bonus_reserve = p.get("economy.bonus_reserve", 20.0);
+        let max_bonus = p.get("economy.max_pay_bonus", 1.5).max(1.0);
+        let ratio = if total <= 0.0 || reserve == 0.0 {
+            1.0
+        } else if treasury >= total * bonus_reserve {
+            // Prosperity is shared: a rich guild pays more (up to `economy.max_pay_bonus`).
+            (treasury / (total * bonus_reserve)).min(max_bonus)
+        } else if treasury >= total * reserve {
+            1.0
+        } else {
+            (treasury / (total * reserve)).clamp(min_ratio, 1.0)
+        };
+        let (mut paid_total, mut paid, mut unpaid, mut contributed) = (0.0, 0u32, 0u32, 0.0);
+        for (e, salary, champion) in list {
+            if salary > 0.0 {
+                let pay = (salary * ratio * 100.0).round() / 100.0;
+                if world.resource_mut::<Factions>().spend(&f, pay) {
+                    world.get_mut::<Wallet>(e).unwrap().0 += pay;
+                    paid_total += pay;
+                    paid += 1;
+                    if ratio < 1.0 {
+                        if let Some(mut d) = world.get_mut::<Dissent>(e) {
+                            d.0 = (d.0 + unpaid_dissent * (1.0 - ratio) as f32).min(100.0);
+                        }
+                    }
+                } else {
+                    if let Some(mut d) = world.get_mut::<Dissent>(e) {
+                        d.0 = (d.0 + unpaid_dissent).min(100.0);
+                    }
+                    unpaid += 1;
+                }
+            }
+            // Savings above the cap flow back to the guild.
+            let cap = savings_cap * salary.max(5.0);
+            if !champion && contribution > 0.0 {
+                let mut w = world.get_mut::<Wallet>(e).unwrap();
+                if w.0 > cap {
+                    let c = ((w.0 - cap) * contribution * 100.0).round() / 100.0;
+                    w.0 -= c;
+                    contributed += c;
+                }
+            }
+        }
+        if contributed > 0.0 {
+            world.resource_mut::<Factions>().add_treasury(&f, contributed);
+        }
+        if paid == 0 && unpaid == 0 && contributed == 0.0 {
             continue;
         }
-        let entry = paid.entry(f.clone()).or_default();
-        if world.resource_mut::<Factions>().spend(&f, salary) {
-            world.get_mut::<Wallet>(e).unwrap().0 += salary;
-            entry.0 += salary;
-            entry.1 += 1;
-        } else {
-            if let Some(mut d) = world.get_mut::<Dissent>(e) {
-                d.0 = (d.0 + unpaid_dissent).min(100.0);
-            }
-            entry.2 += 1;
-        }
-    }
-    for (f, (total, n, unpaid)) in paid {
         let name = content.factions.get(&f).map_or(f.clone(), |d| d.name.clone());
+        let share = if (ratio - 1.0).abs() > 0.005 { format!(" al {:.0}%", ratio * 100.0) } else { String::new() };
+        let contrib = if contributed > 0.0 { format!(", contributi dei membri {contributed:.0}") } else { String::new() };
         let mut log = world.resource_mut::<EventLog>();
         log.push(
             tick,
-            EventBuilder::new(kind::PAYROLL, format!("{name}: stipendi pagati a {n} membri ({total:.0})"))
+            EventBuilder::new(kind::PAYROLL, format!("{name}: stipendi{share} pagati a {paid} membri ({paid_total:.0}){contrib}"))
                 .faction(Some(f.clone()))
-                .data(serde_json::json!({ "total": total, "paid": n, "unpaid": unpaid })),
+                .data(serde_json::json!({ "total": paid_total, "paid": paid, "unpaid": unpaid, "ratio": ratio, "contributions": contributed })),
         );
-        if unpaid > 0 {
+        if unpaid > 0 || ratio < 0.6 {
             log.push(
                 tick,
-                EventBuilder::new(kind::UNPAID, format!("{name}: {unpaid} membri senza stipendio"))
+                EventBuilder::new(kind::UNPAID, format!("{name}: casse in difficoltà, stipendi{share}{}", if unpaid > 0 { format!(", {unpaid} membri senza paga") } else { String::new() }))
                     .faction(Some(f.clone()))
                     .news(0.4)
                     .tags(["economy", "unpaid"]),
             );
         }
         if let Some(s) = world.resource_mut::<Factions>().states.get_mut(&f) {
-            s.unpaid_periods = if unpaid > 0 { s.unpaid_periods + 1 } else { 0 };
+            s.unpaid_periods = if unpaid > 0 || ratio < 1.0 { s.unpaid_periods + 1 } else { 0 };
         }
     }
 }

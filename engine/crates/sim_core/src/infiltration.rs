@@ -250,6 +250,9 @@ pub fn steal_identity(world: &mut World, thief: Entity, victim: Entity) -> Resul
     if world.get::<Dead>(victim).is_some() {
         return Err("la vittima è morta".into());
     }
+    if world.get::<crate::factions::Leader>(victim).is_some() {
+        return Err("un campione non si può sostituire".into());
+    }
     let name = world.get::<DisplayName>(victim).map(|n| n.0.clone()).ok_or("vittima senza nome")?;
     let d = crate::content::Disguise {
         race: world.get::<Race>(victim).map(|r| r.0.clone()),

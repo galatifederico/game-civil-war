@@ -95,6 +95,8 @@
         Building(building: "fucina", zone: "gallerie", at: (20, 10), owner_faction: "nani_miniere"),
         Building(building: "altare_cripta", zone: "cripta", at: (14, 14), owner_faction: "cripta_san_vitale"),
         Building(building: "acquedotto", zone: "piazza_garibaldi", at: (30, 20)),
+        Building(building: "stabilimento_termale", zone: "salsomaggiore_terme", at: (56, 55), owner_faction: "cripta_san_vitale"),
+        Building(building: "sala_giochi", zone: "casino", at: (64, 42), owner_faction: "casino_diablo"),
     ],
     spawners: [
         // Immigrazione: chi muore viene rimpiazzato da nuovi arrivi.
