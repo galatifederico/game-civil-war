@@ -7,5 +7,7 @@ forme e colori presi dal mapping sprite dei dati (`sprites` in `90_mondo.ron`, m
 `PUT /api/sprites/{id}`), bordo del colore della fazione, lettera della razza, barra di progresso dell'azione,
 nebbia di guerra della fazione del giocatore, feed del Piccione Viaggiatore e pannello della pedina selezionata.
 
-**Alternative.** Riprendere il client Unity (storia git) e farlo parlare con `/api/ui/*`; client in Bevy (Rust)
+**Aggiornamento 2026-09-29:** fatto anche un client Unity 6 nuovo in `unity-client/` che usa le stesse API.
+
+**Alternative.** client in Bevy (Rust)
 che riusa direttamente i tipi del motore; vere tavole di sprite (i campi `sheet`/`frame` esistono già).
