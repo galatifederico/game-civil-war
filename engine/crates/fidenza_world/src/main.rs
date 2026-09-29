@@ -17,12 +17,14 @@ struct Args {
     serve: Option<String>,
     tick_ms: u64,
     mcp_stdio: bool,
+    load: Option<String>,
+    token: Option<String>,
     compendium: String,
     verbose: bool,
 }
 
 fn parse_args() -> Args {
-    let mut a = Args { seed: 1, ticks: 100, serve: None, tick_ms: 500, mcp_stdio: false, compendium: "compendium.json".into(), verbose: false };
+    let mut a = Args { seed: 1, ticks: 100, serve: None, tick_ms: 500, mcp_stdio: false, load: None, token: None, compendium: "compendium.json".into(), verbose: false };
     let mut it = std::env::args().skip(1).peekable();
     while let Some(arg) = it.next() {
         match arg.as_str() {
@@ -37,10 +39,12 @@ fn parse_args() -> Args {
                 a.serve = Some(addr);
             }
             "--mcp-stdio" => a.mcp_stdio = true,
+            "--load" => a.load = it.next(),
+            "--token" => a.token = it.next(),
             "--compendium" => a.compendium = it.next().unwrap_or(a.compendium),
             "--verbose" | "-v" => a.verbose = true,
             "--help" | "-h" => {
-                println!("uso: fidenza_world [--seed N] [--ticks N] [--serve [ADDR]] [--tick-ms N] [--mcp-stdio] [--compendium PATH] [--verbose]");
+                println!("uso: fidenza_world [--seed N] [--ticks N] [--serve [ADDR]] [--tick-ms N] [--mcp-stdio] [--load SAVE.json] [--token T] [--compendium PATH] [--verbose]");
                 std::process::exit(0);
             }
             other => eprintln!("argomento ignorato: {other}"),
@@ -83,6 +87,29 @@ fn main() {
         .init();
     let metrics = if args.serve.is_some() { sim_core::server::install_metrics() } else { None };
 
+    if let Some(path) = &args.load {
+        let save = match Simulation::read_save(path) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Salvataggio illeggibile: {e}");
+                std::process::exit(1);
+            }
+        };
+        let sim = fidenza_world::builder(args.seed).and_then(|b| b.build_from_save(&save).map_err(|e| e.to_string()));
+        match sim {
+            Ok(sim) => {
+                println!("Partita caricata da {path} (tick {})", sim.tick_count());
+                if args.mcp_stdio {
+                    return run_mcp_stdio(sim, args.tick_ms);
+                }
+                return run_server(sim, args.serve.as_deref().unwrap_or("127.0.0.1:8787"), args.tick_ms, metrics, args.token.clone(), args.seed);
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
+    }
     let mut sim = match fidenza_world::build(args.seed) {
         Ok(s) => s,
         Err(e) => {
@@ -199,17 +226,19 @@ fn main() {
     }
 
     if let Some(addr) = args.serve {
-        run_server(sim, &addr, args.tick_ms, metrics);
+        run_server(sim, &addr, args.tick_ms, metrics, args.token.clone(), args.seed);
     }
 }
 
-fn run_server(sim: Simulation, addr: &str, tick_ms: u64, metrics: Option<sim_core::server::PrometheusHandle>) {
+fn run_server(sim: Simulation, addr: &str, tick_ms: u64, metrics: Option<sim_core::server::PrometheusHandle>, token: Option<String>, seed: u64) {
     let addr: std::net::SocketAddr = addr.parse().expect("indirizzo non valido (es. 127.0.0.1:8787)");
     let state = sim_core::server::AppState {
         sim: Arc::new(Mutex::new(sim)),
         control: Arc::new(Mutex::new(sim_core::server::Control { paused: false, tick_ms })),
         metrics,
         ui_html: Some(Arc::new(fidenza_world::client_html().to_string())),
+        factory: Some(Arc::new(move || fidenza_world::builder(seed))),
+        token,
     };
     println!("\nServer attivo su http://{addr}  (admin: /, client: /ui/, MCP: POST /mcp, metriche: /metrics) — Ctrl+C per uscire");
     let rt = tokio::runtime::Runtime::new().expect("runtime tokio");

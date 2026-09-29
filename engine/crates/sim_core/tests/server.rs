@@ -35,7 +35,7 @@ async fn http(addr: std::net::SocketAddr, method: &str, path: &str, body: Option
 #[tokio::test]
 async fn rest_api_and_mcp() {
     let sim = Arc::new(Mutex::new(town()));
-    let state = AppState { sim: sim.clone(), control: Arc::new(Mutex::new(Control { paused: true, tick_ms: 1000 })), metrics: None, ui_html: None };
+    let state = AppState { sim: sim.clone(), control: Arc::new(Mutex::new(Control { paused: true, tick_ms: 1000 })), metrics: None, ui_html: None, factory: None, token: None };
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(sim_core::server::serve_on(state, listener));
@@ -67,6 +67,16 @@ async fn rest_api_and_mcp() {
     assert!(seen <= all["snapshot"]["entities"].as_array().unwrap().len());
     assert!(ui["fog"]["observers"].as_array().is_some_and(|o| !o.is_empty()));
 
+    let (st, pl) = http(addr, "GET", "/api/ui/player/p1", None).await;
+    assert_eq!(st, 200);
+    assert_eq!(pl["faction"], "town");
+    assert!(pl["members"].as_array().unwrap().iter().any(|m| m["champion"] == true));
+    let champ = pl["champion"].as_u64().unwrap();
+    let (_, acts) = http(addr, "GET", &format!("/api/ui/actions/{champ}"), None).await;
+    assert!(acts.as_array().unwrap().iter().any(|a| a["kind"] == "move"));
+    let (_, r) = http(addr, "POST", "/api/commands?now=true",
+        Some(json!({ "type": "player_order", "player": "p1", "entity": champ, "order": { "kind": "move", "pos": { "layer": 0, "x": 2, "y": 2 } } }))).await;
+    assert!(r["ok"].is_string(), "{r}");
     let (_, comp) = http(addr, "GET", "/api/compendium", None).await;
     assert!(comp["items"].as_array().is_some_and(|i| i.len() == 3));
 

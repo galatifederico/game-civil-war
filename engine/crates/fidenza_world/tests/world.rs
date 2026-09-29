@@ -158,3 +158,69 @@ fn fidenza_save_load_continues_identically() {
     b.run(40);
     assert_eq!(a.state_hash(), b.state_hash());
 }
+
+#[test]
+fn champion_moves_where_the_player_says_and_squads_follow() {
+    use sim_core::player::Order;
+    let mut sim = sim(3);
+    let (champ, ce) = id_of(&mut sim, "leader_anarchico");
+    assert!(sim.world.get::<sim_core::player::Controlled>(ce).is_some(), "the leader is the player's champion");
+    // Across the Stirone river: the path must use a bridge.
+    let goal = Position::new(0, 70, 30);
+    sim.execute(SimCommand::PlayerOrder { player: "giocatore".into(), entity: champ, order: Order::Move { pos: goal } }).unwrap();
+    let map = sim.world.resource::<WorldMap>().clone();
+    let mut touched_wall = false;
+    for _ in 0..80 {
+        sim.tick();
+        let p = *sim.world.get::<Position>(ce).unwrap();
+        touched_wall |= map.blocked(&p);
+        if p == goal {
+            break;
+        }
+    }
+    assert_eq!(*sim.world.get::<Position>(ce).unwrap(), goal);
+    assert!(!touched_wall, "walked through a wall");
+
+    // Squad of members following the champion.
+    let members: Vec<SimId> = sim.snapshot(true).entities.iter()
+        .filter(|e| e.faction.as_deref() == Some("anarchici_commercio") && e.kind == "pawn" && !e.dead && e.id != champ)
+        .map(|e| e.id).take(3).collect();
+    let msg = sim.execute(SimCommand::PlayerCreateSquad { player: "giocatore".into(), name: "Scorta".into(), members: members.clone() }).unwrap();
+    let squad: u64 = msg.split_whitespace().nth(1).unwrap().parse().unwrap();
+    sim.execute(SimCommand::PlayerSquadOrder { player: "giocatore".into(), squad, order: Some(sim_core::squads::SquadOrder::Follow { target: champ, distance: 3 }) }).unwrap();
+    sim.run(60);
+    let near = members.iter().filter(|m| {
+        let e = sim.entity(**m).unwrap();
+        sim.world.get::<Dead>(e).is_none() && sim.world.get::<Position>(e).unwrap().within(&goal, 4)
+    }).count();
+    assert!(near >= 2, "the squad did not follow the champion ({near} near)");
+    // Another player's faction cannot be ordered around.
+    let (bishop, _) = id_of(&mut sim, "vescovo");
+    assert!(sim.execute(SimCommand::PlayerOrder { player: "giocatore".into(), entity: bishop, order: Order::Stop }).is_err());
+}
+
+#[test]
+fn members_obey_more_or_less() {
+    use sim_core::player::Order;
+    let mut sim = sim(4);
+    let (tommy, te) = id_of(&mut sim, "scippatore");
+    let loyal = sim_core::player::obedience(&sim.world, te);
+    sim.world.get_mut::<sim_core::factions::Dissent>(te).unwrap().0 = 90.0;
+    let rebel = sim_core::player::obedience(&sim.world, te);
+    assert!(loyal > 0.7 && rebel < 0.3, "obedience {loyal} -> {rebel}");
+    let mut refused = 0;
+    for _ in 0..20 {
+        if sim.execute(SimCommand::PlayerOrder { player: "giocatore".into(), entity: tommy, order: Order::Stop }).is_err() {
+            refused += 1;
+        }
+    }
+    assert!(refused >= 10, "a rebel should refuse most orders ({refused}/20)");
+}
+
+#[test]
+fn factions_hunt_relics() {
+    let mut sim = sim(2);
+    sim.run(24 * 12);
+    let stolen = sim.events().all().iter().filter(|e| e.kind == kind::JOB_DONE && e.message.contains("sottrae")).count();
+    assert!(stolen >= 1, "no relic was stolen in 12 days");
+}

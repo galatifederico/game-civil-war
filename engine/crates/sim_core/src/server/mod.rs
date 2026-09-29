@@ -30,6 +30,9 @@ pub struct Control {
     pub tick_ms: u64,
 }
 
+/// Rebuilds an empty simulation (same content and plugins) to load saves into.
+pub type Factory = Arc<dyn Fn() -> Result<crate::sim::SimBuilder, String> + Send + Sync>;
+
 #[derive(Clone)]
 pub struct AppState {
     pub sim: SharedSim,
@@ -37,6 +40,10 @@ pub struct AppState {
     pub metrics: Option<PrometheusHandle>,
     /// Optional static client served on `/ui/` (index.html content).
     pub ui_html: Option<Arc<String>>,
+    /// Needed by `POST /api/load`.
+    pub factory: Option<Factory>,
+    /// When set, every non-GET request needs `Authorization: Bearer <token>`.
+    pub token: Option<String>,
 }
 
 /// Installs the global Prometheus recorder (once per process).
@@ -72,7 +79,12 @@ pub fn router(state: AppState) -> Router {
         .route("/api/ui/map", get(ui_map))
         .route("/api/ui/state", get(ui_state))
         .route("/ui/", get(ui_page))
+        .route("/api/ui/player/{player}", get(ui_player))
+        .route("/api/ui/actions/{id}", get(ui_actions))
+        .route("/api/save", post(save_game))
+        .route("/api/load", post(load_game))
         .route("/mcp", post(mcp_http))
+        .layer(axum::middleware::from_fn_with_state(state.clone(), auth))
         .with_state(state)
 }
 
@@ -110,6 +122,124 @@ pub async fn serve_on(state: AppState, listener: tokio::net::TcpListener) -> std
 }
 
 type ApiResult = Result<Json<Value>, (StatusCode, String)>;
+
+async fn auth(State(s): State<AppState>, req: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    if let Some(token) = &s.token {
+        if req.method() != axum::http::Method::GET {
+            let ok = req
+                .headers()
+                .get(header::AUTHORIZATION)
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|v| v == format!("Bearer {token}"));
+            if !ok {
+                return (StatusCode::UNAUTHORIZED, "token mancante o errato").into_response();
+            }
+        }
+    }
+    next.run(req).await
+}
+
+/// The player's view: champion, members (with obedience), squads, salary matrix, work types.
+async fn ui_player(State(s): State<AppState>, Path(player): Path<String>) -> ApiResult {
+    let mut sim = s.sim.lock().unwrap();
+    let p = sim.world.resource::<Players>().players.get(&player).cloned().ok_or_else(|| not_found(&player))?;
+    let content = sim.content().clone();
+    let members: Vec<Value> = crate::sorted_entities::<FactionMember>(&mut sim.world)
+        .into_iter()
+        .filter(|e| sim.world.get::<FactionMember>(*e).is_some_and(|m| m.faction == p.faction) && sim.world.get::<Dead>(*e).is_none())
+        .filter_map(|e| {
+            let v = crate::snapshot::entity_view(&sim.world, e, true)?;
+            Some(json!({
+                "id": v.id, "name": v.name, "rank": v.rank, "classes": v.classes, "pos": v.pos,
+                "activity": v.activity.as_ref().map(|a| a.label.clone()),
+                "obedience": crate::player::obedience(&sim.world, e),
+                "champion": v.leader_of.as_deref() == Some(player.as_str()),
+                "work": sim.world.get::<crate::jobs::WorkPriorities>(e).map(|w| w.matrix()),
+            }))
+        })
+        .collect();
+    let squads: Vec<Value> = sim
+        .world
+        .resource::<Squads>()
+        .squads
+        .values()
+        .filter(|q| q.faction.as_deref() == Some(p.faction.as_str()))
+        .map(|q| serde_json::to_value(q).unwrap_or_default())
+        .collect();
+    let state = sim.world.resource::<Factions>().states.get(&p.faction).cloned().unwrap_or_default();
+    let ranks: Vec<Value> = content.factions.get(&p.faction).map_or(vec![], |f| {
+        f.ranks
+            .iter()
+            .map(|r| json!({ "id": r.id, "name": r.name, "level": r.level, "salary": state.salaries.get(&r.id).copied().unwrap_or(r.salary) }))
+            .collect()
+    });
+    let mut work_types: Vec<String> = content.jobs.values().map(|j| j.work_type.clone()).filter(|w| !w.is_empty()).collect();
+    for b in content.buildings.values() {
+        work_types.extend(b.recipes.iter().map(|r| r.work_type.clone()).filter(|w| !w.is_empty()));
+    }
+    work_types.sort();
+    work_types.dedup();
+    Ok(Json(json!({
+        "player": p, "faction": p.faction, "treasury": state.treasury, "victory_points": state.victory_points,
+        "champion": p.leader, "members": members, "squads": squads, "ranks": ranks, "work_types": work_types,
+    })))
+}
+
+/// Orders a pawn can receive: its jobs (from its AI actions) and abilities, plus moving and following.
+async fn ui_actions(State(s): State<AppState>, Path(id): Path<u64>) -> ApiResult {
+    let sim = s.sim.lock().unwrap();
+    let e = sim.entity(SimId(id)).ok_or_else(|| not_found(id))?;
+    let content = sim.content();
+    let mut out = vec![json!({ "kind": "move", "id": "move", "name": "Vai qui", "needs_target": "cell" })];
+    let actions = sim.world.get::<crate::ai::Brain>(e).map(|b| b.actions.clone()).unwrap_or_default();
+    let mut seen = std::collections::BTreeSet::new();
+    for a in actions.iter().filter_map(|a| content.actions.get(a)) {
+        if let crate::content::ActionKind::Job { job, target } = &a.kind {
+            if seen.insert(job.clone()) {
+                let name = content.jobs.get(job).map_or(job.clone(), |j| j.name.clone());
+                let needs = if *target == crate::content::Selector::None { "none" } else { "entity" };
+                out.push(json!({ "kind": "job", "id": job, "name": name, "needs_target": needs }));
+            }
+        }
+    }
+    for ab in crate::abilities::known(&sim.world, e) {
+        if let Some(d) = content.abilities.get(&ab) {
+            out.push(json!({ "kind": "ability", "id": ab, "name": d.name, "needs_target": if d.range > 0 { "entity" } else { "none" } }));
+        }
+    }
+    out.push(json!({ "kind": "follow", "id": "follow", "name": "Segui", "needs_target": "entity" }));
+    out.push(json!({ "kind": "stop", "id": "stop", "name": "Fermati", "needs_target": "none" }));
+    Ok(Json(json!(out)))
+}
+
+#[derive(Deserialize)]
+struct PathBody {
+    #[serde(default = "default_save")]
+    path: String,
+}
+
+fn default_save() -> String {
+    "saves/quick.json".into()
+}
+
+async fn save_game(State(s): State<AppState>, Json(b): Json<PathBody>) -> ApiResult {
+    if let Some(dir) = std::path::Path::new(&b.path).parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let mut sim = s.sim.lock().unwrap();
+    sim.save_to_file(&b.path).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(json!({ "ok": format!("partita salvata in {} (tick {})", b.path, sim.tick_count()) })))
+}
+
+async fn load_game(State(s): State<AppState>, Json(b): Json<PathBody>) -> ApiResult {
+    let factory = s.factory.clone().ok_or((StatusCode::NOT_IMPLEMENTED, "caricamento non disponibile".to_string()))?;
+    let save = Simulation::read_save(&b.path).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let builder = factory().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let new = builder.build_from_save(&save).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let tick = new.tick_count();
+    *s.sim.lock().unwrap() = new;
+    Ok(Json(json!({ "ok": format!("partita caricata da {} (tick {tick})", b.path) })))
+}
 
 fn not_found(what: impl std::fmt::Display) -> (StatusCode, String) {
     (StatusCode::NOT_FOUND, format!("{what} non trovato"))

@@ -60,6 +60,13 @@ pub fn build(seed: u64) -> Result<Simulation, ContentError> {
     b.build()
 }
 
+/// A builder with the Fidenza content and plugin, e.g. to load a save into.
+pub fn builder(seed: u64) -> Result<SimBuilder, String> {
+    let mut b = Simulation::builder(seed);
+    b.add_plugin(&FidenzaPlugin::default()).map_err(|e| e.to_string())?;
+    Ok(b)
+}
+
 fn find_template(world: &mut World, t: &str) -> Option<Entity> {
     sim_core::sorted_entities::<TemplateId>(world)
         .into_iter()
