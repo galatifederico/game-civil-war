@@ -93,6 +93,7 @@ pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId,
     let my_faction = world.get::<FactionMember>(chooser).map(|m| m.faction.clone());
     let min_wanted = f.min_wanted.as_ref().map(|t| threshold(world, t));
     let perception = world.resource::<Params>().get("ai.perception_range", 6.0) as i32;
+    let hostile_threshold = world.resource::<Params>().get("social.hostile_threshold", -30.0) as f32;
     let tether = world.get::<crate::dungeon::Tethered>(chooser).map(|t| t.0.zone.clone());
     let map = world.resource::<WorldMap>().clone();
     let index = std::mem::take(&mut world.resource_mut::<TargetIndex>().entries);
@@ -167,7 +168,7 @@ pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId,
                 (Some(mine), Some(theirs)) => match rel {
                     Relation::Same => mine == theirs,
                     Relation::Other => mine != theirs,
-                    Relation::Hostile => fs.hostile(mine, theirs),
+                    Relation::Hostile => fs.hostile_at(mine, theirs, hostile_threshold),
                     Relation::Friendly => fs.friendly(mine, theirs),
                 },
                 _ => rel == Relation::Other,

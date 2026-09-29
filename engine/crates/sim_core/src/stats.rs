@@ -168,6 +168,24 @@ pub fn recompute_stats(
     }
 }
 
+/// Stats with a rest value drift back towards it (morale recovers, anger fades).
+pub fn stat_recovery(content: Res<Content>, mut q: Query<&mut Stats, (With<Pawn>, Without<Dead>)>) {
+    let drifting: Vec<(&String, f32, f32)> =
+        content.stats.values().filter_map(|s| s.rest_value.filter(|_| s.recovery > 0.0).map(|r| (&s.id, r, s.recovery))).collect();
+    if drifting.is_empty() {
+        return;
+    }
+    for mut stats in &mut q {
+        for (id, rest, rate) in &drifting {
+            let v = stats.base.get(*id).copied().unwrap_or(*rest);
+            let nv = if v < *rest { (v + rate).min(*rest) } else { (v - rate).max(*rest) };
+            if nv != v {
+                stats.base.insert((*id).clone(), nv);
+            }
+        }
+    }
+}
+
 /// Needs decay, modulated by statuses (`need_rates` multiply the base decay).
 pub fn decay_needs(content: Res<Content>, mut q: Query<(&mut Needs, &StatusEffects), (With<Pawn>, Without<Dead>)>) {
     for (mut needs, statuses) in &mut q {

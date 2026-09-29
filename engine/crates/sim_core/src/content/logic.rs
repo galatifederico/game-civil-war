@@ -148,6 +148,8 @@ pub enum Condition {
     TemplateAlive(String),
     BuildingHpBelow { building: String, ratio: f32 },
     ZoneOccupied { zone: String, #[serde(default)] faction: Option<String>, #[serde(default = "one_u32")] min: u32 },
+    /// Fewer than `count` living pawns (optionally of a faction and/or template).
+    PopulationBelow { #[serde(default)] faction: Option<String>, #[serde(default)] template: Option<String>, count: u32 },
     /// Subject building HP ratio (or pawn health ratio) below this value.
     HpBelow(f32),
     TitleVacant(String),

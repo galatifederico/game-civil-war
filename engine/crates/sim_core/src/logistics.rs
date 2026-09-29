@@ -80,15 +80,18 @@ pub fn post_logistics(world: &mut World) {
         if let Some(d) = content.buildings.get(&s.def) {
             for r in &d.recipes {
                 for (item, n) in &r.inputs {
-                    if s.stock.count(item) < *n {
-                        needs.push((i, item.clone(), n * 2 - s.stock.count(item)));
+                    // Keep a buffer of a few batches, refilled with full loads.
+                    let target = (n * 4).max(batch);
+                    if s.stock.count(item) < n * 2 {
+                        needs.push((i, item.clone(), target - s.stock.count(item)));
                     }
                 }
             }
         }
         for item in shops.get(&s.id).into_iter().flatten() {
-            if !produces(&content, &s.def, item) && s.stock.count(item) < 3 {
-                needs.push((i, item.clone(), batch.max(3) - s.stock.count(item)));
+            let shelf = batch.max(3);
+            if !produces(&content, &s.def, item) && s.stock.count(item) < shelf / 2 + 1 {
+                needs.push((i, item.clone(), shelf * 2 - s.stock.count(item)));
             }
         }
     }

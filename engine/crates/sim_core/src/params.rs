@@ -46,6 +46,7 @@ pub const DEFAULTS: &[(&str, f64, &str)] = &[
     ("press.perception_range", 8.0, "Raggio entro cui un giornalista registra un evento"),
     ("press.min_newsworthiness", 0.3, "Notiziabilità minima per uno scoop"),
     ("press.reputation_gain", 2.0, "Reputazione stampa guadagnata per articolo"),
+    ("social.hostile_threshold", -30.0, "Relazione sotto cui due fazioni si considerano nemiche"),
     ("social.defection_threshold", 60.0, "Dissenso oltre cui una pedina diserta"),
     ("social.dissent_decay", 0.05, "Calo per tick del dissenso"),
     ("social.merge_threshold", 90.0, "Relazione oltre cui due fazioni alleate si fondono"),

@@ -7,7 +7,7 @@
         (id: "orzo", name: "Orzo", category: "raccolto", stack_max: 20, base_price: 1.5, tags: ["raccolto"]),
         (id: "grano", name: "Grano", category: "raccolto", stack_max: 20, base_price: 1.5, tags: ["raccolto"]),
         (id: "ortaggi", name: "Ortaggi", category: "cibo", stack_max: 5, base_price: 3, tags: ["raccolto", "cibo", "vegano"],
-         on_use: [ModNeed(need: "fame", amount: 0.4)]),
+         on_use: [ModNeed(need: "fame", amount: 0.5)]),
         (id: "soia", name: "Soia", category: "raccolto", stack_max: 20, base_price: 2, tags: ["raccolto", "vegano"]),
         (id: "maiale_vivo", name: "Maiale (vivo)", category: "bestiame", stack_max: 3, base_price: 40, tags: ["bestiame"]),
         (id: "farina", name: "Farina", category: "raccolto", stack_max: 20, base_price: 3, tags: ["ingrediente"]),
@@ -17,7 +17,7 @@
 
         // Cibo e bevande.
         (id: "pane", name: "Pane", category: "cibo", stack_max: 5, base_price: 3, tags: ["cibo"],
-         on_use: [ModNeed(need: "fame", amount: 0.6)]),
+         on_use: [ModNeed(need: "fame", amount: 0.8)]),
         (id: "carne", name: "Carne", category: "cibo", stack_max: 5, base_price: 8, tags: ["cibo", "carne"],
          on_use: [ModNeed(need: "fame", amount: 0.8), ApplyStatus(status: "aura_di_formaggio")]),
         (id: "salumi", name: "Salumi della Bassa", category: "cibo", stack_max: 5, base_price: 10, tags: ["cibo", "carne", "lusso"],

@@ -33,6 +33,13 @@
             (name: "Tombino di Piazza Garibaldi", a: ("superficie", 32, 28), b: ("gallerie", 2, 2)),
             (name: "Scalinata delle Terme", a: ("superficie", 55, 58), b: ("viscere", 2, 2)),
         ],
+        walls: [
+            (name: "Torrente Stirone (nord)", layer: "superficie", rect: (59, 0, 2, 9)),
+            (name: "Torrente Stirone (centro)", layer: "superficie", rect: (59, 11, 2, 16)),
+            (name: "Torrente Stirone (sud)", layer: "superficie", rect: (59, 29, 2, 14)),
+            (name: "Mura della Cattedrale", layer: "superficie", rect: (45, 19, 1, 6)),
+            (name: "Roccia delle gallerie", layer: "gallerie", rect: (20, 14, 8, 2)),
+        ],
         networks: [
             (id: "acquedotto", name: "Acquedotto di Fidenza", zones: ["piazza_garibaldi", "cattedrale", "redazione", "stazione_polizia", "bar_ubriaconi", "fidenza_village"]),
             (id: "fogne_termali", name: "Fogne termali", zones: ["salsomaggiore_terme", "cripta"]),

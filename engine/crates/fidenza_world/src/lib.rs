@@ -45,6 +45,8 @@ impl SimPlugin for FidenzaPlugin {
         b.register_effect("oracle_reveal", oracle_reveal);
         b.register_effect("borgazzi_masterpiece", borgazzi_masterpiece);
         b.register_condition("intruders", intruders);
+        b.register_effect("mount", mount);
+        b.register_effect("dismount", dismount);
         b.register_condition("near", near);
         b.register_job_handler("hack", hack);
         Ok(())
@@ -139,6 +141,35 @@ fn intruders(world: &mut World, _ctx: &EffectCtx, p: &serde_json::Value) -> bool
         .filter(|(pos, m)| map.in_zone(&zone, pos) && m.is_none_or(|m| m.faction != faction))
         .count()
         >= min
+}
+
+/// The subject climbs on the nearest mount of its faction (`{"template": "dinosauro"}`): the mount
+/// sticks to the rider (strict follow) until `dismount`.
+fn mount(world: &mut World, ctx: &EffectCtx, p: &serde_json::Value) {
+    let Some(rider) = ctx.subject else { return };
+    let template = p.get("template").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let (Some(pos), faction) = (world.get::<Position>(rider).copied(), world.get::<FactionMember>(rider).map(|m| m.faction.clone())) else { return };
+    let Some(rider_id) = world.get::<SimId>(rider).copied() else { return };
+    let mount = sim_core::sorted_entities::<TemplateId>(world).into_iter().find(|e| {
+        world.get::<TemplateId>(*e).is_some_and(|t| t.0 == template)
+            && world.get::<Dead>(*e).is_none()
+            && world.get::<FactionMember>(*e).map(|m| m.faction.clone()) == faction
+            && world.get::<Position>(*e).is_some_and(|q| q.within(&pos, 3))
+    });
+    if let Some(m) = mount {
+        sim_core::jobs::release_task(world, m);
+        world.entity_mut(m).insert(sim_core::player::Follow { target: rider_id, distance: 0, strict: true });
+        world.entity_mut(m).remove::<sim_core::dungeon::Tethered>();
+    }
+}
+
+fn dismount(world: &mut World, ctx: &EffectCtx, _p: &serde_json::Value) {
+    let Some(rider) = ctx.subject.and_then(|e| world.get::<SimId>(e).copied()) else { return };
+    for e in sim_core::sorted_entities::<sim_core::player::Follow>(world) {
+        if world.get::<sim_core::player::Follow>(e).is_some_and(|f| f.strict && f.target == rider) {
+            world.entity_mut(e).remove::<sim_core::player::Follow>();
+        }
+    }
 }
 
 /// `{"template": "...", "range": n}`: a living entity of that template of the subject's faction is close.

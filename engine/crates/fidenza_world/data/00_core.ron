@@ -32,6 +32,9 @@
         "anatomy.mutilation_heroism": 15.0,
         "anatomy.wound_heroism": 3.0,
         "market.change_event": 0.08,
+        "social.hostile_threshold": -60.0,
+        "logistics.batch": 8.0,
+        "health.natural_heal": 0.15,
     },
     stats: [
         (id: "forza", name: "Forza", default: 10),
@@ -43,8 +46,8 @@
         (id: "intelletto", name: "Intelletto", default: 10),
         (id: "carisma", name: "Carisma", default: 10),
         (id: "mistica", name: "Mistica", default: 0, description: "Potere delle arti mistiche (Vegani, Jedi, Sith, Maghi)"),
-        (id: "morale", name: "Morale", default: 50),
-        (id: "umore", name: "Umore", default: 50),
+        (id: "morale", name: "Morale", default: 50, rest_value: 50, recovery: 0.5),
+        (id: "umore", name: "Umore", default: 50, rest_value: 50, recovery: 0.3),
         (id: "eroismo", name: "Punti Eroismo", default: 0, max: 1000, description: "Guadagnati con ferite gravi e mutilazioni"),
         (id: "onore", name: "Punti Onore", default: 0, max: 1000),
         (id: "alcolismo", name: "Alcolismo", default: 0),
@@ -57,11 +60,11 @@
         (id: "reputazione_stampa", name: "Reputazione Stampa", min: -100, default: 0),
     ],
     needs: [
-        (id: "fame", name: "Fame", decay: 0.012, low_threshold: 0.1,
-         effects_when_low: [ModStat(stat: "morale", amount: -0.2)]),
+        (id: "fame", name: "Fame", decay: 0.009, low_threshold: 0.1,
+         effects_when_low: [ModStat(stat: "morale", amount: -0.6)]),
         (id: "riposo", name: "Riposo", decay: 0.02),
-        (id: "svago", name: "Svago", decay: 0.015, low_threshold: 0.15,
-         effects_when_low: [ModStat(stat: "umore", amount: -0.2)]),
+        (id: "svago", name: "Svago", decay: 0.01, low_threshold: 0.15,
+         effects_when_low: [ModStat(stat: "umore", amount: -0.6), ModStat(stat: "morale", amount: -0.3)]),
     ],
     body_plans: [
         (id: "umanoide", parts: [

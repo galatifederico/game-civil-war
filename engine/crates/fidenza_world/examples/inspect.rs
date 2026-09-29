@@ -14,7 +14,14 @@ fn main() {
     for j in board.jobs.values().take(30) {
         println!("  #{} {} fazione={:?} target={:?} riservato={:?} {:?}", j.id, j.job, j.faction, j.target, j.reserved_by, j.payload);
     }
-    if let Some((_, e)) = sim.find_template(&template) {
+    let found = match template.parse::<u64>() {
+        Ok(id) => sim.entity(SimId(id)).map(|e| (SimId(id), e)),
+        Err(_) => sim.find_template(&template),
+    };
+    if let Some((_, e)) = found {
+        if let Some(v) = sim_core::snapshot::entity_view(&sim.world, e, true) {
+            println!("inventario: {:?} bisogni: {:?}", v.inventory, v.needs);
+        }
         println!("── AI di {template} ──\n{}", serde_json::to_string_pretty(&sim_core::snapshot::ai_inspect(&sim.world, e)).unwrap());
     }
 }

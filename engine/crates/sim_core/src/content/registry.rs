@@ -594,6 +594,14 @@ impl Validator<'_> {
                 }
             }
             Condition::TitleVacant(t) => self.check(&c.titles, "titolo", t, ctx),
+            Condition::PopulationBelow { faction, template, .. } => {
+                if let Some(f) = faction {
+                    self.check(&c.factions, "fazione", f, ctx);
+                }
+                if let Some(t) = template {
+                    self.check(&c.templates, "template", t, ctx);
+                }
+            }
             Condition::TreasuryAtLeast { faction, .. } => self.check(&c.factions, "fazione", faction, ctx),
             Condition::FactionHoldsItems { faction, items } => {
                 self.check(&c.factions, "fazione", faction, ctx);

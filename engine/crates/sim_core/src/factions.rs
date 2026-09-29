@@ -125,7 +125,12 @@ impl Factions {
     }
 
     pub fn hostile(&self, a: &str, b: &str) -> bool {
-        self.relation(a, b) <= -30.0
+        self.hostile_at(a, b, -30.0)
+    }
+
+    /// Hostile when the relation is at or below `threshold` (parameter `social.hostile_threshold`).
+    pub fn hostile_at(&self, a: &str, b: &str, threshold: f32) -> bool {
+        a != b && self.relation(a, b) <= threshold
     }
 
     pub fn friendly(&self, a: &str, b: &str) -> bool {

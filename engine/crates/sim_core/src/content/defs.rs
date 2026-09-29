@@ -118,6 +118,12 @@ pub struct StatDef {
     /// Shown in the UI character sheet.
     #[serde(default = "yes")]
     pub visible: bool,
+    /// Value the stat slowly returns to (e.g. morale recovering after bad news).
+    #[serde(default)]
+    pub rest_value: Option<f32>,
+    /// Points per tick towards `rest_value`.
+    #[serde(default)]
+    pub recovery: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -466,7 +472,7 @@ pub struct Consideration {
     pub curve: Curve,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ActionDef {
     pub id: Id,
@@ -482,6 +488,23 @@ pub struct ActionDef {
     pub cooldown: u64,
     /// Label for the UI while doing it.
     pub label: String,
+}
+
+impl Default for ActionDef {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            name: String::new(),
+            kind: ActionKind::default(),
+            // A missing weight means "normal importance", not "never".
+            weight: 1.0,
+            considerations: Vec::new(),
+            requires: Condition::default(),
+            universal: false,
+            cooldown: 0,
+            label: String::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

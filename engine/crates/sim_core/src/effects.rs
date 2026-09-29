@@ -485,6 +485,16 @@ pub fn eval_condition(world: &mut World, ctx: &EffectCtx, cond: &Condition) -> b
                 .count();
             n as u32 >= *min
         }
+        Condition::PopulationBelow { faction, template, count } => {
+            let mut q = world.query_filtered::<(Option<&FactionMember>, &TemplateId), (With<Pawn>, Without<Dead>)>();
+            let n = q
+                .iter(world)
+                .filter(|(m, t)| {
+                    faction.as_ref().is_none_or(|f| m.is_some_and(|m| &m.faction == f)) && template.as_ref().is_none_or(|x| &t.0 == x)
+                })
+                .count();
+            (n as u32) < *count
+        }
         Condition::HpBelow(r) => subj.is_some_and(|e| {
             if let Some(b) = world.get::<crate::buildings::Building>(e) {
                 b.hp / b.max_hp < *r
