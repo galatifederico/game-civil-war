@@ -7,4 +7,14 @@ Engine di simulazione headless, deterministico e data-driven in Rust (ECS con `b
 - Piano e stato delle task: [docs/tasks/00-piano.md](docs/tasks/00-piano.md)
 - Decisioni prese in autonomia da rivedere: [docs/questions/](docs/questions/)
 
+## Avvio
+
+```bash
+./run.sh            # compila e avvia il server, poi apre il client Unity già compilato (senza aprire l'editor)
+./run.sh --build    # come sopra ma ricompila prima il client Unity (l'editor deve essere chiuso)
+./run.sh --web      # niente Unity: apre il client web nel browser su http://127.0.0.1:8787/ui/
+```
+
+I log finiscono in `logs/`. Chiudendo la finestra del client il server si ferma.
+
 Il codice è in [engine/](engine/) (vedi il suo README per comandi e struttura). Il client Unity 6 è in [unity-client/](unity-client/): avvia il server con `cd engine && cargo run --release -p fidenza_world -- --serve`, poi apri il progetto in Unity Hub e premi Play.

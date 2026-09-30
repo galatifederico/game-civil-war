@@ -1,6 +1,7 @@
 # Rust
 engine/target/
 compendium.json
+logs/
 
 # OS/editor
 .DS_Store
