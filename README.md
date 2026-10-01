@@ -17,4 +17,10 @@ Engine di simulazione headless, deterministico e data-driven in Rust (ECS con `b
 
 I log finiscono in `logs/`. Chiudendo la finestra del client il server si ferma.
 
+Con il server acceso la console di amministrazione è su http://127.0.0.1:8787/admin/ (mappa, entità, oggetti,
+contenuti, sprite, parametri, fazioni e quartieri, eventi, comandi).
+
+Nel client: C torna al campione, F segue la pedina selezionata, M passa tra vista ravvicinata e panoramica,
+Tab nasconde il pannello, "Scava" e poi trascinare un rettangolo per far scavare la tua fazione.
+
 Il codice è in [engine/](engine/) (vedi il suo README per comandi e struttura). Il client Unity 6 è in [unity-client/](unity-client/): avvia il server con `cd engine && cargo run --release -p fidenza_world -- --serve`, poi apri il progetto in Unity Hub e premi Play.

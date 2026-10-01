@@ -128,6 +128,9 @@ impl SimPlugin for MioMondo {
 | `GET/POST /api/control` `{"paused", "tick_ms", "step"}` | pausa, velocità, avanzamento manuale |
 | `GET /api/compendium`, `/api/extensions` | compendium per la wiki, estensioni registrate |
 | `GET /api/ui/state?faction=`, `/api/ui/activity`, `/api/ui/map` | API per il client (con nebbia di guerra per fazione) |
+| `GET /api/ui/terrain?since=N` | caselle cambiate dopo la N-esima modifica (scavi, pittura) |
+| `GET /admin/` | console di amministrazione |
+| `GET /api/content`, `/api/assets`, `/assets/{file}.png` | tutte le definizioni caricate, elenco e file delle immagini |
 | `GET /metrics` | metriche Prometheus |
 | `POST /mcp` | MCP JSON-RPC 2.0: `get_world_state`, `set_parameter`, `spawn_entity`, `trigger_event`, `list_entities`, `inspect_entity`, `send_command`, `recent_events` |
 
@@ -140,5 +143,5 @@ curl -X POST localhost:8787/api/commands -H 'content-type: application/json' \
 
 ## Prestazioni
 
-Mondo di Fidenza (~90 pedine, ~40 edifici): circa 2,5 ms per tick in release. Oltre qualche migliaio di pedine
+Mondo di Fidenza (~120 pedine, ~75 edifici, superficie 200×140 più 4 livelli sotterranei): circa 6,5 ms per tick in release. Oltre qualche migliaio di pedine
 servirà un indice spaziale a griglia per la ricerca dei bersagli (vedi `docs/questions/08-prestazioni.md`).
