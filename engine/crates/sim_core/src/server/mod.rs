@@ -77,6 +77,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/extensions", get(extensions))
         .route("/api/ui/activity", get(ui_activity))
         .route("/api/ui/map", get(ui_map))
+        .route("/api/ui/terrain", get(ui_terrain))
         .route("/api/ui/state", get(ui_state))
         .route("/ui/", get(ui_page))
         .route("/api/ui/player/{player}", get(ui_player))
@@ -526,6 +527,21 @@ async fn ui_map(State(s): State<AppState>) -> ApiResult {
     let env = sim.world.resource::<crate::map::Environment>();
     Ok(Json(json!({ "layers": m.layers, "zones": m.zones, "portals": m.portals, "networks": m.networks, "network_load": env.network_load,
                      "legend": m.legend, "props": m.props })))
+}
+
+#[derive(Deserialize, Default)]
+struct SinceQ {
+    #[serde(default)]
+    since: usize,
+}
+
+/// Terrain changed since the client's last look (digging, admin painting): `[[layer, x, y, "ch"], …]`.
+/// When `total` is lower than `since` the world was reloaded and the client should fetch the whole map.
+async fn ui_terrain(State(s): State<AppState>, Query(q): Query<SinceQ>) -> ApiResult {
+    let sim = s.sim.lock().unwrap();
+    let ch = &sim.world.resource::<crate::map::TerrainChanges>().0;
+    let changes: Vec<Value> = ch.iter().skip(q.since).map(|(p, c)| json!([p.layer, p.x, p.y, c.to_string()])).collect();
+    Ok(Json(json!({ "total": ch.len(), "changes": changes })))
 }
 
 #[derive(Deserialize, Default)]

@@ -37,6 +37,13 @@ public class SimView : MonoBehaviour
     /// Screen pixels per sprite pixel. Whole numbers (close view, Pokémon-like) are pixel-perfect;
     /// below 1 is the map overview.
     public float Zoom { get; set; } = 3f;
+
+    /// Drag a rectangle on the map to designate digging for our faction.
+    public bool DigMode { get; set; }
+    Vector2Int? digStart;
+    SpriteRenderer digRect;
+    Texture2D terrainTex;
+    int terrainSeen = -1;
     const float CloseZoom = 3f;
     /// Feed filter: "important" (default), "mine", "all" or a category id.
     public string FeedFilter { get; set; } = "important";
@@ -101,6 +108,7 @@ public class SimView : MonoBehaviour
             var query = string.IsNullOrEmpty(FogFaction) ? "" : "?faction=" + UnityEngine.Networking.UnityWebRequest.EscapeURL(FogFaction);
             yield return Api.Get("/api/ui/state" + query, j => { State = (JObject)j; Error = null; OnState(); }, e => Error = "Server non raggiungibile (" + e + ")");
             yield return Api.Get("/api/control", j => Control = (JObject)j);
+            yield return Api.Get("/api/ui/terrain?since=" + Mathf.Max(0, terrainSeen), OnTerrain, _ => { });
             if (PlayerId == null && State?["snapshot"]?["players"] is JObject players && players.Properties().Any())
             {
                 PlayerId = players.Properties().First().Name;
@@ -128,6 +136,35 @@ public class SimView : MonoBehaviour
             }
             yield return new WaitForSeconds(pollSeconds);
         }
+    }
+
+    /// Dug cells and admin edits: patch the tile rows and, for the map on screen, the texture.
+    void OnTerrain(JToken j)
+    {
+        int total = (int)j["total"];
+        if (terrainSeen < 0 || total < terrainSeen)
+        {
+            // First look (the map already has these changes) or a reload: start counting from here.
+            if (terrainSeen >= 0) StartCoroutine(ReloadMap());
+            terrainSeen = total;
+            return;
+        }
+        var here = new List<Vector2Int>();
+        foreach (var c in j["changes"])
+        {
+            int layer = (int)c[0], x = (int)c[1], y = (int)c[2];
+            if (layer >= Layers.Count) continue;
+            TileMap.SetChar(Layers[layer], x, y, (string)c[3]);
+            if (layer == Layer) here.Add(new Vector2Int(x, y));
+        }
+        terrainSeen = total;
+        if (here.Count > 0) TileMap.Patch(terrainTex, Layers[Layer], Map["legend"] as JObject, here);
+    }
+
+    IEnumerator ReloadMap()
+    {
+        yield return Api.Get("/api/ui/map", j => Map = (JObject)j, _ => { });
+        SetLayer(Mathf.Min(Layer, Layers.Count - 1));
     }
 
     // ── Commands ──────────────────────────────────────────────────────────────
@@ -241,7 +278,9 @@ public class SimView : MonoBehaviour
         foreach (Transform c in zonesRoot) Destroy(c.gameObject);
         var l = Layers[layer];
         int w = (int)l["width"], h = (int)l["height"];
+        if (terrainTex != null) Destroy(terrainTex);
         var tileTex = TileMap.Build(l, Map["legend"] as JObject);
+        terrainTex = tileTex;
         if (tileTex != null)
         {
             // Pixel-art terrain composed from the map's tiles.
@@ -647,7 +686,8 @@ public class SimView : MonoBehaviour
             cam.transform.position = new Vector3(Mathf.Round(cp2.x / unit) * unit, Mathf.Round(cp2.y / unit) * unit, -10f);
         }
         if (Input.GetKeyDown(KeyCode.M)) ToggleOverview();
-        if (overUi) return;
+        if (overUi && !digStart.HasValue) return;
+        if (DigMode && DigControls()) return;
         if (Input.GetMouseButtonDown(0))
         {
             if (PendingAction != null) ResolvePending(Input.mousePosition);
@@ -665,6 +705,44 @@ public class SimView : MonoBehaviour
             Select(ChampionId);
             FocusOn(ChampionId.Value);
         }
+    }
+
+    Vector2Int MouseCell()
+    {
+        var w = cam.ScreenToWorldPoint(Input.mousePosition);
+        return new Vector2Int(Mathf.FloorToInt(w.x), Mathf.FloorToInt(-w.y));
+    }
+
+    /// Rectangle drag for digging; true while it consumes the mouse.
+    bool DigControls()
+    {
+        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetMouseButtonDown(1))
+        {
+            DigMode = false;
+            digStart = null;
+            if (digRect != null) digRect.enabled = false;
+            return true;
+        }
+        if (digRect == null) digRect = NewSprite("DigRect", null, Shapes.Pixel, new Color(1f, 0.75f, 0.2f, 0.35f), 31500);
+        if (Input.GetMouseButtonDown(0)) digStart = MouseCell();
+        if (!digStart.HasValue) return false;
+        var a = digStart.Value;
+        var b = MouseCell();
+        int x0 = Mathf.Min(a.x, b.x), y0 = Mathf.Min(a.y, b.y), w = Mathf.Abs(a.x - b.x) + 1, h = Mathf.Abs(a.y - b.y) + 1;
+        digRect.enabled = true;
+        digRect.transform.position = new Vector3(x0, -y0, 0);
+        digRect.transform.localScale = new Vector3(w, h, 1);
+        if (Input.GetMouseButtonUp(0))
+        {
+            digStart = null;
+            digRect.enabled = false;
+            SendPlayerCommand(new JObject
+            {
+                ["type"] = "designate", ["layer"] = (string)Layers[Layer]["id"],
+                ["rect"] = new JArray(x0, y0, w, h),
+            });
+        }
+        return true;
     }
 
     /// <summary>Entity under a screen point (pawns win over buildings).</summary>

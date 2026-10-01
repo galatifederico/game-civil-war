@@ -19,7 +19,7 @@ public class SimHud : MonoBehaviour
     GUIStyle box, title, small, label, zoneLabel, button, fake, hover, good, toggle, textBox, banner;
     Texture2D panelTex, barTex, barFillTex;
     bool panelHidden;
-    int bannerLayer = -1;
+    string bannerKey;
     float bannerUntil, noticeUntil;
     string noticeKey, noticeText;
     int speedIndex = 1;
@@ -208,6 +208,8 @@ public class SimHud : MonoBehaviour
         view.FollowCamera = GUILayout.Toggle(view.FollowCamera, "Segui (F)", toggle, GUILayout.Width(80));
         if (GUILayout.Button(view.Zoom >= 1f ? "Panoramica (M)" : "Da vicino (M)", button, GUILayout.Width(115))) view.ToggleOverview();
         if (GUILayout.Button(panelHidden ? "Pannello ◂ (Tab)" : "Pannello ▸ (Tab)", button, GUILayout.Width(120))) panelHidden = !panelHidden;
+        if (GUILayout.Button(view.DigMode ? "▸ Scava: trascina (Esc)" : "Scava", button, GUILayout.Width(view.DigMode ? 160 : 60)))
+            view.DigMode = !view.DigMode;
         if (GUILayout.Button("Salva", button, GUILayout.Width(55))) view.Save();
         if (GUILayout.Button("Carica", button, GUILayout.Width(60))) view.Load();
         GUILayout.FlexibleSpace();
@@ -471,15 +473,24 @@ public class SimHud : MonoBehaviour
     void LocationBanner()
     {
         if (view.Layers == null) return;
-        if (view.Layer != bannerLayer)
+        // The map, or on the big maps the quarter at the centre of the screen.
+        var l = view.Layers[view.Layer];
+        var c = Camera.main.transform.position;
+        int cx = Mathf.FloorToInt(c.x), cy = Mathf.FloorToInt(-c.y);
+        var zone = view.Map["zones"]?
+            .Where(z => (int)z["layer"] == view.Layer && (int)z["w"] * (int)z["h"] >= 400
+                        && cx >= (int)z["x"] && cx < (int)z["x"] + (int)z["w"] && cy >= (int)z["y"] && cy < (int)z["y"] + (int)z["h"]
+                        && (int)z["w"] < (int)l["width"])
+            .OrderBy(z => (int)z["w"] * (int)z["h"]).FirstOrDefault();
+        int depth = (int?)l["depth"] ?? 0;
+        string name = zone != null ? (string)zone["name"] : (string)l["name"];
+        if (depth < 0) name += $"  ·  livello {depth}";
+        if (name != bannerKey)
         {
-            bannerLayer = view.Layer;
+            bannerKey = name;
             bannerUntil = Time.time + 3f;
         }
-        if (Time.time > bannerUntil) return;
-        var l = view.Layers[view.Layer];
-        int depth = (int?)l["depth"] ?? 0;
-        string name = (string)l["name"] + (depth < 0 ? $"  ·  livello {depth}" : "");
+        if (Time.time > bannerUntil || view.Zoom < 1f) return;
         GUI.Label(new Rect(14, 46, Mathf.Max(220, name.Length * 9 + 40), 40), name, banner);
     }
 

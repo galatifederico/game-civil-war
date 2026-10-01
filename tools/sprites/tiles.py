@@ -234,7 +234,6 @@ def tiles():
     def rock_top(base="#8a7a6a", hi="#a8988a", lo="#6a5a4a", seed=40):
         t = T(base)
         t.specks([hi, lo], 18, seed)
-        t.rect(0, 0, 15, 0, hi)
         return t
 
     def rock_face(base="#5a4a3e", seed=41):
