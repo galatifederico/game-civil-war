@@ -168,6 +168,58 @@ CREATURES = {
             "..bb........bb..", "..AA........AA..", ".aaaa......aaaa.", "................", "................"],
         left=None,
     ),
+    "talpa": dict(
+        pal=dict(A="#5b4a42", a="#3f322c", N="#f48fb1", E="#16121a", C="#f8bbd0", H="#c0392b"),
+        down=[
+            "", "", "", "", "", "",
+            "......HHHH......", ".....HHHHHH.....", "....AAAAAAAA....", "...AAAAAAAAAA...",
+            "..AAEAAAAAAEAA..", "..AAAAANNAAAAA..", "..AAAAAaaAAAAA..", ".CAAAAAAAAAAAAC.",
+            ".CCaAAAAAAAAaCC.", "...aaaaaaaaaa...", "..CC........CC..", "", "", ""],
+        left=[
+            "", "", "", "", "", "",
+            ".......HHHH.....", "......HHHHHH....", "....AAAAAAAAA...", "...AAAAAAAAAAA..",
+            ".NAEAAAAAAAAAAa.", "NNAAAAAAAAAAAAa.", ".AAAAAAAAAAAAAa.", "..CAAAAAAAAAAa..",
+            ".CC.aaaaaaaaa...", "......C...C.....", ".....CC..CC.....", "", "", ""],
+    ),
+    "verme": dict(
+        pal=dict(A="#9c2a4a", a="#6e1a32", L="#c94a6e", E="#f5f0dc", P="#16121a"),
+        down=[
+            "", "", "", "",
+            "......AAAA......", ".....ALLLLA.....", ".....AEPPEA.....", ".....AAAAAA.....",
+            "......aaaa......", ".....ALLLLA.....", ".....AAAAAA.....", "......aaaa......",
+            ".....ALLLLA.....", ".....AAAAAA.....", "......aaaa......", ".....ALLLLA.....",
+            "......AAAA......", "", "", ""],
+        left=[
+            "", "", "", "", "", "", "", "",
+            "..AAAA..........", ".ALLLLA.AA..AA..", ".AEPAAAALLAALLA.", ".AAAAAaAAAaaAAAA",
+            "..aaaa.aaa..aaa.", "", "", "", "", "", "", ""],
+    ),
+    "ragno": dict(
+        pal=dict(A="#c8b78a", a="#a08f62", G="#7cb342", E="#c62828", L="#4e3b24"),
+        down=[
+            "", "", "", "", "", "",
+            "L..............L", ".L...AAAAAA...L.", "..L.AAGGGGAA.L..", "LLLLAAGAAGAALLLL",
+            "....AAGGGGAA....", "LLLLAAAAAAAALLLL", "..L.AAEAAEAA.L..", ".L...aAAAAa...L.",
+            "L.....aaaa.....L", "", "", "", "", ""],
+        left=[
+            "", "", "", "", "", "",
+            "..L....L..L.....", "...L.AAAAAA.L...", "....AAGGGGAAA...", ".LLAAGAAGGAAAA..",
+            "...EAAAAAAAAAA..", ".LLAAAAAAAAAAa..", "....aaaaaaaaa...", "...L.L.L.L.L....",
+            "..L..L..L..L....", "", "", "", "", ""],
+    ),
+    "cinghiale": dict(
+        pal=dict(A="#6d4c33", a="#4a3220", B="#3a2616", E="#f2e14b", T="#f5f0dc", N="#2a1a10"),
+        down=[
+            "", "", "", "", "",
+            "....BBBBBBBB....", "...BAAAAAAAAB...", "..BAAEAAAAEAAB..", "..AAAAANNAAAAA..",
+            "..TAAANNNNAAAT..", "..TAAAAAAAAAAT..", "...AAAAAAAAAA...", "..BAAAAAAAAAAB..",
+            "..BAAAAAAAAAAB..", "...aaaaaaaaaa...", "...AA......AA...", "...aa......aa...", "", "", ""],
+        left=[
+            "", "", "", "", "", "",
+            "....BBBBBBBB....", "...BBAAAAAAAABB.", ".AEAAAAAAAAAAAA.", "NNAAAAAAAAAAAAAa",
+            "NTAAAAAAAAAAAAAa", ".TAAAAAAAAAAAAa.", "..aaaaaaaaaaaa..", "...AA.AA.AA.AA..",
+            "...aa.aa.aa.aa..", "", "", "", "", ""],
+    ),
 }
 
 ACCESSORIES = {
@@ -260,8 +312,16 @@ def humanoid_frames(race):
     return base, cloth
 
 
+def _norm(rows):
+    rows = [r.ljust(16, ".")[:16] for r in rows]
+    return (rows + ["." * 16] * 20)[:20]
+
+
 def creature_frames(name):
-    spec = CREATURES[name]
+    spec = dict(CREATURES[name])
+    spec["down"] = _norm(spec["down"])
+    if spec["left"] is not None:
+        spec["left"] = _norm(spec["left"])
     pal = {k: hexrgba(v) for k, v in spec["pal"].items()}
     frames = {}
     for d in DIRS:

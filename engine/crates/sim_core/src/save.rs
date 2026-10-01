@@ -111,6 +111,7 @@ use crate::params::Params;
 use crate::press::{Feed, PressCursor};
 use crate::rng::SimRng;
 use crate::squads::Squads;
+use crate::supply::SupplyStats;
 use crate::telemetry::TelemetryCursor;
 use crate::time::SimClock;
 use crate::victory::Progress;
@@ -118,6 +119,7 @@ use crate::victory::Progress;
 resources!(
     SimRng, SimClock, Params, EventLog, CommandQueue, SpriteMapping, JobBoard, Factions, Players, Titles, Squads, Market,
     GlobalModifiers, Feed, PressCursor, TelemetryCursor, Flags, TriggerState, Progress, Environment, TerrainChanges,
+    SupplyStats,
 );
 
 pub fn save(world: &mut World) -> SaveGame {

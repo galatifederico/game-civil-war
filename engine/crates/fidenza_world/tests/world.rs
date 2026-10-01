@@ -189,13 +189,19 @@ fn champion_moves_where_the_player_says_and_squads_follow() {
     let msg = sim.execute(SimCommand::PlayerCreateSquad { player: "giocatore".into(), name: "Scorta".into(), members: members.clone() }).unwrap();
     let squad: u64 = msg.split_whitespace().nth(1).unwrap().parse().unwrap();
     sim.execute(SimCommand::PlayerSquadOrder { player: "giocatore".into(), squad, order: Some(sim_core::squads::SquadOrder::Follow { target: champ, distance: 3 }) }).unwrap();
-    sim.run(60);
-    let champ_pos = *sim.world.get::<Position>(ce).unwrap();
-    let near = members.iter().filter(|m| {
-        let e = sim.entity(**m).unwrap();
-        sim.world.get::<Dead>(e).is_none() && sim.world.get::<Position>(e).unwrap().within(&champ_pos, 5)
-    }).count();
-    assert!(near >= 2, "the squad did not follow the champion ({near} near)");
+    // The champion keeps living its life (food, sleep): members must catch up with it along the way.
+    let mut caught = std::collections::BTreeSet::new();
+    for t in 0..80 {
+        sim.run(1);
+        let champ_pos = *sim.world.get::<Position>(ce).unwrap();
+        for m in &members {
+            let e = sim.entity(*m).unwrap();
+            if t >= 20 && sim.world.get::<Dead>(e).is_none() && sim.world.get::<Position>(e).unwrap().within(&champ_pos, 5) {
+                caught.insert(*m);
+            }
+        }
+    }
+    assert!(caught.len() >= 2, "the squad did not follow the champion ({} caught up)", caught.len());
     // Another player's faction cannot be ordered around.
     let (bishop, _) = id_of(&mut sim, "vescovo");
     assert!(sim.execute(SimCommand::PlayerOrder { player: "giocatore".into(), entity: bishop, order: Order::Stop }).is_err());

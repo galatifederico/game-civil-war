@@ -732,7 +732,74 @@ def merge():
     SUBZONES = REGIONS + SUBZONES
     BUILDINGS = [(b, mid, x + place[mid][1], y + place[mid][2], o, n) if mid in place else (b, mid, x, y, o, n)
                  for b, mid, x, y, o, n in BUILDINGS]
+    place_venues(surf, place, pos, minx, miny, cols, rows)
     return place
+
+
+# Leisure venues: (building, quarter or None for open countryside, owner, name, footprint w, h).
+VENUES = [
+    ("gelateria", "piazza_garibaldi", "anarchici_commercio", "Gelateria di Piazza", 3, 2),
+    ("osteria", "borgo_templari", "templari_borgo", "Osteria del Borgo", 3, 3),
+    ("bocciofila", "rotonde", "circolo_boomer", "Bocciofila del Circolo", 5, 3),
+    ("cinema", "cattedrale", "chiesa", "Cinema Parrocchiale", 5, 4),
+    ("sala_slot", "casino", "casino_diablo", "Sala Slot Diablo Junior", 3, 3),
+    ("balera", None, "contadini_bassa", "Balera della Bassa", 5, 4),
+    ("campetto", "strada_provinciale", None, "Campetto della Provinciale", 5, 3),
+    ("gelateria", "salsomaggiore_terme", None, "Gelateria delle Terme", 3, 2),
+    ("cinema", "fidenza_village", "cda_fidenza_village", "Multisala del Village", 5, 4),
+    ("parco_giochi", "capannone_regali", None, "Parco giochi degli Elfi", 3, 2),
+    ("parco_giochi", "impero_vegano", None, "Parco giochi a impatto zero", 3, 2),
+    ("osteria", "colline_di_salso", "contadini_bassa", "Osteria delle Colline", 3, 3),
+    ("gelateria", "bosco_stirone", None, "Chiosco dello Stirone", 3, 2),
+    ("osteria", "fumetteria", "anarchici_commercio", "Osteria del Nerd Affamato", 3, 3),
+    ("osteria", None, "contadini_bassa", "Trattoria di campagna", 3, 3),
+    ("balera", None, "contadini_bassa", "Balera sotto le stelle", 5, 4),
+    ("campetto", None, None, "Campetto dell'oratorio", 5, 3),
+    ("parco_giochi", None, None, "Parco della Bassa", 3, 2),
+    ("bocciofila", None, "circolo_boomer", "Bocciofila di campagna", 5, 3),
+]
+GRASS = set('.,"')
+
+
+def place_venues(surf, place, pos, minx, miny, cols, rows):
+    taken = set()
+    for _, mid, x, y, _, _ in BUILDINGS:
+        if place.get(mid, ("",))[0] == "fidenza" or mid == "fidenza":
+            for yy in range(y - 6, y + 3):
+                for xx in range(x - 4, x + 5):
+                    taken.add((xx, yy))
+    used_cells = {(p[0] - minx, p[1] - miny) for p in pos.values()}
+    empty = [(gx * RW, gy * RH) for gy in range(rows) for gx in range(cols) if (gx, gy) not in used_cells]
+    free_rects = iter(empty)
+    for bid, region, owner, name, fw, fh in VENUES:
+        if region:
+            _, ox, oy = place[region]
+            zone = region
+        else:
+            ox, oy = next(free_rects)
+            zone = "fidenza"
+        cx, cy = ox + RW // 2, oy + RH // 2
+        best = None
+        for ay in range(oy + fh + 1, oy + RH - 3):
+            for ax in range(ox + fw // 2 + 2, ox + RW - fw // 2 - 2):
+                cells = [(x, y) for y in range(ay - fh, ay + 2) for x in range(ax - fw // 2 - 1, ax + fw // 2 + 2)]
+                if any(c in taken or surf.g[c[1]][c[0]] not in GRASS for c in cells):
+                    continue
+                d = (ax - cx) ** 2 + (ay - cy) ** 2
+                if best is None or d < best[0]:
+                    best = (d, ax, ay)
+        if best is None:
+            print("ATTENZIONE: nessun posto per", name)
+            continue
+        _, ax, ay = best
+        for y in range(ay - fh - 2, ay + 4):
+            for x in range(ax - fw // 2 - 3, ax + fw // 2 + 4):
+                taken.add((x, y))
+        for y in range(ay - fh + 1, ay + 1):
+            for x in range(ax - fw // 2, ax + fw // 2 + 1):
+                surf.g[y][x] = "."
+        surf.g[ay + 1][ax] = ":"
+        BUILDINGS.append((bid, zone, ax, ay, owner, name))
 
 
 def fmt_tags(t):

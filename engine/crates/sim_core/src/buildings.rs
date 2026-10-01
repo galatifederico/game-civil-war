@@ -47,6 +47,9 @@ pub struct ActiveModifier {
     pub until: u64,
     pub logistics_disruption: f32,
     pub morale: f32,
+    /// Outside supply multipliers: (item id or tag, factor), "*" = everything.
+    #[serde(default)]
+    pub supply: Vec<(String, f32)>,
 }
 
 /// Global simulation events with a duration (delivery delays, morale crises, price spikes…).
@@ -58,6 +61,16 @@ pub struct GlobalModifiers {
 impl GlobalModifiers {
     pub fn logistics_disruption(&self) -> f32 {
         self.active.iter().map(|m| m.logistics_disruption).sum()
+    }
+
+    /// Combined outside-supply factor for an item (by id or one of its tags).
+    pub fn supply_factor(&self, item: &str, tags: &[String]) -> f32 {
+        self.active
+            .iter()
+            .flat_map(|m| m.supply.iter())
+            .filter(|(k, _)| k == "*" || k == item || tags.contains(k))
+            .map(|(_, f)| *f)
+            .product()
     }
 }
 
@@ -122,7 +135,8 @@ pub fn activate_modifier(world: &mut World, id: &str, name: &str, duration: u64,
     {
         let mut gm = world.resource_mut::<GlobalModifiers>();
         gm.active.retain(|m| m.id != id);
-        gm.active.push(ActiveModifier { id: id.to_string(), name: name.clone(), until: tick + duration, logistics_disruption: disruption, morale });
+        let supply = def.as_ref().map(|d| d.supply.clone()).unwrap_or_default();
+        gm.active.push(ActiveModifier { id: id.to_string(), name: name.clone(), until: tick + duration, logistics_disruption: disruption, morale, supply });
     }
     if morale != 0.0 {
         let stat = world.resource::<Content>().bindings.morale.clone();

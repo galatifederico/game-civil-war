@@ -93,6 +93,7 @@
          price_tags: [("regalo", 1.8), ("merce", 1.3)]),
         (id: "natale_cancellato", name: "Natale d'Agosto cancellato", logistics_disruption: 0.8, morale: -20,
          price_tags: [("regalo", 3.0), ("lusso", 1.5)]),
-        (id: "proibizionismo", name: "Proibizionismo vegano", logistics_disruption: 0.1, morale: -5, price_tags: [("alcol", 2.0), ("carne", 1.5)]),
+        (id: "proibizionismo", name: "Proibizionismo vegano", logistics_disruption: 0.1, morale: -5, price_tags: [("alcol", 2.0), ("carne", 1.5)],
+         supply: [("alcol", 0.3), ("carne", 0.5)]),
     ],
 )

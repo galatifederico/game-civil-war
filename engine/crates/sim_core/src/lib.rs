@@ -41,6 +41,7 @@ pub mod snapshot;
 pub mod social;
 pub mod squads;
 pub mod strategy;
+pub mod supply;
 pub mod stats;
 pub mod status;
 pub mod targeting;

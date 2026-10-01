@@ -41,6 +41,7 @@ pub struct ContentPack {
     pub news_impacts: Vec<NewsImpactDef>,
     pub victory: Vec<VictoryDef>,
     pub global_modifiers: Vec<GlobalModifierDef>,
+    pub supplies: Vec<SupplyDef>,
     pub sprites: BTreeMap<Id, SpriteDef>,
 }
 
@@ -1022,6 +1023,27 @@ pub struct GlobalModifierDef {
     pub logistics_disruption: f32,
     pub morale: f32,
     pub price_tags: Vec<(String, f32)>,
+    /// Multipliers of the outside supply while active: (item id or item tag, factor). "*" = everything.
+    pub supply: Vec<(String, f32)>,
+}
+
+/// Steady flow of goods from outside the world: every `interval` ticks the shops that sell `item` are
+/// topped up towards `per_shop` units each, at most `max_per_day`. Local production fills shops first,
+/// so it covers a variable share of the total and imports cover the rest. `variation` adds randomness
+/// (±fraction), active global modifiers scale the flow, the owner faction pays `cost` × base price.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SupplyDef {
+    pub id: Id,
+    pub name: String,
+    pub item: Id,
+    pub per_shop: u32,
+    pub max_per_day: u32,
+    pub variation: f32,
+    pub interval: u64,
+    pub cost: f32,
+    /// Only shops of buildings with this tag.
+    pub shop_tag: Option<String>,
 }
 
 /// How the client should draw something. Kept deliberately simple: shape + colors + glyph, or a sheet.

@@ -56,6 +56,7 @@ pub struct ContentData {
     pub news_impacts: Vec<NewsImpactDef>,
     pub victory: Vec<VictoryDef>,
     pub global_modifiers: BTreeMap<Id, GlobalModifierDef>,
+    pub supplies: BTreeMap<Id, SupplyDef>,
     pub sprites: BTreeMap<Id, SpriteDef>,
 }
 
@@ -119,6 +120,7 @@ impl Content {
             c.news_impacts.extend(p.news_impacts);
             c.victory.extend(p.victory);
             merge(&mut c.global_modifiers, p.global_modifiers, |d| &d.id);
+            merge(&mut c.supplies, p.supplies, |d| &d.id);
             c.sprites.extend(p.sprites);
         }
         if let Some(m) = c.map.as_mut() {
@@ -198,6 +200,11 @@ impl Validator<'_> {
 
     fn run(&mut self) {
         let c = self.c;
+        for s in c.supplies.values() {
+            if !c.items.contains_key(&s.item) {
+                self.errors.push(format!("rifornimento {}: oggetto '{}' non esiste", s.id, s.item));
+            }
+        }
         let b = &c.bindings;
         for s in [&b.morale, &b.perception, &b.stealth, &b.speed, &b.strength, &b.heroism, &b.press_reputation] {
             if !c.stats.is_empty() {

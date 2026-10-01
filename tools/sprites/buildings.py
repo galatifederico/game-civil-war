@@ -76,6 +76,10 @@ ICONS = {
     "bottle": ["..#..", "..#..", ".###.", ".###.", ".###."],
     "wave": [".....", "#.#.#", ".#.#.", "#.#.#", "....."],
     "lock": [".###.", ".#.#.", "#####", "##.##", "#####"],
+    "note": ["..###", "..#.#", "..#.#", "###.#", "##.##"],
+    "cone": [".###.", "#####", ".###.", "..#..", "..#.."],
+    "film": ["#####", "#.#.#", "#####", "#.#.#", "#####"],
+    "ball": [".###.", "#.#.#", "##.##", "#.#.#", ".###."],
 }
 
 
@@ -374,6 +378,96 @@ def water_tower():
     return cv.img
 
 
+def pitch():
+    """Five-a-side pitch: grass with white lines and two goals."""
+    cv = Canvas(80, 48)
+    for y in range(6, 46):
+        for x in range(2, 78):
+            cv.set(x, y, rgb("#5aa845") if (x // 6) % 2 == 0 else rgb("#4f9a3c"))
+    W = rgb("#f5f5f5")
+    cv.rect(4, 8, 75, 8, W)
+    cv.rect(4, 43, 75, 43, W)
+    cv.rect(4, 8, 4, 43, W)
+    cv.rect(75, 8, 75, 43, W)
+    cv.rect(39, 8, 40, 43, W)
+    for a in range(0, 360, 20):
+        import math
+        cv.set(int(40 + 6 * math.cos(math.radians(a))), int(25 + 6 * math.sin(math.radians(a))), W)
+    for gx in (1, 76):
+        cv.rect(gx, 19, gx + 2, 32, rgb("#e0e0e0"))
+        cv.rect(gx + (1 if gx == 1 else 0), 20, gx + (2 if gx == 1 else 1), 31, rgb("#9e9e9e"))
+    cv.rect(30, 27, 32, 29, W)
+    cv.set(31, 28, OUT)
+    cv.outline()
+    return cv.img
+
+
+def playground():
+    """Sand patch with a swing and a slide."""
+    cv = Canvas(48, 36)
+    cv.rect(2, 16, 45, 34, rgb("#e8d39a"))
+    cv.rect(2, 16, 45, 17, rgb("#f3e2b0"))
+    # Swing frame.
+    cv.rect(5, 4, 6, 30, rgb("#c62828"))
+    cv.rect(22, 4, 23, 30, rgb("#c62828"))
+    cv.rect(5, 3, 23, 4, rgb("#8e2020"))
+    for sx in (10, 17):
+        cv.rect(sx, 5, sx, 22, rgb("#9e9e9e"))
+        cv.rect(sx + 3, 5, sx + 3, 22, rgb("#9e9e9e"))
+        cv.rect(sx - 1, 23, sx + 4, 24, rgb("#1e88e5"))
+    # Slide.
+    cv.rect(30, 10, 31, 30, rgb("#757575"))
+    for i in range(0, 14):
+        cv.rect(32 + i, 10 + i, 34 + i, 11 + i, rgb("#fdd835"))
+    cv.rect(29, 9, 33, 10, rgb("#43a047"))
+    cv.outline()
+    return cv.img
+
+
+def deposit():
+    """Stockpile: crates, a stone heap and ore."""
+    cv = Canvas(48, 34)
+    cv.rect(2, 14, 45, 32, rgb("#8d7b68"))
+    for (x, y) in [(5, 14), (14, 18), (5, 22)]:
+        cv.rect(x, y, x + 8, y + 8, rgb("#a1714a"))
+        cv.rect(x, y, x + 8, y + 1, rgb("#c49464"))
+        cv.rect(x + 4, y, x + 4, y + 8, rgb("#7a5234"))
+    for y in range(12, 31):
+        half = (y - 12) // 2 + 2
+        for x in range(36 - half, 36 + half):
+            cv.set(x, y, rgb("#9e9e9e") if (x + y) % 5 else rgb("#bdbdbd"))
+    for (x, y, c) in [(30, 26, "#b06a40"), (38, 24, "#e0b020"), (34, 20, "#f080b0"), (40, 28, "#b06a40")]:
+        cv.rect(x, y, x + 1, y + 1, rgb(c))
+    cv.outline()
+    return cv.img
+
+
+def mushroom_farm():
+    cv = Canvas(32, 28)
+    cv.rect(1, 18, 30, 27, rgb("#4a3a30"))
+    for (x, y, r) in [(8, 14, 6), (21, 12, 7), (14, 21, 4), (26, 22, 3)]:
+        cv.rect(x - 1, y, x + 1, y + r, rgb("#efe4c8"))
+        for yy in range(y - r, y + 1):
+            for xx in range(x - r, x + r + 1):
+                if (xx - x) ** 2 + ((yy - y) * 1.6) ** 2 <= r * r:
+                    cv.set(xx, yy, rgb("#a85a28") if yy < y - 1 else rgb("#8a4a20"))
+        cv.set(x - r // 2, y - r + 2, rgb("#d08a50"))
+    cv.outline()
+    return cv.img
+
+
+def chest():
+    cv = Canvas(16, 16)
+    cv.rect(1, 6, 14, 14, rgb("#8d5524"))
+    cv.rect(1, 3, 14, 7, rgb("#a8692e"))
+    cv.rect(1, 7, 14, 7, rgb("#5d3a17"))
+    for x in (1, 7, 14):
+        cv.rect(x, 3, x, 14, rgb("#e0b020"))
+    cv.rect(6, 8, 8, 10, rgb("#fff080"))
+    cv.outline()
+    return cv.img
+
+
 def build_all():
     return {
         "vigna": field("#7b1fa2", sign=True),
@@ -414,6 +508,17 @@ def build_all():
         "stabilimento_termale": dome(glass="#81d4fa", base_col="#e1f5fe", sign="wave"),
         "sala_giochi": house(tiles=4, roof="#b71c1c", wall="#3e2723", sign="dice", sign_col="#f2c12e", flat=True, trim="#f2c12e"),
         "acquedotto": water_tower(),
+        "osteria": house(roof="#7b3f20", wall="#f3dfc1", sign="grape", sign_col="#8e2448", awning="#8e2448", chimney=True),
+        "bocciofila": house(tiles=5, roof="#6d8a3a", wall="#efe6cf", sign="ball", sign_col="#37474f", flat=True, trim="#8bc34a"),
+        "cinema": house(tiles=5, roof="#263238", wall="#ffebee", sign="film", sign_col="#b71c1c", flat=True, trim="#e53935", extra_top=4),
+        "sala_slot": house(roof="#4a148c", wall="#311b92", sign="dice", sign_col="#f2c12e", flat=True, trim="#f2c12e", door="#212121"),
+        "parco_giochi": playground(),
+        "campetto": pitch(),
+        "balera": house(tiles=5, roof="#c62828", wall="#fff3e0", sign="note", sign_col="#c62828", awning="#fbc02d"),
+        "gelateria": house(roof="#f48fb1", wall="#fff8fb", sign="cone", sign_col="#ad1457", awning="#f06292"),
+        "deposito": deposit(),
+        "fungaia_porcini": mushroom_farm(),
+        "scrigno_antico": chest(),
     }
 
 
