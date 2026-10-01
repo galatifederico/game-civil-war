@@ -257,6 +257,7 @@
         "faction:ubriaconi": (outline: "#8d6e63"),
         "faction:circolo_boomer": (outline: "#ff7043"),
         "building:vigna": (sheet: "bld_vigna"),
+        "building:stendardo": (sheet: "bld_stendardo"),
         "building:osteria": (sheet: "bld_osteria"),
         "building:bocciofila": (sheet: "bld_bocciofila"),
         "building:cinema": (sheet: "bld_cinema"),

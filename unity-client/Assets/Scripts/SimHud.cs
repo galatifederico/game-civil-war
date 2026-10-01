@@ -215,6 +215,8 @@ public class SimHud : MonoBehaviour
         GUILayout.FlexibleSpace();
     }
 
+    string ZoneName(string id) => (string)view.Map?["zones"]?.FirstOrDefault(z => (string)z["id"] == id)?["name"] ?? id;
+
     List<JToken> Factions() => view.State?["snapshot"]?["factions"]?.ToList() ?? new List<JToken>();
 
     string FactionName(string id) => (string)Factions().FirstOrDefault(f => (string)f["id"] == id)?["name"] ?? id;
@@ -298,6 +300,24 @@ public class SimHud : MonoBehaviour
         }
         Section(FactionName((string)p["faction"]));
         GUILayout.Label($"Fondo di gilda {(float)p["treasury"]:0} € · {p["victory_points"]} punti vittoria", label, GUILayout.Width(width));
+
+        // Quarters: held ones and how the fight goes where the champion stands.
+        Section("Quartieri");
+        var mine = (string)p["faction"];
+        var terr = view.State?["snapshot"]?["territories"] as JObject;
+        var held = terr?.Properties().Where(t => (string)t.Value["owner"] == mine).Select(t => ZoneName(t.Name)).ToList() ?? new List<string>();
+        GUILayout.Label(held.Count == 0 ? "Nessun quartiere: stai nei quartieri con i tuoi, possiedi edifici e pianta stendardi." : string.Join(", ", held), label, GUILayout.Width(width));
+        if (terr != null)
+            foreach (var t in terr.Properties())
+            {
+                var inf = t.Value["influence"] as JObject;
+                float my = (float?)inf?[mine] ?? 0f;
+                if (my <= 0f) continue;
+                var top = inf.Properties().OrderByDescending(x => (float)x.Value).First();
+                string owner = (string)t.Value["owner"];
+                string state = owner == mine ? "tuo" : owner == null ? "libero" : "di " + FactionName(owner);
+                GUILayout.Label($"{ZoneName(t.Name)} ({state}): tua influenza {my:0} · prima {FactionName(top.Name)} {(float)top.Value:0}", small, GUILayout.Width(width));
+            }
 
         Section("Membri (obbedienza)");
         foreach (var m in p["members"])
@@ -484,6 +504,8 @@ public class SimHud : MonoBehaviour
             .OrderBy(z => (int)z["w"] * (int)z["h"]).FirstOrDefault();
         int depth = (int?)l["depth"] ?? 0;
         string name = zone != null ? (string)zone["name"] : (string)l["name"];
+        var owner = zone != null ? (string)view.Territory((string)zone["id"])?["owner"] : null;
+        if (owner != null) name += "  ·  " + FactionName(owner);
         if (depth < 0) name += $"  ·  livello {depth}";
         if (name != bannerKey)
         {
@@ -522,7 +544,8 @@ public class SimHud : MonoBehaviour
         {
             var sp = view.WorldToScreen(new Vector3((int)z["x"] + 0.3f, -(int)z["y"] - 0.2f, 0));
             var p = new Vector2(sp.x, Screen.height - sp.y) / scale;
-            GUI.Label(new Rect(p.x, p.y, 240, 20), (string)z["name"], zoneLabel);
+            var owner = (string)view.Territory((string)z["id"])?["owner"];
+            GUI.Label(new Rect(p.x, p.y, 320, 20), (string)z["name"] + (owner != null ? " — " + FactionName(owner) : ""), zoneLabel);
         }
     }
 

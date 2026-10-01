@@ -468,6 +468,22 @@ def chest():
     return cv.img
 
 
+def banner():
+    """Faction banner on a pole (the client tints nothing: the cloth is a neutral heraldic red-gold)."""
+    cv = Canvas(16, 32)
+    cv.rect(3, 2, 4, 30, rgb("#6d4c41"))
+    cv.rect(2, 1, 5, 2, rgb("#f2c12e"))
+    cv.rect(5, 4, 13, 14, rgb("#c62828"))
+    cv.rect(5, 4, 13, 5, rgb("#e53935"))
+    for x in range(5, 14):
+        if x % 2 == 0:
+            cv.set(x, 15, rgb("#c62828"))
+    cv.rect(8, 7, 10, 11, rgb("#f2c12e"))
+    cv.rect(1, 29, 6, 30, rgb("#5d4037"))
+    cv.outline()
+    return cv.img
+
+
 def build_all():
     return {
         "vigna": field("#7b1fa2", sign=True),
@@ -519,6 +535,7 @@ def build_all():
         "deposito": deposit(),
         "fungaia_porcini": mushroom_farm(),
         "scrigno_antico": chest(),
+        "stendardo": banner(),
     }
 
 

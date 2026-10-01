@@ -123,7 +123,7 @@ pub enum DamageOutcome {
 
 /// Deals damage to a part (chosen by coverage when `part` is None).
 pub fn damage(world: &mut World, e: Entity, amount: f32, part: Option<&str>, source: Option<Entity>) -> DamageOutcome {
-    if world.get::<Dead>(e).is_some() || amount <= 0.0 {
+    if world.get::<Dead>(e).is_some() || world.get::<crate::player::KnockedOut>(e).is_some() || amount <= 0.0 {
         return DamageOutcome::Nothing;
     }
     let Some(mut body) = world.get::<Body>(e).cloned() else { return DamageOutcome::Nothing };

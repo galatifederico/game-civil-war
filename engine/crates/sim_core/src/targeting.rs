@@ -118,7 +118,8 @@ pub fn candidates(world: &mut World, chooser: Entity, f: &Filter) -> Vec<(SimId,
     let index = std::mem::take(&mut world.resource_mut::<TargetIndex>().entries);
     let mut out = Vec::new();
     for &(id, e, pos, is_pawn) in &index {
-        if e == chooser || world.get::<Dead>(e).is_some() {
+        // The knocked out are out of the game until they get up: nobody picks on them.
+        if e == chooser || world.get::<Dead>(e).is_some() || world.get::<crate::player::KnockedOut>(e).is_some() {
             continue;
         }
         if let Some(p) = f.pawn

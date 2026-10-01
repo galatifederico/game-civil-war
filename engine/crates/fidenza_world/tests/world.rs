@@ -261,9 +261,11 @@ fn champion_is_knocked_out_instead_of_dying() {
     let (killer, ke) = id_of(&mut sim, "ninja");
     let money_before = sim.world.get::<Wallet>(ce).unwrap().0;
     let killer_money = sim.world.get::<Wallet>(ke).unwrap().0;
+    sim.execute(SimCommand::ApplyEffect { subject: Some(champ), target: Some(killer), effect: Effect::Damage { amount: 500.0, part: Some("braccio_sx".into()) } }).unwrap();
     sim.execute(SimCommand::ApplyEffect { subject: Some(champ), target: Some(killer), effect: Effect::Damage { amount: 500.0, part: Some("testa".into()) } }).unwrap();
     assert!(sim.world.get::<Dead>(ce).is_none(), "a champion must never die");
     assert!(sim.world.get::<sim_core::player::KnockedOut>(ce).is_some());
+    assert!(sim.world.get::<sim_core::anatomy::Body>(ce).unwrap().parts.iter().any(|p| p.missing), "the arm is gone for now");
     let lost = money_before - sim.world.get::<Wallet>(ce).unwrap().0;
     assert!(lost > 0.0 && (sim.world.get::<Wallet>(ke).unwrap().0 - killer_money - lost).abs() < 0.01, "the knocker takes the lost money");
     // Out of action: orders are refused.
@@ -272,6 +274,7 @@ fn champion_is_knocked_out_instead_of_dying() {
     assert!(sim.world.get::<Dead>(ce).is_none());
     sim.run(14);
     assert!(sim.world.get::<sim_core::player::KnockedOut>(ce).is_none(), "the champion gets back up");
+    assert!(sim.world.get::<sim_core::anatomy::Body>(ce).unwrap().parts.iter().all(|p| !p.missing), "the champion gets back up whole");
     assert!(sim.events().of_kind("recovered").count() >= 1);
 }
 
@@ -316,4 +319,22 @@ fn feed_separates_news_from_noise() {
     // The player's view never marks fake news.
     let snap = sim.snapshot(false);
     assert!(snap.feed.iter().all(|a| a.truth != sim_core::content::Truth::Fake));
+}
+
+#[test]
+fn factions_conquer_quarters_and_the_champion_plants_banners() {
+    let mut sim = sim(3);
+    let (champ, ce) = id_of(&mut sim, "leader_anarchico");
+    sim.run(24 * 3);
+    let snap = sim.snapshot(false);
+    let owned: Vec<(String, String)> = snap.territories.iter().filter_map(|(z, t)| t.owner.clone().map(|o| (z.clone(), o))).collect();
+    eprintln!("quartieri: {owned:?}");
+    assert!(owned.len() >= 3, "too few quarters held after 3 days: {owned:?}");
+    assert!(sim.events().of_kind("territory").count() >= 3);
+    // On the player's order the champion plants a banner where it stands.
+    sim.world.get_mut::<Wallet>(ce).unwrap().0 = 200.0;
+    sim.execute(SimCommand::PlayerOrder { player: "giocatore".into(), entity: champ, order: sim_core::player::Order::Job { job: "pianta_stendardo".into(), target: None } }).unwrap();
+    sim.run(4);
+    let banners = sim.snapshot(true).entities.iter().filter(|e| e.kind == "building" && e.building.as_ref().is_some_and(|b| b.def == "stendardo")).count();
+    assert!(banners >= 1, "no banner planted");
 }

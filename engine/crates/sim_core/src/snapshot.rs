@@ -209,6 +209,8 @@ pub struct WorldSnapshot {
     pub open_jobs: usize,
     pub winner: Option<crate::victory::Winner>,
     pub scores: BTreeMap<String, i64>,
+    /// Quarters: owner and influence per faction.
+    pub territories: BTreeMap<String, crate::territory::TerritoryState>,
 }
 
 /// One entity. With `truth` the admin view shows hidden identities; otherwise the apparent one.
@@ -353,6 +355,7 @@ pub fn snapshot(world: &mut World, truth: bool) -> WorldSnapshot {
         open_jobs: world.resource::<JobBoard>().jobs.len(),
         winner: world.resource::<Progress>().winner.clone(),
         scores,
+        territories: world.resource::<crate::territory::Territories>().zones.clone(),
     }
 }
 
@@ -388,6 +391,15 @@ pub fn fog_of_war(world: &mut World, faction: &str) -> FogView {
             if vision > 0 {
                 observers.push((pos, vision));
             }
+        }
+    }
+    // Quarters held by the faction are watched over entirely.
+    let map = world.resource::<crate::map::WorldMap>().clone();
+    for (zid, t) in &world.resource::<crate::territory::Territories>().zones {
+        if t.owner.as_deref() == Some(faction)
+            && let Some(z) = map.zones.iter().find(|z| &z.id == zid)
+        {
+            observers.push((Position::new(z.layer, z.x + z.w / 2, z.y + z.h / 2), z.w.max(z.h) / 2 + 2));
         }
     }
     for e in crate::sorted_entities::<crate::stats::Pawn>(world) {

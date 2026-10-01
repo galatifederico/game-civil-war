@@ -252,6 +252,19 @@ pub fn wake_up(world: &mut World) {
     for e in crate::sorted_entities::<KnockedOut>(world) {
         if world.get::<KnockedOut>(e).is_some_and(|k| k.until <= tick) {
             world.entity_mut(e).remove::<KnockedOut>();
+            // A champion gets back up whole: lost parts grow back, it is patched up, fed and rested
+            // enough not to fall again at once.
+            if let Some(mut b) = world.get_mut::<crate::anatomy::Body>(e) {
+                for part in b.parts.iter_mut() {
+                    part.missing = false;
+                    part.hp = part.hp.max(part.max_hp * 0.6);
+                }
+            }
+            if let Some(mut n) = world.get_mut::<crate::stats::Needs>(e) {
+                for v in n.0.values_mut() {
+                    *v = v.max(0.5);
+                }
+            }
             let name = crate::effects::name_of(world, e);
             let id = world.get::<SimId>(e).copied();
             world.resource_mut::<EventLog>().push(tick, EventBuilder::new("recovered", format!("{name} si rialza")).target(id).tags(["champion"]));

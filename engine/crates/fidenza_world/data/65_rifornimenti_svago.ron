@@ -1,4 +1,4 @@
-// Rifornimenti da fuori (flusso stabile, la produzione locale ne copre una quota variabile), circostanze
+// Conquista dei quartieri: stendardi. Rifornimenti da fuori (flusso stabile, la produzione locale ne copre una quota variabile), circostanze
 // casuali che li alterano e luoghi di divertimento sparsi per la mappa.
 (
     items: [
@@ -6,10 +6,16 @@
          on_use: [ModNeed(need: "fame", amount: 0.3), ModNeed(need: "svago", amount: 0.3)]),
     ],
     jobs: [
+        (id: "pianta_stendardo", name: "Pianta lo stendardo", handler: "build", duration: 2, params: {"building": "stendardo"},
+         effects: [ModMoney(-30.0)], news: 0.3),
         (id: "divertiti", name: "Si diverte", duration: 3,
          effects: [ModNeed(need: "svago", amount: 0.5), ModStat(stat: "morale", amount: 1.5), ModMoney(-1.0)]),
     ],
     actions: [
+        // I capi delle fazioni (e il campione su ordine) piantano stendardi per conquistare i quartieri.
+        (id: "pianta_stendardo", name: "Pianta lo stendardo", universal: true, weight: 0.04, cooldown: 72,
+         kind: Job(job: "pianta_stendardo"),
+         requires: All([MoneyAtLeast(60), HasTag("leader")])),
         (id: "divertiti", name: "Si diverte", universal: true, weight: 0.7, cooldown: 18,
          kind: Job(job: "divertiti", target: Nearest((building_tag: "svago", max_distance: 40))),
          requires: MoneyAtLeast(2),
@@ -17,6 +23,8 @@
          label: "Si diverte"),
     ],
     buildings: [
+        (id: "stendardo", name: "Stendardo", footprint: (1, 1), hp: 30, tags: ["stendardo"],
+         description: "Il vessillo della fazione: chi ne pianta di più si prende il quartiere."),
         (id: "osteria", name: "Osteria", footprint: (3, 3), hp: 80, income: 20, tags: ["negozio", "svago", "bar"],
          sells: {"birra": None, "vino": None, "pane": None, "salumi": None}, markup: 1.2, stock: {"birra": 12, "vino": 8, "pane": 6, "salumi": 3},
          description: "Tagliere, Lambrusco e discussioni sul campionato fino a tardi."),

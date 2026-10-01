@@ -43,6 +43,7 @@ public class SimView : MonoBehaviour
     Vector2Int? digStart;
     SpriteRenderer digRect;
     Texture2D terrainTex;
+    readonly Dictionary<string, SpriteRenderer> quarterTint = new();
     int terrainSeen = -1;
     const float CloseZoom = 3f;
     /// Feed filter: "important" (default), "mine", "all" or a category id.
@@ -329,6 +330,15 @@ public class SimView : MonoBehaviour
                 t.transform.position = new Vector3(c.x + 0.5f, -c.y - 1f, 0);
                 t.sortingOrder = Chibi.OrderForY(-c.y - 1f) + 7;
             }
+        // Quarters: tinted with their owner's colour in the overview.
+        quarterTint.Clear();
+        foreach (var z in Map["zones"].Where(z => (int)z["layer"] == layer && (z["tags"]?.Any(t => (string)t == "quartiere") ?? false)))
+        {
+            var q = NewSprite("Quarter " + (string)z["id"], zonesRoot, Shapes.Pixel, Color.clear, 30000);
+            q.transform.position = new Vector3((int)z["x"], -(int)z["y"], 0);
+            q.transform.localScale = new Vector3((int)z["w"], (int)z["h"], 1);
+            quarterTint[(string)z["id"]] = q;
+        }
         // Fog texture sized to the layer.
         if (fogRenderer == null) fogRenderer = NewSprite("Fog", null, Shapes.Pixel, Color.white, 32000);
         fogTex = new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
@@ -411,6 +421,7 @@ public class SimView : MonoBehaviour
             }
         DrawCells();
         DrawFog();
+        DrawQuarters();
     }
 
     EntityGo Create(long id, bool building)
@@ -559,6 +570,30 @@ public class SimView : MonoBehaviour
         for (; i < cellPool.Count; i++) cellPool[i].SetActive(false);
     }
 
+    /// Colour of a faction (its outline in the sprite mapping), or a stable colour from its id.
+    public Color FactionColor(string faction)
+    {
+        if (string.IsNullOrEmpty(faction)) return Color.clear;
+        var hex = (string)SpriteDef("faction:" + faction)?["outline"];
+        if (hex != null && ColorUtility.TryParseHtmlString(hex, out var c)) return c;
+        return Color.HSVToRGB((faction.GetHashCode() & 0xFFFF) / 65535f, 0.6f, 0.85f);
+    }
+
+    public JToken Territory(string zone) => State?["snapshot"]?["territories"]?[zone];
+
+    void DrawQuarters()
+    {
+        bool show = Zoom < 1f;
+        foreach (var kv in quarterTint)
+        {
+            var owner = (string)Territory(kv.Key)?["owner"];
+            var c = FactionColor(owner);
+            c.a = owner == null ? 0f : 0.22f;
+            kv.Value.color = c;
+            kv.Value.enabled = show;
+        }
+    }
+
     void DrawFog()
     {
         var fog = State["fog"];
@@ -650,6 +685,7 @@ public class SimView : MonoBehaviour
     void CameraControls()
     {
         ApplyZoom();
+        foreach (var q in quarterTint.Values) q.enabled = Zoom < 1f;
         var hud = GetComponent<SimHud>();
         bool overUi = hud != null && hud.IsOverUi(Input.mousePosition);
         float scroll = Input.mouseScrollDelta.y;

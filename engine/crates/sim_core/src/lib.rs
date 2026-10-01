@@ -46,6 +46,7 @@ pub mod stats;
 pub mod status;
 pub mod targeting;
 pub mod telemetry;
+pub mod territory;
 pub mod time;
 pub mod victory;
 

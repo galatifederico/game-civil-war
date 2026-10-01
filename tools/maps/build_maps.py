@@ -652,7 +652,7 @@ def merge():
                 elif ring == 1 and ch == "t":
                     ch = "t" if rnd.chance(0.1) else "."
                 surf.g[oy + y][ox + x] = ch
-        REGIONS.append((m.id, m.name, "fidenza", (ox, oy, m.w, m.h), m.tags))
+        REGIONS.append((m.id, m.name, "fidenza", (ox, oy, m.w, m.h), m.tags + ["quartiere"]))
     for gy in range(rows):
         for gx in range(cols):
             if (gx, gy) in by_cell:
@@ -708,7 +708,7 @@ def merge():
             for x in range(m.w):
                 z.g[oy + y][ox + x] = m.g[y][x]
         place[m.id] = (z.id, ox, oy)
-        REGIONS.append((m.id, m.name, z.id, (ox, oy, m.w, m.h), m.tags))
+        REGIONS.append((m.id, m.name, z.id, (ox, oy, m.w, m.h), m.tags + ["quartiere"]))
         if not by[parent[m.id][0][0]].indoor:
             # Stairs straight down from the parent cell, then a tunnel to the old entrance if it moved.
             tunnel(z, (gx, gy), (ox + ex, oy + ey))
@@ -750,7 +750,7 @@ VENUES = [
     ("parco_giochi", "capannone_regali", None, "Parco giochi degli Elfi", 3, 2),
     ("parco_giochi", "impero_vegano", None, "Parco giochi a impatto zero", 3, 2),
     ("osteria", "colline_di_salso", "contadini_bassa", "Osteria delle Colline", 3, 3),
-    ("gelateria", "bosco_stirone", None, "Chiosco dello Stirone", 3, 2),
+    ("gelateria", None, None, "Chiosco dello Stirone", 3, 2),
     ("osteria", "fumetteria", "anarchici_commercio", "Osteria del Nerd Affamato", 3, 3),
     ("osteria", None, "contadini_bassa", "Trattoria di campagna", 3, 3),
     ("balera", None, "contadini_bassa", "Balera sotto le stelle", 5, 4),
