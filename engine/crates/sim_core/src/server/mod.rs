@@ -44,6 +44,8 @@ pub struct AppState {
     pub factory: Option<Factory>,
     /// When set, every non-GET request needs `Authorization: Bearer <token>`.
     pub token: Option<String>,
+    /// Folder of sprite images (PNG) shown by the admin console under `/assets/`.
+    pub assets: Option<std::path::PathBuf>,
 }
 
 /// Installs the global Prometheus recorder (once per process).
@@ -54,6 +56,10 @@ pub fn install_metrics() -> Option<PrometheusHandle> {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(index))
+        .route("/admin/", get(admin_page))
+        .route("/api/content", get(content_all))
+        .route("/api/assets", get(assets_list))
+        .route("/assets/{file}", get(asset_file))
         .route("/healthz", get(|| async { "ok" }))
         .route("/metrics", get(metrics))
         .route("/api/state", get(state_all))
@@ -311,7 +317,7 @@ struct TruthQ {
 
 async fn index() -> Html<&'static str> {
     Html(concat!(
-        "<h1>sim_core admin</h1><ul>",
+        "<h1>sim_core admin</h1><p><a href='/admin/'><b>Console di amministrazione</b></a></p><ul>",
         "<li><a href='/ui/'>/ui/</a> client</li>",
         "<li><a href='/api/state'>/api/state</a> (?truth=true per la vista admin)</li>",
         "<li><a href='/api/entities'>/api/entities</a>, /api/entities/{id}, /api/entities/{id}/ai</li>",
@@ -326,6 +332,36 @@ async fn index() -> Html<&'static str> {
         "<li><a href='/metrics'>/metrics</a> (Prometheus)</li>",
         "<li>POST /mcp (MCP JSON-RPC 2.0)</li></ul>"
     ))
+}
+
+async fn admin_page() -> Html<&'static str> {
+    Html(include_str!("admin.html"))
+}
+
+/// Every loaded definition (items, buildings, races, jobs, actions, factions, templates, placements…).
+async fn content_all(State(s): State<AppState>) -> ApiResult {
+    let sim = s.sim.lock().unwrap();
+    let c: &crate::content::ContentData = sim.content();
+    Ok(Json(serde_json::to_value(c).unwrap_or_default()))
+}
+
+async fn assets_list(State(s): State<AppState>) -> ApiResult {
+    let mut files: Vec<String> = s
+        .assets
+        .as_ref()
+        .and_then(|d| std::fs::read_dir(d).ok())
+        .map(|rd| rd.filter_map(|e| e.ok()?.file_name().into_string().ok()).filter(|n| n.ends_with(".png")).collect())
+        .unwrap_or_default();
+    files.sort();
+    Ok(Json(json!({ "available": s.assets.is_some(), "files": files })))
+}
+
+async fn asset_file(State(s): State<AppState>, Path(file): Path<String>) -> Response {
+    let ok_name = file.ends_with(".png") && !file.contains('/') && !file.contains('\\') && !file.contains("..");
+    match s.assets.as_ref().filter(|_| ok_name).and_then(|d| std::fs::read(d.join(&file)).ok()) {
+        Some(bytes) => ([(header::CONTENT_TYPE, "image/png"), (header::CACHE_CONTROL, "max-age=60")], bytes).into_response(),
+        None => (StatusCode::NOT_FOUND, "immagine non trovata").into_response(),
+    }
 }
 
 async fn metrics(State(s): State<AppState>) -> Response {

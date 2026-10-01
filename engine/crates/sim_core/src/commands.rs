@@ -56,6 +56,12 @@ pub enum SimCommand {
     },
     /// Admin: paint a tile.
     SetTile { layer: String, x: i32, y: i32, tile: char },
+    /// Admin: put a building on a cell (its door/anchor).
+    PlaceBuilding { building: String, layer: String, x: i32, y: i32, #[serde(default)] owner_faction: Option<String>, #[serde(default)] name: Option<String> },
+    /// Admin: move an entity to a cell.
+    MoveEntity { entity: SimId, layer: String, x: i32, y: i32 },
+    /// Admin: remove an entity (pawn or building) from the world.
+    Remove { entity: SimId },
     /// A player's order to one of its squads.
     PlayerSquadOrder { player: String, squad: u64, order: Option<SquadOrder> },
     /// A player creates a squad from members of its faction (the champion leads it).
@@ -310,6 +316,55 @@ pub fn apply(world: &mut World, cmd: SimCommand) -> Result<String, String> {
             }
             crate::map::change_tile(world, crate::map::Position::new(li, x, y), tile);
             Ok(format!("({x},{y}) = '{tile}'"))
+        }
+        SimCommand::PlaceBuilding { building, layer, x, y, owner_faction, name } => {
+            let content = world.resource::<Content>().clone();
+            let def = content.buildings.get(&building).ok_or(format!("edificio '{building}' inesistente"))?;
+            let map = world.resource::<WorldMap>().clone();
+            let li = map.layers.iter().position(|l| l.id == layer).ok_or("mappa inesistente")? as u16;
+            let pos = crate::map::Position::new(li, x, y);
+            if map.tile(&pos).is_none() {
+                return Err("fuori dalla mappa".into());
+            }
+            if let Some(f) = &owner_faction
+                && !content.factions.contains_key(f)
+            {
+                return Err(format!("fazione '{f}' inesistente"));
+            }
+            let owner = owner_faction.map_or(crate::buildings::Owner::None, crate::buildings::Owner::Faction);
+            let e = crate::buildings::spawn_building(world, &building, pos, name, owner).ok_or("edificio non creato")?;
+            if let Some((w, h)) = def.footprint {
+                let cells: Vec<_> = crate::map::footprint_cells(pos, w, h).into_iter().filter(|c| *c != pos).collect();
+                world.resource_mut::<WorldMap>().make_mut().block(&cells);
+            }
+            Ok(format!("{} creato con id {}", def.name, world.get::<SimId>(e).unwrap().0))
+        }
+        SimCommand::MoveEntity { entity: id, layer, x, y } => {
+            let e = entity(world, id)?;
+            let map = world.resource::<WorldMap>().clone();
+            let li = map.layers.iter().position(|l| l.id == layer).ok_or("mappa inesistente")? as u16;
+            let pos = crate::map::Position::new(li, x, y);
+            if map.tile(&pos).is_none() {
+                return Err("fuori dalla mappa".into());
+            }
+            crate::jobs::release_task(world, e);
+            world.entity_mut(e).insert(pos);
+            world.entity_mut(e).remove::<crate::movement::Movement>();
+            Ok(format!("spostato in ({x},{y})"))
+        }
+        SimCommand::Remove { entity: id } => {
+            let e = entity(world, id)?;
+            if let (Some(b), Some(p)) = (world.get::<crate::buildings::Building>(e).cloned(), world.get::<crate::map::Position>(e).copied())
+                && let Some((w, h)) = world.resource::<Content>().buildings.get(&b.def).and_then(|d| d.footprint)
+            {
+                let cells = crate::map::footprint_cells(p, w, h);
+                world.resource_mut::<WorldMap>().make_mut().unblock(&cells);
+            }
+            crate::jobs::release_task(world, e);
+            crate::squads::remove_member(world, e);
+            world.resource_mut::<crate::ids::IdIndex>().remove(id);
+            world.despawn(e);
+            Ok(format!("{} rimosso", id.0))
         }
         SimCommand::PlayerOrder { player, entity, order } => crate::player::give_order(world, &player, entity, order),
         SimCommand::PlayerSquadOrder { player, squad, order } => {

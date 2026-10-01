@@ -469,6 +469,16 @@ impl MapData {
         }
     }
 
+    /// Gives cells back their terrain's walkability (a removed building).
+    pub fn unblock(&mut self, cells: &[Position]) {
+        for c in cells {
+            let Some(ch) = self.tile(c) else { continue };
+            let walk = self.legend.get(&ch).is_none_or(|(_, w)| *w);
+            let w = self.layers[c.layer as usize].width;
+            self.blocked[c.layer as usize][(c.y * w + c.x) as usize] = !walk;
+        }
+    }
+
     pub fn blocked(&self, p: &Position) -> bool {
         let Some(l) = self.layers.get(p.layer as usize) else { return true };
         if p.x < 0 || p.y < 0 || p.x >= l.width || p.y >= l.height {

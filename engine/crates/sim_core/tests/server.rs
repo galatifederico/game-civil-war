@@ -35,7 +35,7 @@ async fn http(addr: std::net::SocketAddr, method: &str, path: &str, body: Option
 #[tokio::test]
 async fn rest_api_and_mcp() {
     let sim = Arc::new(Mutex::new(town()));
-    let state = AppState { sim: sim.clone(), control: Arc::new(Mutex::new(Control { paused: true, tick_ms: 1000 })), metrics: None, ui_html: None, factory: None, token: None };
+    let state = AppState { sim: sim.clone(), control: Arc::new(Mutex::new(Control { paused: true, tick_ms: 1000 })), metrics: None, ui_html: None, factory: None, token: None, assets: None };
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(sim_core::server::serve_on(state, listener));

@@ -275,6 +275,13 @@ fn hack(world: &mut World, ctx: &JobCtx) -> JobResult {
 }
 
 /// The simple web client served on `/ui/` (see `client/index.html`).
+/// The Unity client's sprites (tiles, chibi sheets, buildings), served to the admin console when the
+/// repository layout is there.
+pub fn sprites_dir() -> Option<std::path::PathBuf> {
+    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../unity-client/Assets/Resources/Sprites");
+    p.is_dir().then_some(p)
+}
+
 pub fn client_html() -> &'static str {
     include_str!("../client/index.html")
 }

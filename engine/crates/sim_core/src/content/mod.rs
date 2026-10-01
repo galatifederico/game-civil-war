@@ -3,9 +3,9 @@
 pub mod defs;
 pub mod logic;
 mod loader;
-mod registry;
+pub mod registry;
 
 pub use defs::*;
 pub use loader::{load_pack_dir, parse_pack, ContentError};
 pub use logic::*;
-pub use registry::Content;
+pub use registry::{Content, ContentData};
