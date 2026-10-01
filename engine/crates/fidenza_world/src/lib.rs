@@ -152,7 +152,7 @@ fn intruders(world: &mut World, _ctx: &EffectCtx, p: &serde_json::Value) -> bool
 }
 
 /// Dwarf-Fortress style expansion for AI factions: `{"zone", "faction", "count", "max_open"}` designates
-/// up to `count` diggable cells next to already open floor inside the zone.
+/// up to `count` diggable cells next to already open floor inside the zone (`from` is relative to the zone).
 fn dig_frontier(world: &mut World, _ctx: &EffectCtx, p: &serde_json::Value) {
     let zone = p.get("zone").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     let faction = p.get("faction").and_then(|v| v.as_str()).map(str::to_string);
@@ -171,7 +171,7 @@ fn dig_frontier(world: &mut World, _ctx: &EffectCtx, p: &serde_json::Value) {
     let mut frontier = Vec::new();
     for zi in map.resolve_zones(&zone) {
         let z = &map.zones[zi];
-        let start = Position::new(z.layer, from.0, from.1);
+        let start = Position::new(z.layer, z.x + from.0, z.y + from.1);
         let mut queue = std::collections::VecDeque::from([start]);
         reach.insert(start);
         while let Some(c) = queue.pop_front() {

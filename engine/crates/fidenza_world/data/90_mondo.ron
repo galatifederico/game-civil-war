@@ -4,14 +4,14 @@
         Player(id: "giocatore", name: "Giocatore", faction: "anarchici_commercio"),
 
         // Piazza Garibaldi: la scena della demo.
-        Entity(template: "leader_anarchico", zone: "piazza_garibaldi", at: (17, 17), leader_of: "giocatore"),
-        Entity(template: "scippatore", zone: "piazza_garibaldi", at: (21, 18), name: "Tommy lo Scippatore"),
-        Entity(template: "commerciante_ricco", zone: "piazza_garibaldi", at: (22, 19), name: "Sior Ernesto"),
-        Entity(template: "agente", zone: "piazza_garibaldi", at: (26, 20), name: "Agente Scelto Ferrari"),
-        Entity(template: "cronista", zone: "piazza_garibaldi", at: (19, 16), name: "Lucia Taccuino"),
+        Entity(template: "leader_anarchico", zone: "piazza_garibaldi", at: (97, 45), leader_of: "giocatore"),
+        Entity(template: "scippatore", zone: "piazza_garibaldi", at: (101, 46), name: "Tommy lo Scippatore"),
+        Entity(template: "commerciante_ricco", zone: "piazza_garibaldi", at: (102, 47), name: "Sior Ernesto"),
+        Entity(template: "agente", zone: "piazza_garibaldi", at: (106, 48), name: "Agente Scelto Ferrari"),
+        Entity(template: "cronista", zone: "piazza_garibaldi", at: (99, 44), name: "Lucia Taccuino"),
         Entity(template: "fidentino", count: 4, zone: "piazza_garibaldi"),
-        Entity(template: "gerolamo_borgazzi", zone: "piazza_garibaldi", at: (28, 9)),
-        Entity(template: "oracolo", zone: "piazza_garibaldi", at: (12, 7)),
+        Entity(template: "gerolamo_borgazzi", zone: "piazza_garibaldi", at: (108, 37)),
+        Entity(template: "oracolo", zone: "piazza_garibaldi", at: (92, 35)),
 
         // Istituzioni e fazioni.
         Entity(template: "commissario", zone: "stazione_polizia"),

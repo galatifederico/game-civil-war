@@ -233,6 +233,12 @@ pub fn transmute(world: &mut World, e: Entity, race: &str) {
     let old_name = content.races.get(&old).map_or(old.clone(), |r| r.name.clone());
     let plan = content.body_plans.get(&rdef.body_plan).cloned();
     world.entity_mut(e).insert(Race(race.to_string()));
+    // Leaders and champions are never stuck in another shape: they turn back after a while.
+    let player_owned = world.get::<crate::player::Controlled>(e).is_some() || world.get::<crate::factions::Leader>(e).is_some();
+    if player_owned && world.get::<crate::player::Transmuted>(e).is_none() {
+        let until = world.resource::<SimClock>().tick + world.resource::<crate::params::Params>().get("player.transmute_ticks", 24.0) as u64;
+        world.entity_mut(e).insert(crate::player::Transmuted { original: old.clone(), until });
+    }
     if let (Some(plan), Some(body)) = (plan, world.get::<crate::anatomy::Body>(e).cloned())
         && body.plan != plan.id {
             let ratio = body.health_ratio();

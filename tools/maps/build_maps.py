@@ -6,6 +6,7 @@ Everything comes from this one script so that tiles, doors and buildings always 
 
     python3 tools/maps/build_maps.py
 """
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -39,6 +40,11 @@ LEGEND += [
     ("A", "vena_oro", "Vena d'oro", False),
 ]
 WALK = {ch: walk for ch, _, _, walk in LEGEND}
+
+
+def stable_hash(text):
+    """Same value on every run (Python's hash() of strings is salted)."""
+    return zlib.crc32(text.encode())
 
 
 class Rnd:
@@ -193,8 +199,8 @@ def outdoor(mid, name, openings, tags=(), road="=", trees=True):
         m.rect(1, 1, 1, 26, "t")
         m.rect(38, 1, 38, 26, "t")
     m.roads(openings, road)
-    m.scatter(",", 11, seed=hash(mid) & 0xFFFF)
-    m.scatter('"', 17, seed=(hash(mid) >> 3) & 0xFFFF)
+    m.scatter(",", 11, seed=stable_hash(mid) & 0xFFFF)
+    m.scatter('"', 17, seed=(stable_hash(mid) >> 3) & 0xFFFF)
     MAPS.append(m)
     return m
 
@@ -541,6 +547,194 @@ ms.rect(10, 8, 18, 12, "n")
 building("deposito", "miniera_di_sale", 14, 11, None)
 
 
+# ── One continuous world, Dwarf Fortress style ───────────────────────────────
+# The maps above are kept as regions: the outdoor ones are stitched by their borders into a single
+# surface layer, the underground ones are carved into full-size z-levels of diggable rock under their
+# entrances. Interiors stay separate maps reached through their doors.
+RW, RH = 40, 28
+SIDES = {"North": (0, -1), "South": (0, 1), "East": (1, 0), "West": (-1, 0)}
+ZLEVELS = {-1: "Sottosuolo", -2: "Profondità", -3: "Caverne Profonde", -4: "Viscere Termali"}
+REGIONS = []  # (zone id, name, layer id, rect, tags)
+PLACE = {}  # old map id → (layer id, x offset, y offset)
+
+
+def grid_positions(outdoor):
+    pos = {outdoor[0].id: (0, 0)}
+    changed = True
+    while changed:
+        changed = False
+        for a, side, b in EDGES:
+            dx, dy = SIDES[side]
+            if a in pos and b not in pos:
+                pos[b] = (pos[a][0] + dx, pos[a][1] + dy)
+                changed = True
+            if b in pos and a not in pos:
+                pos[a] = (pos[b][0] - dx, pos[b][1] - dy)
+                changed = True
+    return pos
+
+
+def countryside(m, ox, oy, seed, sides):
+    """Filler region between the named places: meadows, woods, a pond, dirt tracks to the neighbours."""
+    r = Rnd(seed)
+    for y in range(oy, oy + RH):
+        for x in range(ox, ox + RW):
+            m.g[y][x] = "."
+    cave(m, ox + 1, oy + 1, ox + RW - 2, oy + RH - 2, 0.6 + (seed % 3) * 0.05, seed, floor=".", rock="T", steps=3)
+    if r.chance(0.6):
+        cx, cy, rx, ry = ox + r.range(10, 30), oy + r.range(8, 20), r.range(3, 6), r.range(2, 4)
+        for y in range(cy - ry - 1, cy + ry + 2):
+            for x in range(cx - rx - 1, cx + rx + 2):
+                d = ((x - cx) / (rx + 1)) ** 2 + ((y - cy) / (ry + 1)) ** 2
+                if d <= 1.0:
+                    m.g[y][x] = "~" if ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1.0 else "s"
+    for y in range(oy, oy + RH):
+        for x in range(ox, ox + RW):
+            if m.g[y][x] == "." and r.chance(0.08):
+                m.g[y][x] = "," if r.chance(0.5) else '"'
+            elif m.g[y][x] == "T" and r.chance(0.12):
+                m.g[y][x] = "t"
+    cx, cy = ox + RW // 2 - 1, oy + 13
+    for side in sides:
+        dx, dy = SIDES[side]
+        if dx:
+            x0, x1 = (cx, ox + RW - 1) if dx > 0 else (ox, cx + 1)
+            m.rect(x0, cy, x1, cy + 1, ":")
+        else:
+            y0, y1 = (cy, oy + RH - 1) if dy > 0 else (oy, cy + 1)
+            m.rect(cx, y0, cx + 1, y1, ":")
+
+
+def free_spot(placed, w, h, want, W, H):
+    """Nearest offset to `want` where a w×h rectangle fits inside W×H without touching `placed`."""
+    def ok(x, y):
+        if x < 1 or y < 1 or x + w > W - 1 or y + h > H - 1:
+            return False
+        return all(x + w + 2 <= px or px + pw + 2 <= x or y + h + 2 <= py or py + ph + 2 <= y for px, py, pw, ph in placed)
+    wx, wy = want
+    for rad in range(0, max(W, H)):
+        best = None
+        for y in range(wy - rad, wy + rad + 1):
+            for x in range(wx - rad, wx + rad + 1):
+                if max(abs(x - wx), abs(y - wy)) == rad and ok(x, y):
+                    d = (x - wx) ** 2 + (y - wy) ** 2
+                    if best is None or d < best[0]:
+                        best = (d, x, y)
+        if best:
+            return best[1], best[2]
+    raise SystemExit(f"nessuno spazio per {w}x{h}")
+
+
+def merge():
+    global MAPS, PORTALS, EDGES, SUBZONES, BUILDINGS
+    outdoor = [m for m in MAPS if not m.indoor and not m.underground]
+    interiors = [m for m in MAPS if m.indoor]
+    unders = [m for m in MAPS if m.underground]
+    pos = grid_positions(outdoor)
+    minx, miny = min(p[0] for p in pos.values()), min(p[1] for p in pos.values())
+    cols, rows = max(p[0] for p in pos.values()) - minx + 1, max(p[1] for p in pos.values()) - miny + 1
+    W, H = cols * RW, rows * RH
+    surf = Map("fidenza", "Fidenza e Salsomaggiore", W, H, ".", ["superficie"])
+    place = {}  # map id → (layer id, ox, oy)
+    by_cell = {(p[0] - minx, p[1] - miny): mid for mid, p in pos.items()}
+    for m in outdoor:
+        gx, gy = pos[m.id][0] - minx, pos[m.id][1] - miny
+        ox, oy = gx * RW, gy * RH
+        place[m.id] = ("fidenza", ox, oy)
+        rnd = Rnd(stable_hash(m.id) & 0xFFFF)
+        for y in range(m.h):
+            for x in range(m.w):
+                ch = m.g[y][x]
+                ring = min(x, y, m.w - 1 - x, m.h - 1 - y)
+                # The old borders between maps open up: a few trees stay, the hedges go.
+                if ring == 0 and ch == "T":
+                    ch = "T" if rnd.chance(0.2) else ("t" if rnd.chance(0.15) else ".")
+                elif ring == 1 and ch == "t":
+                    ch = "t" if rnd.chance(0.1) else "."
+                surf.g[oy + y][ox + x] = ch
+        REGIONS.append((m.id, m.name, "fidenza", (ox, oy, m.w, m.h), m.tags))
+    for gy in range(rows):
+        for gx in range(cols):
+            if (gx, gy) in by_cell:
+                continue
+            sides = [s for s, (dx, dy) in SIDES.items() if 0 <= gx + dx < cols and 0 <= gy + dy < rows]
+            countryside(surf, gx * RW, gy * RH, 7919 * (gx + 1) + 104729 * (gy + 1), sides)
+    # Edge of the world: the woods of the Po valley.
+    for x in range(W):
+        surf.g[0][x] = surf.g[H - 1][x] = "T"
+    for y in range(H):
+        surf.g[y][0] = surf.g[y][W - 1] = "T"
+
+    # Underground z-levels: solid rock with veins and pockets, the old dungeons carved in.
+    levels = {}
+    for d, name in ZLEVELS.items():
+        z = Map(f"sottosuolo_{-d}", f"{name} (livello {d})", W, H, "K", ["sotterraneo"], underground=True)
+        z.depth = d
+        n = W * H // 2000
+        veins(z, "O", n * 2, 16, 300 + d)
+        veins(z, "S", n, 12, 310 + d)
+        veins(z, "G", max(1, n // 3) * (1 - d) // 2, 4, 320 + d)
+        veins(z, "A", max(1, n // 4) * -d, 4, 330 + d)
+        if d >= -2:
+            veins(z, "h", n, 6, 340 + d)
+        if d <= -2:
+            veins(z, "Y", max(1, n // 3), 4, 350 + d)
+        r = Rnd(360 - d)
+        for _ in range(n):
+            x, y = r.range(4, W - 16), r.range(4, H - 12)
+            cave(z, x, y, x + r.range(6, 12), y + r.range(5, 9), 0.5, r.next() & 0xFFFF, floor="k", rock="K", steps=3)
+        levels[d] = (z, [])
+    by = {m.id: m for m in MAPS}
+    parent = {}
+    for name, a, b in PORTALS:
+        if by[b[0]].underground and not by[a[0]].underground or (by[a[0]].underground and by[b[0]].underground and by[b[0]].depth < by[a[0]].depth):
+            parent[b[0]] = (a, b[1], b[2])
+    door_of = {b[0]: a for name, a, b in PORTALS if by[b[0]].indoor and not by[a[0]].indoor and not by[a[0]].underground}
+
+    def glob(mid, x, y):
+        lid, ox, oy = place.get(mid, (mid, 0, 0))
+        return lid, x + ox, y + oy
+
+    stairs = []
+    for m in sorted(unders, key=lambda m: -m.depth):
+        z, placed = levels[m.depth]
+        (pm, px, py), ex, ey = parent[m.id]
+        if by[pm].indoor:  # entered from an interior: lie under the building's door
+            pm, px, py = door_of[pm]
+        _, gx, gy = glob(pm, px, py)
+        ox, oy = free_spot(placed, m.w, m.h, (gx - ex, gy - ey), W, H)
+        placed.append((ox, oy, m.w, m.h))
+        for y in range(m.h):
+            for x in range(m.w):
+                z.g[oy + y][ox + x] = m.g[y][x]
+        place[m.id] = (z.id, ox, oy)
+        REGIONS.append((m.id, m.name, z.id, (ox, oy, m.w, m.h), m.tags))
+        if not by[parent[m.id][0][0]].indoor:
+            # Stairs straight down from the parent cell, then a tunnel to the old entrance if it moved.
+            tunnel(z, (gx, gy), (ox + ex, oy + ey))
+            stairs.append((m.id, gx, gy))
+    MAPS = [surf] + interiors + [levels[d][0] for d in sorted(levels, reverse=True)]
+    new_portals = []
+    for name, a, b in PORTALS:
+        ga, gb = glob(*a), glob(*b)
+        if b[0] in dict((s[0], 0) for s in stairs) and not by[a[0]].indoor:
+            gb = (gb[0], ga[1], ga[2])
+            # Stair tiles at both ends.
+            src = next(mm for mm in MAPS if mm.id == ga[0])
+            dst = next(mm for mm in MAPS if mm.id == gb[0])
+            src.g[ga[2]][ga[1]] = ">"
+            dst.g[gb[2]][gb[1]] = "<"
+        new_portals.append((name, ga, gb))
+    PORTALS = new_portals
+    EDGES = []
+    SUBZONES = [(zid, n, place[l][0], (r[0] + place[l][1], r[1] + place[l][2], r[2], r[3]), t) if l in place else (zid, n, l, r, t)
+                for zid, n, l, r, t in SUBZONES]
+    SUBZONES = REGIONS + SUBZONES
+    BUILDINGS = [(b, mid, x + place[mid][1], y + place[mid][2], o, n) if mid in place else (b, mid, x, y, o, n)
+                 for b, mid, x, y, o, n in BUILDINGS]
+    return place
+
+
 def fmt_tags(t):
     return "[" + ", ".join(f'"{x}"' for x in t) + "]"
 
@@ -603,14 +797,19 @@ def check():
             if not WALK.get(m.g[y][x], False):
                 problems.append(f"porta '{name}': ({mid},{x},{y}) su '{m.g[y][x]}'")
     for bid, mid, x, y, _, _ in BUILDINGS:
-        m = by[mid]
+        m = by[PLACE.get(mid, (mid,))[0]]
         if not WALK.get(m.g[y][x], False):
             problems.append(f"edificio {bid} in {mid} ({x},{y}) su '{m.g[y][x]}'")
     return problems
 
 
 def main():
+    place = merge()
+    PLACE.update(place)
+    print("origine delle regioni:", {k: v for k, v in place.items()})
     (DATA / "maps").mkdir(parents=True, exist_ok=True)
+    for old in (DATA / "maps").glob("*.map"):
+        old.unlink()
     for m in MAPS:
         (DATA / "maps" / f"{m.id}.map").write_text(m.text())
     (DATA / "70_mappa.ron").write_text(ron())

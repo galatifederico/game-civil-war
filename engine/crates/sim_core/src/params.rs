@@ -47,6 +47,7 @@ pub const DEFAULTS: &[(&str, f64, &str)] = &[
     ("player.obedience_base", 0.85, "Probabilità base che un membro obbedisca al giocatore"),
     ("player.knockout_ticks", 12.0, "Tick in cui un campione resta a terra invece di morire"),
     ("player.knockout_money_loss", 0.2, "Quota dei soldi che il campione perde quando va al tappeto"),
+    ("player.transmute_ticks", 24.0, "Tick dopo cui un leader o campione trasformato (es. in maiale) torna normale"),
     ("logistics.interval", 4.0, "Ogni quanti tick si pianificano i trasporti"),
     ("logistics.batch", 5.0, "Unità massime per viaggio di trasporto"),
     ("market.elasticity", 0.5, "Elasticità del prezzo rispetto a domanda/offerta"),

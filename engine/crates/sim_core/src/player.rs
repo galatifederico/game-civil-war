@@ -230,9 +230,25 @@ pub fn knock_out(world: &mut World, e: Entity, cause: &str, by: Option<Entity>) 
     );
 }
 
-/// Knocked-out champions wake up.
+/// A leader or champion turned into something else (a pig, …): it gets its race back at `until`.
+#[derive(Component, Debug, Clone, Serialize, Deserialize)]
+pub struct Transmuted {
+    pub original: String,
+    pub until: u64,
+}
+
+/// Knocked-out champions wake up; transmuted leaders return to their shape.
 pub fn wake_up(world: &mut World) {
     let tick = world.resource::<SimClock>().tick;
+    for e in crate::sorted_entities::<Transmuted>(world) {
+        let Some(t) = world.get::<Transmuted>(e).cloned() else { continue };
+        if t.until > tick {
+            continue;
+        }
+        world.entity_mut(e).remove::<Transmuted>();
+        crate::status::transmute(world, e, &t.original);
+        world.entity_mut(e).remove::<Transmuted>();
+    }
     for e in crate::sorted_entities::<KnockedOut>(world) {
         if world.get::<KnockedOut>(e).is_some_and(|k| k.until <= tick) {
             world.entity_mut(e).remove::<KnockedOut>();

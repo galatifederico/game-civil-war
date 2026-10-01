@@ -167,8 +167,8 @@ fn champion_moves_where_the_player_says_and_squads_follow() {
     assert!(sim.world.get::<sim_core::player::Controlled>(ce).is_some(), "the leader is the player's champion");
     // To another map (Piazza → Borgo → Quartiere Nerd): borders and walls on the way.
     let map = sim.world.resource::<WorldMap>().clone();
-    let layer = map.layers.iter().position(|l| l.id == "fumetteria").unwrap() as u16;
-    let goal = Position::new(layer, 12, 20);
+    let z = map.zones.iter().find(|z| z.id == "fumetteria").unwrap();
+    let goal = Position::new(z.layer, z.x + 12, z.y + 20);
     sim.execute(SimCommand::PlayerOrder { player: "giocatore".into(), entity: champ, order: Order::Move { pos: goal } }).unwrap();
     let mut touched_wall = false;
     for _ in 0..120 {
@@ -234,6 +234,18 @@ fn idle_champion_looks_after_its_needs() {
     sim.run(24 * 6);
     let needs = sim.world.get::<Needs>(ce).unwrap();
     assert!(needs.get("fame") > 0.1, "the champion starved: {:?}", needs.0);
+}
+
+#[test]
+fn leader_turned_into_a_pig_gets_back_to_normal() {
+    let mut sim = sim(6);
+    let (champ, ce) = id_of(&mut sim, "leader_anarchico");
+    let race = sim.world.get::<sim_core::stats::Race>(ce).unwrap().0.clone();
+    sim.execute(SimCommand::ApplyEffect { subject: Some(champ), target: None, effect: Effect::Transmute("maiale".into()) }).unwrap();
+    assert_eq!(sim.world.get::<sim_core::stats::Race>(ce).unwrap().0, "maiale");
+    sim.run(26);
+    assert_eq!(sim.world.get::<sim_core::stats::Race>(ce).unwrap().0, race, "the leader turns back into itself");
+    assert!(sim.world.get::<sim_core::player::Transmuted>(ce).is_none());
 }
 
 #[test]
