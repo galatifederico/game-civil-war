@@ -16,8 +16,12 @@ public class SimHud : MonoBehaviour
     float scale = 1f;
     Vector2 scrollRight;
     Rect topRect, rightRect;
-    GUIStyle box, title, small, label, zoneLabel, button, fake, hover, good;
+    GUIStyle box, title, small, label, zoneLabel, button, fake, hover, good, toggle, textBox, banner;
     Texture2D panelTex, barTex, barFillTex;
+    bool panelHidden;
+    int bannerLayer = -1;
+    float bannerUntil, noticeUntil;
+    string noticeKey, noticeText;
     int speedIndex = 1;
     int tab;
     bool mapMenu;
@@ -33,7 +37,28 @@ public class SimHud : MonoBehaviour
     public bool IsOverUi(Vector3 mouse)
     {
         var p = new Vector2(mouse.x, Screen.height - mouse.y) / scale;
-        return topRect.Contains(p) || rightRect.Contains(p) || (mapMenu && mapRect.Contains(p));
+        return topRect.Contains(p) || (!panelHidden && rightRect.Contains(p)) || (mapMenu && mapRect.Contains(p));
+    }
+
+    /// Pokémon-like window: white fill, rounded double border (9-sliced).
+    static Texture2D Frame(Color fill, Color edge, Color inner)
+    {
+        const int n = 12;
+        var t = new Texture2D(n, n) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+        var clear = new Color(0, 0, 0, 0);
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            int d = Mathf.Min(Mathf.Min(x, n - 1 - x), Mathf.Min(y, n - 1 - y));
+            bool corner = (x < 2 || x > n - 3) && (y < 2 || y > n - 3);
+            bool cornerTip = (x == 0 || x == n - 1) && (y == 0 || y == n - 1);
+            Color c = d == 0 ? edge : d == 1 ? edge : d == 2 ? inner : fill;
+            if (cornerTip) c = clear;
+            else if (corner && d == 1 && (x == 1 || x == n - 2) && (y == 1 || y == n - 2)) c = edge;
+            t.SetPixel(x, y, c);
+        }
+        t.Apply();
+        return t;
     }
 
     static Texture2D Tex(Color c)
@@ -47,18 +72,35 @@ public class SimHud : MonoBehaviour
     void InitStyles()
     {
         if (box != null) return;
-        panelTex = Tex(new Color(0.13f, 0.11f, 0.09f, 0.92f));
-        barTex = Tex(new Color(1, 1, 1, 0.15f));
-        barFillTex = Tex(new Color(0.4f, 0.8f, 0.5f));
-        box = new GUIStyle(GUI.skin.box) { normal = { background = panelTex }, padding = new RectOffset(10, 10, 8, 8), alignment = TextAnchor.UpperLeft };
-        title = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, fontSize = 13, normal = { textColor = new Color(0.95f, 0.8f, 0.6f) } };
-        label = new GUIStyle(GUI.skin.label) { wordWrap = true, fontSize = 12, normal = { textColor = new Color(0.93f, 0.9f, 0.84f) } };
-        small = new GUIStyle(label) { fontSize = 11, normal = { textColor = new Color(0.7f, 0.65f, 0.58f) } };
-        fake = new GUIStyle(label) { normal = { textColor = new Color(1f, 0.55f, 0.45f) } };
-        good = new GUIStyle(label) { normal = { textColor = new Color(0.55f, 0.9f, 0.6f) } };
-        zoneLabel = new GUIStyle(GUI.skin.label) { fontSize = 11, fontStyle = FontStyle.Bold, normal = { textColor = new Color(0.25f, 0.2f, 0.15f, 0.85f) } };
-        hover = new GUIStyle(box) { fontSize = 12, wordWrap = true, normal = { background = panelTex, textColor = Color.white } };
-        button = new GUIStyle(GUI.skin.button) { fontSize = 12 };
+        // Palette of the classic handheld menus: white windows, slate borders, dark text.
+        var ink = new Color(0.19f, 0.2f, 0.26f);
+        var edge = new Color(0.22f, 0.25f, 0.34f);
+        panelTex = Frame(new Color(0.97f, 0.97f, 0.96f, 0.97f), edge, new Color(0.56f, 0.66f, 0.8f));
+        var btnTex = Frame(new Color(0.88f, 0.92f, 0.97f), edge, new Color(0.75f, 0.82f, 0.92f));
+        var btnHover = Frame(new Color(1f, 0.96f, 0.78f), edge, new Color(0.95f, 0.8f, 0.4f));
+        var btnDown = Frame(new Color(0.78f, 0.84f, 0.93f), edge, new Color(0.56f, 0.66f, 0.8f));
+        barTex = Tex(new Color(0.2f, 0.25f, 0.3f, 0.25f));
+        barFillTex = Tex(new Color(0.35f, 0.78f, 0.45f));
+        var slice = new RectOffset(4, 4, 4, 4);
+        box = new GUIStyle(GUI.skin.box) { normal = { background = panelTex }, border = slice, padding = new RectOffset(12, 12, 8, 8), alignment = TextAnchor.UpperLeft };
+        title = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, fontSize = 13, normal = { textColor = new Color(0.2f, 0.36f, 0.66f) } };
+        label = new GUIStyle(GUI.skin.label) { wordWrap = true, fontSize = 12, normal = { textColor = ink } };
+        small = new GUIStyle(label) { fontSize = 11, normal = { textColor = new Color(0.45f, 0.47f, 0.52f) } };
+        fake = new GUIStyle(label) { normal = { textColor = new Color(0.8f, 0.22f, 0.18f) } };
+        good = new GUIStyle(label) { normal = { textColor = new Color(0.16f, 0.55f, 0.28f) } };
+        zoneLabel = new GUIStyle(GUI.skin.label) { fontSize = 11, fontStyle = FontStyle.Bold, normal = { textColor = new Color(0.98f, 0.98f, 0.95f) } };
+        hover = new GUIStyle(box) { fontSize = 12, wordWrap = true, padding = new RectOffset(8, 8, 5, 5), normal = { background = panelTex, textColor = ink } };
+        button = new GUIStyle(GUI.skin.button)
+        {
+            fontSize = 12, border = slice, padding = new RectOffset(6, 6, 4, 4),
+            normal = { background = btnTex, textColor = ink }, hover = { background = btnHover, textColor = ink },
+            active = { background = btnDown, textColor = ink }, focused = { background = btnTex, textColor = ink },
+            onNormal = { background = btnHover, textColor = ink }, onHover = { background = btnHover, textColor = ink },
+            onActive = { background = btnDown, textColor = ink },
+        };
+        toggle = new GUIStyle(GUI.skin.toggle) { normal = { textColor = ink }, onNormal = { textColor = ink }, hover = { textColor = ink }, onHover = { textColor = ink } };
+        textBox = new GUIStyle(box) { fontSize = 16, wordWrap = true, padding = new RectOffset(20, 20, 14, 14), normal = { background = panelTex, textColor = ink } };
+        banner = new GUIStyle(box) { fontSize = 15, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter, normal = { background = panelTex, textColor = ink } };
     }
 
     void OnGUI()
@@ -68,7 +110,10 @@ public class SimHud : MonoBehaviour
         GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1));
         float w = Screen.width / scale, h = Screen.height / scale;
 
-        if (view.Map != null) ZoneLabels();
+        float pw = panelHidden ? 0 : Mathf.Min(400, w * 0.42f);
+        if (view.Map != null && view.Zoom < 1f) ZoneLabels();
+        LocationBanner();
+        Notice(w - pw, h);
         HoverTip();
         if (view.PendingAction != null)
         {
@@ -105,7 +150,7 @@ public class SimHud : MonoBehaviour
             GUILayout.EndArea();
         }
 
-        float pw = Mathf.Min(400, w * 0.42f);
+        if (panelHidden) return;
         rightRect = new Rect(w - pw, 34, pw, h - 34);
         GUILayout.BeginArea(rightRect, box);
         scrollRight = GUILayout.BeginScrollView(scrollRight);
@@ -160,7 +205,9 @@ public class SimHud : MonoBehaviour
             view.Select(view.ChampionId);
             view.FocusOn(view.ChampionId.Value);
         }
-        view.FollowCamera = GUILayout.Toggle(view.FollowCamera, "Segui", GUILayout.Width(60));
+        view.FollowCamera = GUILayout.Toggle(view.FollowCamera, "Segui (F)", toggle, GUILayout.Width(80));
+        if (GUILayout.Button(view.Zoom >= 1f ? "Panoramica (M)" : "Da vicino (M)", button, GUILayout.Width(115))) view.ToggleOverview();
+        if (GUILayout.Button(panelHidden ? "Pannello ◂ (Tab)" : "Pannello ▸ (Tab)", button, GUILayout.Width(120))) panelHidden = !panelHidden;
         if (GUILayout.Button("Salva", button, GUILayout.Width(55))) view.Save();
         if (GUILayout.Button("Carica", button, GUILayout.Width(60))) view.Load();
         GUILayout.FlexibleSpace();
@@ -413,6 +460,49 @@ public class SimHud : MonoBehaviour
                 view.SendCommand(new JObject { ["type"] = "bribe", ["faction"] = payer, ["target"] = e["id"] });
         }
         if (!string.IsNullOrEmpty(view.LastCommandResult)) GUILayout.Label(view.LastCommandResult, small, GUILayout.Width(width));
+    }
+
+    void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.Tab)) panelHidden = !panelHidden;
+    }
+
+    /// Place name shown for a moment when entering a map, as in the handheld games.
+    void LocationBanner()
+    {
+        if (view.Layers == null) return;
+        if (view.Layer != bannerLayer)
+        {
+            bannerLayer = view.Layer;
+            bannerUntil = Time.time + 3f;
+        }
+        if (Time.time > bannerUntil) return;
+        var l = view.Layers[view.Layer];
+        int depth = (int?)l["depth"] ?? 0;
+        string name = (string)l["name"] + (depth < 0 ? $"  ·  livello {depth}" : "");
+        GUI.Label(new Rect(14, 46, Mathf.Max(220, name.Length * 9 + 40), 40), name, banner);
+    }
+
+    /// Text box at the bottom with the newest headline of the chosen feed filter.
+    void Notice(float areaW, float h)
+    {
+        var a = (view.Feed?["articles"] as JArray)?.FirstOrDefault();
+        if (a != null)
+        {
+            string key = $"{a["tick"]}|{a["headline"]}";
+            if (key != noticeKey)
+            {
+                // The first headline after start is not news: no box until something new happens.
+                if (noticeKey != null) noticeUntil = Time.time + 9f;
+                noticeKey = key;
+                noticeText = $"{a["author_name"]}: {a["headline"]}";
+            }
+        }
+        if (noticeText == null || Time.time > noticeUntil) return;
+        var r = new Rect(16, h - 96, Mathf.Min(760, areaW - 32), 80);
+        GUI.Label(r, noticeText, textBox);
+        if (Mathf.Repeat(Time.time, 1f) < 0.6f) GUI.Label(new Rect(r.xMax - 30, r.yMax - 28, 20, 20), "▼", label);
+        if (Event.current.type == EventType.MouseDown && r.Contains(Event.current.mousePosition)) noticeUntil = 0;
     }
 
     void ZoneLabels()

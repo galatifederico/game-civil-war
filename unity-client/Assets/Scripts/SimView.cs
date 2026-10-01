@@ -33,6 +33,11 @@ public class SimView : MonoBehaviour
     /// Order waiting for a target click (a cell or an entity).
     public JObject PendingAction { get; set; }
     public bool FollowCamera { get; set; }
+
+    /// Screen pixels per sprite pixel. Whole numbers (close view, Pokémon-like) are pixel-perfect;
+    /// below 1 is the map overview.
+    public float Zoom { get; set; } = 3f;
+    const float CloseZoom = 3f;
     /// Feed filter: "important" (default), "mine", "all" or a category id.
     public string FeedFilter { get; set; } = "important";
     public JObject Feed { get; private set; }
@@ -102,7 +107,17 @@ public class SimView : MonoBehaviour
                 if (!fogChosen) FogFaction = (string)players[PlayerId]["faction"] ?? "";
             }
             if (PlayerId != null)
+            {
+                bool first = PlayerInfo == null;
                 yield return Api.Get("/api/ui/player/" + UnityEngine.Networking.UnityWebRequest.EscapeURL(PlayerId), j => PlayerInfo = (JObject)j, _ => { });
+                // Start like a Pokémon game: close view on our champion.
+                if (first && ChampionId.HasValue && gos.ContainsKey(ChampionId.Value))
+                {
+                    FollowCamera = true;
+                    FocusOn(ChampionId.Value);
+                    Zoom = CloseZoom;
+                }
+            }
             var who = PlayerId == null ? "" : "&player=" + UnityEngine.Networking.UnityWebRequest.EscapeURL(PlayerId);
             yield return Api.Get("/api/ui/feed?limit=12&filter=" + FeedFilter + who, j => Feed = (JObject)j, _ => { });
             if (Selected.HasValue)
@@ -122,8 +137,18 @@ public class SimView : MonoBehaviour
     public void SendCommand(JObject cmd) => StartCoroutine(Api.Post("/api/commands?now=true", cmd,
         j => LastCommandResult = (string)j["ok"] ?? j.ToString(), e => LastCommandResult = "Rifiutato: " + e));
 
+    /// Who the camera follows: the selected pawn, otherwise our champion.
+    public long? FollowId => Selected.HasValue && gos.TryGetValue(Selected.Value, out var g) && !g.Building ? Selected : ChampionId;
+
     public void Select(long? id)
     {
+        // Selecting a pawn puts the camera on it (arrows or middle drag release it, F or "Segui" resume).
+        if (id.HasValue && gos.TryGetValue(id.Value, out var picked) && !picked.Building)
+        {
+            FollowCamera = true;
+            if (Zoom < 1f) Zoom = CloseZoom;
+        }
+        else if (!id.HasValue && Selected.HasValue) FollowCamera = false; // clicking empty ground lets the camera go
         Selected = id;
         SelectedEntity = null;
         SelectedAi = null;
@@ -171,7 +196,7 @@ public class SimView : MonoBehaviour
         if (layer != Layer) SetLayer(layer);
         var p = go.Target;
         cam.transform.position = new Vector3(p.x, p.y, -10f);
-        cam.orthographicSize = Mathf.Min(cam.orthographicSize, 14f);
+        if (Zoom < 2f) Zoom = CloseZoom;
     }
 
     /// Resolves a pending order with a clicked cell or entity.
@@ -256,13 +281,22 @@ public class SimView : MonoBehaviour
                     sr.transform.localScale = Vector3.one * 0.8f;
                 }
         }
+        // Trees: tall sprites whose canopy covers the cell above and pawns walking behind them.
+        var treeSprite = Chibi.LoadSingle("tree_tall");
+        if (treeSprite != null)
+            foreach (var c in TileMap.Trees(l, Map["legend"] as JObject))
+            {
+                var t = NewSprite("Tree", zonesRoot, treeSprite, Color.white, 0);
+                t.transform.position = new Vector3(c.x + 0.5f, -c.y - 1f, 0);
+                t.sortingOrder = Chibi.OrderForY(-c.y - 1f) + 7;
+            }
         // Fog texture sized to the layer.
         if (fogRenderer == null) fogRenderer = NewSprite("Fog", null, Shapes.Pixel, Color.white, 32000);
         fogTex = new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
         fogRenderer.sprite = Sprite.Create(fogTex, new Rect(0, 0, w, h), new Vector2(0, 1), 1);
         fogRenderer.transform.position = Vector3.zero;
         fogInitialized = false;
-        FitCamera(w, h);
+        if (!FollowCamera) FitCamera(w, h);
         if (State != null) OnState();
     }
 
@@ -300,6 +334,7 @@ public class SimView : MonoBehaviour
         // Leave room for the side panel on the right.
         float usable = 0.72f;
         cam.orthographicSize = Mathf.Max(h / 2f, w / (2f * aspect * usable)) * 1.05f;
+        Zoom = Screen.height / (2f * Chibi.PixelsPerUnit * cam.orthographicSize);
         float viewW = cam.orthographicSize * 2f * aspect;
         cam.transform.position = new Vector3(w / 2f + viewW * (1f - usable) / 2f, -h / 2f, -10f);
     }
@@ -492,7 +527,8 @@ public class SimView : MonoBehaviour
         fogRenderer.enabled = on;
         if (!on) return;
         int w = fogTex.width, h = fogTex.height;
-        var dark = new Color32(20, 16, 12, 150);
+        // Light veil: the world stays readable, unseen areas are just dimmer.
+        var dark = new Color32(24, 28, 48, 95);
         var px = new Color32[w * h];
         for (int i = 0; i < px.Length; i++) px[i] = dark;
         foreach (var o in fog["observers"])
@@ -554,15 +590,36 @@ public class SimView : MonoBehaviour
         CameraControls();
     }
 
+    void ApplyZoom() => cam.orthographicSize = Screen.height / (2f * Chibi.PixelsPerUnit * Mathf.Max(0.05f, Zoom));
+
+    /// Toggles between the close Pokémon-like view on the champion and the whole map.
+    public void ToggleOverview()
+    {
+        if (Zoom >= 1f)
+        {
+            FollowCamera = false;
+            var l = Layers[Layer];
+            FitCamera((int)l["width"], (int)l["height"]);
+        }
+        else
+        {
+            Zoom = CloseZoom;
+            FollowCamera = FollowId.HasValue;
+        }
+    }
+
     void CameraControls()
     {
+        ApplyZoom();
         var hud = GetComponent<SimHud>();
         bool overUi = hud != null && hud.IsOverUi(Input.mousePosition);
         float scroll = Input.mouseScrollDelta.y;
         if (!overUi && Mathf.Abs(scroll) > 0.01f)
         {
             var before = cam.ScreenToWorldPoint(Input.mousePosition);
-            cam.orthographicSize = Mathf.Clamp(cam.orthographicSize * (1f - scroll * 0.1f), 3f, 120f);
+            if (Zoom >= 1f && (Zoom > 1f || scroll > 0)) Zoom = Mathf.Clamp(Mathf.Round(Zoom) + Mathf.Sign(scroll), 1f, 8f);
+            else Zoom = Mathf.Clamp(Zoom * (scroll > 0 ? 1.25f : 0.8f), 0.1f, 1f);
+            ApplyZoom();
             var after = cam.ScreenToWorldPoint(Input.mousePosition);
             cam.transform.position += before - after;
         }
@@ -572,13 +629,24 @@ public class SimView : MonoBehaviour
         var move = new Vector3(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"), 0);
         if (move.sqrMagnitude > 0) FollowCamera = false;
         cam.transform.position += move * cam.orthographicSize * Time.deltaTime * 1.5f;
-        if (FollowCamera && ChampionId.HasValue && EntityById(ChampionId.Value)?["pos"] is JObject cp && (int)cp["layer"] != Layer)
+        if (Input.GetMouseButtonDown(2)) FollowCamera = false;
+        if (Input.GetKeyDown(KeyCode.F)) FollowCamera = FollowId.HasValue;
+        var fid = FollowCamera ? FollowId : null;
+        if (fid.HasValue && EntityById(fid.Value)?["pos"] is JObject cp && (int)cp["layer"] != Layer)
             SetLayer((int)cp["layer"]);
-        if (FollowCamera && ChampionId.HasValue && gos.TryGetValue(ChampionId.Value, out var champ) && champ.Root.activeSelf)
+        if (fid.HasValue && gos.TryGetValue(fid.Value, out var champ) && champ.Root.activeSelf)
         {
             var t = champ.Root.transform.position;
             cam.transform.position = Vector3.Lerp(cam.transform.position, new Vector3(t.x, t.y, -10f), 1f - Mathf.Exp(-Time.deltaTime * 4f));
         }
+        if (Zoom >= 1f)
+        {
+            // Snap to the screen pixel grid so pixel art never shimmers.
+            float unit = 1f / (Chibi.PixelsPerUnit * Mathf.Round(Zoom));
+            var cp2 = cam.transform.position;
+            cam.transform.position = new Vector3(Mathf.Round(cp2.x / unit) * unit, Mathf.Round(cp2.y / unit) * unit, -10f);
+        }
+        if (Input.GetKeyDown(KeyCode.M)) ToggleOverview();
         if (overUi) return;
         if (Input.GetMouseButtonDown(0))
         {

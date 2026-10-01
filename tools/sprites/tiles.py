@@ -230,7 +230,102 @@ def tiles():
     sb.rect(0, 2, 15, 2, "#404048")
     sb.rect(0, 13, 15, 13, "#404048")
     out["sbarre"] = sb
+    # ── Caves and depths (Pokémon-like cave look: rock top + darker front face) ──
+    def rock_top(base="#8a7a6a", hi="#a8988a", lo="#6a5a4a", seed=40):
+        t = T(base)
+        t.specks([hi, lo], 18, seed)
+        t.rect(0, 0, 15, 0, hi)
+        return t
+
+    def rock_face(base="#5a4a3e", seed=41):
+        t = T(base)
+        for x in range(0, S, 4):
+            t.rect(x, 2, x, 15, "#4a3a30")
+        t.rect(0, 0, 15, 1, "#9a8a7a")
+        t.rect(0, 14, 15, 15, "#3a2c24")
+        t.specks(["#6a5a4c"], 10, seed)
+        return t
+
+    def ore(t, col, hi, seed):
+        for (x, y) in [(3, 4), (9, 3), (6, 9), (12, 11), (2, 12)]:
+            if noise(x, y, seed) % 3 != 2:
+                t.set(x, y, col)
+                t.set(x + 1, y, hi)
+                t.set(x, y + 1, col)
+        return t
+
+    out["roccia"] = rock_top()
+    out["roccia_face"] = rock_face()
+    for name, col, hi, seed in [("vena_ferro", "#b06a40", "#d89060", 50), ("vena_sale", "#f0e8f0", "#ffffff", 51),
+                                ("gemma", "#f080b0", "#ffc0e0", 52), ("vena_oro", "#e0b020", "#fff080", 53),
+                                ("fossile", "#d8d0b8", "#f0e8d0", 54), ("osso_fossile", "#f0e8d8", "#ffffff", 55)]:
+        out[name] = ore(rock_top(seed=seed), rgb(col), rgb(hi), seed)
+        out[name + "_face"] = ore(rock_face(seed=seed), rgb(col), rgb(hi), seed)
+    fr = T("#f0e0a0")
+    fr.specks(["#e0c880"], 12, 56)
+    for (x, y) in [(4, 5), (11, 10)]:
+        fr.rect(x, y, x + 2, y + 1, "#d8d0b8")
+        fr.set(x + 1, y, "#8a8070")
+    out["fossile_riva"] = fr
+    mu2 = T("#4a6a40")
+    mu2.specks(["#5a8a4a", "#3a5a30", "#7aaa5a"], 30, 57)
+    out["muschio"] = mu2
+    cs = T("#e8e0e8")
+    cs.specks(["#d0c8d8", "#ffffff"], 20, 58)
+    for i in range(0, S, 5):
+        cs.set(i, (i * 7) % S, "#b8b0c0")
+    out["crosta_salina"] = cs
+    fb = T("#c86030")
+    fb.specks(["#e08040", "#a04020", "#f0a050"], 30, 59)
+    for (x, y) in [(4, 4), (11, 9), (6, 12)]:
+        fb.rect(x, y, x + 1, y + 1, "#f8d080")
+    out["fango_bollente"] = fb
+    pg = T("#4a6a40")
+    pg.rect(6, 9, 9, 15, "#e8dcc0")
+    for y in range(1, 10):
+        for x in range(1, 15):
+            dx, dy = x - 7.5, y - 6
+            if dx * dx / 1.8 + dy * dy < 22:
+                pg.set(x, y, "#8a4a20" if dy > 1 else "#a85a28")
+    pg.set(5, 4, "#c88050")
+    pg.set(9, 3, "#c88050")
+    out["porcino_gigante"] = pg
+    su = T("#8a7a6a")
+    for i, y in enumerate(range(2, 15, 3)):
+        su.rect(2 + i, y, 13 - i, y + 1, "#b8a898")
+        su.rect(2 + i, y + 2, 13 - i, y + 2, "#5a4a3e")
+    out["scala_su"] = su
+    sg = T("#2a2220")
+    for i, y in enumerate(range(2, 15, 3)):
+        sg.rect(2 + i, y, 13 - i, y, "#7a6a5a")
+    out["scala_giu"] = sg
+    ru = grass(60)
+    for y in range(2, 16):
+        for x in range(1, 15):
+            dx, dy = x - 7.5, y - 9
+            if dx * dx + dy * dy * 0.9 < 40:
+                ru.set(x, y, "#9a8a7a" if dy < 0 else "#7a6a5a")
+    ru.rect(3, 4, 11, 4, "#b8a898")
+    out["rupe"] = ru
+    # Tall tree drawn over the map (16×32: canopy one tile above its cell).
     return {k: v.img for k, v in out.items()}
+
+
+def tall_tree():
+    img = Image.new("RGBA", (S, S * 2), (0, 0, 0, 0))
+    p = img.load()
+    cols = {"d": rgb("#2f6f2f"), "m": rgb("#3f8f3f"), "l": rgb("#5fb05f"), "h": rgb("#8fd08f"), "t": rgb("#6a4020"), "T": rgb("#4a2a10"), "o": (34, 28, 38, 255)}
+    art = [
+        "......oooo......", "....oollllo.....", "...ollhhllmo....", "..olhhllllmmo...", ".olllllllmmmmo..",
+        ".olhllllmmmmmo..", "olllllmmmmmmmdo.", "ollllmmmmmmmddo.", "omllmmmmmmmdddo.", "ommmmmmmmmddddo.",
+        ".ommmmmmmddddo..", ".odmmmmmddddddo.", "..oddmddddddoo..", "...oodddddoo....", ".....ooooo......",
+        "......otto......", "......otTo......", "......otTo......", ".....ottTTo.....", ".....oooooo.....",
+    ]
+    for y, row in enumerate(art):
+        for x, ch in enumerate(row):
+            if ch != ".":
+                p[x, y + 12] = cols[ch]
+    return img
 
 
 def main():
@@ -239,6 +334,7 @@ def main():
     ts = tiles()
     for k, img in ts.items():
         img.save(out / f"tile_{k}.png")
+    tall_tree().save(out / "tree_tall.png")
     print(f"{len(ts)} caselle → {out}")
     if "--preview" in sys.argv:
         path = sys.argv[sys.argv.index("--preview") + 1]
