@@ -85,6 +85,10 @@
         (id: "istituzioni", name: "Istituzioni della Repubblica", neutral: true, treasury: 5000,
          description: "Presidenti della Repubblica in visita.",
          ranks: [(id: "presidente", name: "Presidente della Repubblica", level: 9, salary: 0)]),
+        (id: "fauna_selvatica", name: "Fauna selvatica e delle profondità", neutral: true, treasury: 0,
+         description: "Talpe, vermi, ragni e cinghiali: non trattano con nessuno.",
+         relations: {"chiesa": -80, "cripta_san_vitale": -80, "nani_miniere": -80, "cda_fidenza_village": -80, "anarchici_commercio": -80, "templari_borgo": -80, "contadini_bassa": -80, "casino_diablo": -80, "circolo_boomer": -80, "gilda_nerd": -80, "impero_vegano": -80, "ubriaconi": -80, "babbo_natale": -80, "polizia_neutra": -80, "redazione_gazzetta": -80},
+         ranks: [(id: "bestia", name: "Bestia", level: 1, salary: 0)]),
         // Neutrali speciali.
         (id: "polizia_neutra", name: "Polizia Neutra (Comando di Fidenza)", role: Police, neutral: true, corruptibility: 1.0, treasury: 300,
          description: "Pattuglia, perquisisce, sequestra, arresta. Accetta tangenti.",

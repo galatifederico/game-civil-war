@@ -48,6 +48,7 @@ pub struct Layer {
     pub height: i32,
     pub underground: bool,
     pub indoor: bool,
+    pub depth: i32,
     pub tags: Vec<String>,
     /// Tile rows (one character per cell), for clients.
     pub tiles: Vec<String>,
@@ -158,6 +159,8 @@ pub struct MapData {
     pub walls: Vec<(String, u16, i32, i32, i32, i32)>,
     /// Tile legend: character → (terrain id, walkable).
     pub legend: BTreeMap<char, (String, bool)>,
+    /// Diggable tiles: character → (tile after digging, item yielded).
+    pub diggable: BTreeMap<char, (char, Option<(String, u32)>)>,
     pub props: Vec<Prop>,
     /// Per layer, row-major: true = impassable.
     #[serde(skip)]
@@ -218,6 +221,17 @@ mod cells_as_list {
     }
 }
 
+/// Every tile changed since the world was built (digging, painting): kept so saves can replay them.
+#[derive(Resource, Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TerrainChanges(pub Vec<(Position, char)>);
+
+/// Changes a tile and records it.
+pub fn change_tile(world: &mut World, p: Position, ch: char) {
+    world.resource_mut::<WorldMap>().make_mut().set_tile(p, ch);
+    world.resource_mut::<TerrainChanges>().0.push((p, ch));
+    world.insert_resource(crate::targeting::TargetIndex::default());
+}
+
 /// A random cell of a zone spec, using the shared RNG.
 pub fn random_cell(world: &mut World, spec: &str) -> Option<Position> {
     let map = world.resource::<WorldMap>().clone();
@@ -246,6 +260,7 @@ impl MapData {
                     height: 64,
                     underground: false,
                     indoor: false,
+                    depth: 0,
                     tags: vec![],
                     tiles: vec![],
                 }],
@@ -254,6 +269,7 @@ impl MapData {
                 networks: vec![],
                 walls: vec![],
                 legend: BTreeMap::new(),
+                diggable: BTreeMap::new(),
                 props: vec![],
                 blocked: vec![vec![false; 64 * 64]],
                 hops: vec![vec![0]],
@@ -269,6 +285,7 @@ impl MapData {
                 height: l.height,
                 underground: l.underground,
                 indoor: l.indoor,
+                depth: l.depth,
                 tags: l.tags.clone(),
                 tiles: l.tiles.clone(),
             })
@@ -298,6 +315,8 @@ impl MapData {
             })
             .collect();
         let legend: BTreeMap<char, (String, bool)> = def.legend.iter().map(|t| (t.ch, (t.id.clone(), t.walkable))).collect();
+        let diggable: BTreeMap<char, (char, Option<(String, u32)>)> =
+            def.legend.iter().filter_map(|t| t.dig_to.map(|to| (t.ch, (to, t.yields.clone())))).collect();
         let props: Vec<Prop> = def
             .props
             .iter()
@@ -359,7 +378,7 @@ impl MapData {
                 }
             }
         }
-        let mut map = Self { layers, zones, portals, networks: vec![], walls, legend, props, blocked, hops: vec![] };
+        let mut map = Self { layers, zones, portals, networks: vec![], walls, legend, diggable, props, blocked, hops: vec![] };
         map.compute_hops();
         map.networks = def
             .networks
@@ -412,6 +431,31 @@ impl MapData {
             Some(&h) if h != u16::MAX => h as i32 * hop_cost,
             _ => 100_000,
         }
+    }
+
+    pub fn tile(&self, p: &Position) -> Option<char> {
+        let l = self.layers.get(p.layer as usize)?;
+        l.tiles.get(p.y as usize)?.chars().nth(p.x as usize)
+    }
+
+    /// Changes one tile (digging, building, admin painting) and its passability.
+    pub fn set_tile(&mut self, p: Position, ch: char) {
+        let Some(l) = self.layers.get_mut(p.layer as usize) else { return };
+        if p.x < 0 || p.y < 0 || p.x >= l.width || p.y >= l.height {
+            return;
+        }
+        while l.tiles.len() <= p.y as usize {
+            l.tiles.push(String::new());
+        }
+        let mut row: Vec<char> = l.tiles[p.y as usize].chars().collect();
+        while row.len() <= p.x as usize {
+            row.push('.');
+        }
+        row[p.x as usize] = ch;
+        l.tiles[p.y as usize] = row.into_iter().collect();
+        let walk = self.legend.get(&ch).is_none_or(|(_, w)| *w);
+        let w = l.width;
+        self.blocked[p.layer as usize][(p.y * w + p.x) as usize] = !walk;
     }
 
     /// Marks extra cells as impassable (building footprints).

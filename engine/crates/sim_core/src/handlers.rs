@@ -47,6 +47,8 @@ pub fn register_core(ext: &mut Extensions) {
         ("clean", clean),
         ("loot", loot),
         ("haul", crate::logistics::haul),
+        ("dig", dig),
+        ("store", store),
         ("deliver", crate::logistics::deliver),
     ];
     for (name, f) in list {
@@ -377,6 +379,45 @@ fn clean(world: &mut World, ctx: &JobCtx) -> JobResult {
     let radius = ctx.param_f("radius", 2.0) as i32;
     crate::hygiene::clean(world, p, radius, ctx.param_f("amount", 1.0) as f32);
     JobResult::ok()
+}
+
+/// Digs the target cell (rock → floor), giving the worker what the rock yields (stone, ore, gems).
+fn dig(world: &mut World, ctx: &JobCtx) -> JobResult {
+    let Some(p) = ctx.target_pos else { return JobResult::fail("dove scavare?") };
+    let map = world.resource::<crate::map::WorldMap>().clone();
+    let Some(ch) = map.tile(&p) else { return JobResult::fail("fuori mappa") };
+    let Some((to, yields)) = map.diggable.get(&ch).cloned() else { return JobResult::fail("qui non si scava") };
+    crate::map::change_tile(world, p, to);
+    if let Some((item, n)) = yields {
+        crate::inventory_ops::give(world, ctx.actor, &item, n);
+    }
+    let what = map.legend.get(&ch).map_or("roccia".to_string(), |(id, _)| id.clone());
+    let tick = world.resource::<crate::time::SimClock>().tick;
+    let (who, id) = (crate::infiltration::apparent_name(world, ctx.actor), world.get::<crate::ids::SimId>(ctx.actor).copied());
+    world.resource_mut::<crate::events::EventLog>().push(
+        tick,
+        crate::events::EventBuilder::new("dug", format!("{who} scava {what}"))
+            .actor(id)
+            .pos(Some(p))
+            .tags(["dig"]),
+    );
+    JobResult::ok()
+}
+
+/// Puts every carried item with tag `tag` (param) into the target building (a stockpile).
+fn store(world: &mut World, ctx: &JobCtx) -> JobResult {
+    let Some(t) = ctx.target.filter(|t| world.get::<crate::inventory::Stock>(*t).is_some()) else { return JobResult::fail("nessun deposito") };
+    let content = world.resource::<Content>().clone();
+    let tag = ctx.param_str("tag").unwrap_or("materiale");
+    let items: Vec<String> = world
+        .get::<Inventory>(ctx.actor)
+        .map(|i| i.items().filter(|(k, _)| content.items.get(*k).is_some_and(|d| d.tags.iter().any(|x| x == tag))).map(|(k, _)| k.clone()).collect())
+        .unwrap_or_default();
+    let mut n = 0;
+    for i in items {
+        n += crate::inventory_ops::transfer(world, ctx.actor, t, &i, 999);
+    }
+    if n == 0 { JobResult::fail("niente da depositare") } else { JobResult::ok() }
 }
 
 /// Takes items from a corpse or a building's stock.

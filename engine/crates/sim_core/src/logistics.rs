@@ -25,7 +25,10 @@ struct Site {
 }
 
 fn produces(content: &Content, def: &str, item: &str) -> bool {
-    content.buildings.get(def).is_some_and(|d| d.passive.contains_key(item) || d.recipes.iter().any(|r| r.outputs.contains_key(item)))
+    content
+        .buildings
+        .get(def)
+        .is_some_and(|d| d.stockpile || d.passive.contains_key(item) || d.recipes.iter().any(|r| r.outputs.contains_key(item)))
 }
 
 /// Haul deliveries already planned (on the board, in personal queues or being carried out).

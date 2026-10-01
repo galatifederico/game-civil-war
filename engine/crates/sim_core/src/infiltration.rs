@@ -48,6 +48,11 @@ pub fn apparent_faction(world: &World, e: Entity) -> Option<String> {
         .get::<Disguise>(e)
         .and_then(|d| d.faction.clone())
         .or_else(|| world.get::<FactionMember>(e).map(|m| m.faction.clone()))
+        // A building belongs to the faction that owns it.
+        .or_else(|| match world.get::<crate::buildings::Building>(e).map(|b| &b.owner) {
+            Some(crate::buildings::Owner::Faction(f)) => Some(f.clone()),
+            _ => None,
+        })
 }
 
 pub fn apparent_race(world: &World, e: Entity) -> Option<String> {

@@ -105,7 +105,7 @@ use crate::effects::Flags;
 use crate::events::EventLog;
 use crate::factions::{Factions, Players, Titles};
 use crate::jobs::JobBoard;
-use crate::map::Environment;
+use crate::map::{Environment, TerrainChanges};
 use crate::market::Market;
 use crate::params::Params;
 use crate::press::{Feed, PressCursor};
@@ -117,7 +117,7 @@ use crate::victory::Progress;
 
 resources!(
     SimRng, SimClock, Params, EventLog, CommandQueue, SpriteMapping, JobBoard, Factions, Players, Titles, Squads, Market,
-    GlobalModifiers, Feed, PressCursor, TelemetryCursor, Flags, TriggerState, Progress, Environment,
+    GlobalModifiers, Feed, PressCursor, TelemetryCursor, Flags, TriggerState, Progress, Environment, TerrainChanges,
 );
 
 pub fn save(world: &mut World) -> SaveGame {

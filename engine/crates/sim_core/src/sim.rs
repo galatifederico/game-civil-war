@@ -97,6 +97,11 @@ impl SimBuilder {
         let mut sim = self.build()?;
         crate::save::load(&mut sim.world, save).map_err(|e| ContentError::Invalid(vec![e]))?;
         block_building_footprints(&mut sim.world);
+        // Replay dug and painted tiles.
+        let changes = sim.world.resource::<crate::map::TerrainChanges>().0.clone();
+        for (p, ch) in changes {
+            sim.world.resource_mut::<WorldMap>().make_mut().set_tile(p, ch);
+        }
         Ok(sim)
     }
 
@@ -140,6 +145,7 @@ impl SimBuilder {
         world.insert_resource(Progress::default());
         world.insert_resource(WorldMap::from_def(content.map.as_ref()));
         world.insert_resource(crate::map::Environment::default());
+        world.insert_resource(crate::map::TerrainChanges::default());
         world.insert_resource(self.ext);
         world.insert_resource(content);
 

@@ -47,6 +47,7 @@ impl SimPlugin for FidenzaPlugin {
         b.register_condition("intruders", intruders);
         b.register_effect("mount", mount);
         b.register_effect("dismount", dismount);
+        b.register_effect("dig_frontier", dig_frontier);
         b.register_condition("near", near);
         b.register_job_handler("hack", hack);
         Ok(())
@@ -148,6 +149,69 @@ fn intruders(world: &mut World, _ctx: &EffectCtx, p: &serde_json::Value) -> bool
         .filter(|(pos, m)| map.in_zone(&zone, pos) && m.is_none_or(|m| m.faction != faction))
         .count()
         >= min
+}
+
+/// Dwarf-Fortress style expansion for AI factions: `{"zone", "faction", "count", "max_open"}` designates
+/// up to `count` diggable cells next to already open floor inside the zone.
+fn dig_frontier(world: &mut World, _ctx: &EffectCtx, p: &serde_json::Value) {
+    let zone = p.get("zone").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let faction = p.get("faction").and_then(|v| v.as_str()).map(str::to_string);
+    let count = p.get("count").and_then(|v| v.as_u64()).unwrap_or(4) as usize;
+    let max_open = p.get("max_open").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+    let content = world.resource::<Content>().clone();
+    let Some(job) = content.jobs.values().find(|j| j.handler == "dig").map(|j| j.id.clone()) else { return };
+    let open = world.resource::<sim_core::jobs::JobBoard>().jobs.values().filter(|j| j.job == job && j.faction == faction).count();
+    if open >= max_open {
+        return;
+    }
+    let map = world.resource::<WorldMap>().clone();
+    // Only rock next to floor connected to the entrance (`from`: [x, y]), never isolated cave pockets.
+    let from = p.get("from").and_then(|v| v.as_array()).map(|a| (a[0].as_i64().unwrap_or(3) as i32, a[1].as_i64().unwrap_or(3) as i32)).unwrap_or((3, 3));
+    let mut reach = std::collections::BTreeSet::new();
+    let mut frontier = Vec::new();
+    for zi in map.resolve_zones(&zone) {
+        let z = &map.zones[zi];
+        let start = Position::new(z.layer, from.0, from.1);
+        let mut queue = std::collections::VecDeque::from([start]);
+        reach.insert(start);
+        while let Some(c) = queue.pop_front() {
+            for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let n = Position::new(c.layer, c.x + dx, c.y + dy);
+                if map.tile(&n).is_some() && !map.blocked(&n) && reach.insert(n) {
+                    queue.push_back(n);
+                }
+            }
+        }
+        for y in z.y..z.y + z.h {
+            for x in z.x..z.x + z.w {
+                let cell = Position::new(z.layer, x, y);
+                if !map.tile(&cell).is_some_and(|c| map.diggable.contains_key(&c)) {
+                    continue;
+                }
+                let touches_floor = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                    .iter()
+                    .any(|(dx, dy)| reach.contains(&Position::new(z.layer, x + dx, y + dy)));
+                if touches_floor {
+                    frontier.push(cell);
+                }
+            }
+        }
+    }
+    let taken: std::collections::BTreeSet<Position> = world
+        .resource::<sim_core::jobs::JobBoard>()
+        .jobs
+        .values()
+        .filter_map(|j| match j.target {
+            sim_core::jobs::JobTarget::Cell(c) => Some(c),
+            _ => None,
+        })
+        .collect();
+    frontier.retain(|c| !taken.contains(c));
+    for _ in 0..count.min(max_open - open) {
+        let Some(i) = world.resource_mut::<SimRng>().index(frontier.len()) else { break };
+        let cell = frontier.swap_remove(i);
+        sim_core::jobs::post_job(world, &job, faction.clone(), sim_core::jobs::JobTarget::Cell(cell), 0, None);
+    }
 }
 
 /// The subject climbs on the nearest mount of its faction (`{"template": "dinosauro"}`): the mount

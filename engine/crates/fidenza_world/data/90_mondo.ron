@@ -52,11 +52,22 @@
         Entity(template: "babbo_natale_estivo", zone: "capannone_regali"),
         Entity(template: "elfo_logistica", count: 5, zone: "capannone_regali", tether: (zone: "capannone_regali", release: Never)),
         Entity(template: "capo_dei_nani", zone: "gallerie"),
-        Entity(template: "minatore", count: 3, zone: "miniera"),
+        Entity(template: "minatore", count: 5, zone: "gallerie"),
         Entity(template: "gran_custode", zone: "cripta"),
 
     ],
     spawners: [
+        // Fauna delle profondità e del bosco: resta nel suo territorio e attacca chi entra.
+        (id: "talpe", template: "talpa_del_prosciutto", zone: "miniere_profonde", interval: 24, max_alive: 4, faction: "fauna_selvatica",
+         tether: (zone: "miniere_profonde", release: Never)),
+        (id: "vermi", template: "verme_del_lambrusco", zone: "caverne", interval: 24, max_alive: 3, faction: "fauna_selvatica",
+         tether: (zone: "caverne", release: Never)),
+        (id: "ragni", template: "ragno_di_soia", zone: "caverne", interval: 24, max_alive: 4, faction: "fauna_selvatica",
+         tether: (zone: "caverne", release: Never)),
+        (id: "cinghiali", template: "cinghiale", zone: "bosco_stirone", interval: 36, max_alive: 3, faction: "fauna_selvatica",
+         tether: (zone: "bosco_stirone", release: Never)),
+        (id: "zombie_catacombe", template: "zombie", zone: "catacombe", interval: 12, max_alive: 6, faction: "cripta_san_vitale",
+         tether: (zone: "catacombe", release: Flag(flag: "cripta_aperta", min: 1))),
         // Immigrazione: chi muore viene rimpiazzato da nuovi arrivi.
         (id: "arrivi_fidentini", template: "fidentino", zone: "piazza_garibaldi", interval: 12, active_when: PopulationBelow(template: "fidentino", count: 6)),
         (id: "arrivi_salsesi", template: "salsese", zone: "salsomaggiore_terme", interval: 12, active_when: PopulationBelow(template: "salsese", count: 6)),
@@ -71,7 +82,7 @@
         (id: "arrivi_nerd", template: "nerd", zone: "fumetteria", interval: 48, active_when: PopulationBelow(template: "nerd", count: 2)),
         (id: "arrivi_mistici", template: "mistico_vegano", zone: "impero_vegano", interval: 48, active_when: PopulationBelow(template: "mistico_vegano", count: 2)),
         (id: "arrivi_croupier", template: "croupier", zone: "casino", interval: 48, active_when: PopulationBelow(template: "croupier", count: 2)),
-        (id: "arrivi_minatori", template: "minatore", zone: "miniera", interval: 48, active_when: PopulationBelow(template: "minatore", count: 3)),
+        (id: "arrivi_minatori", template: "minatore", zone: "miniera", interval: 48, active_when: PopulationBelow(template: "minatore", count: 6)),
         (id: "arrivi_medici", template: "medico", zone: "cattedrale", interval: 72, active_when: PopulationBelow(template: "medico", count: 1)),
         (id: "arrivi_elfi", template: "elfo_logistica", zone: "capannone_regali", interval: 24, active_when: PopulationBelow(template: "elfo_logistica", count: 5),
          tether: (zone: "capannone_regali", release: Never)),
@@ -93,6 +104,8 @@
          tether: (zone: "casino", release: Flag(flag: "crediti_insoluti", min: 1))),
     ],
     triggers: [
+        (id: "nani_scavano", name: "I Nani allargano la fortezza", repeat: true, cooldown: 6, when: TemplateAlive("capo_dei_nani"),
+         effects: [Custom(id: "dig_frontier", params: {"zone": "#fortezza", "faction": "nani_miniere", "count": 4, "max_open": 14})]),
         (id: "oracolo_assegnazione", name: "L'Oracolo sceglie da che parte stare", when: TickAtLeast(0),
          effects: [Custom(id: "oracle_assign")]),
         (id: "oracolo_rivelazione", name: "L'Oracolo parla", repeat: true, cooldown: 24,

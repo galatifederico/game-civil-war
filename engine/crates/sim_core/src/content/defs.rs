@@ -627,6 +627,8 @@ pub struct BuildingDef {
     pub exports: Vec<Id>,
     /// Money earned every `economy.export_interval` ticks from visitors (tourism, gambling…).
     pub income: f64,
+    /// A stockpile: logistics may take anything it stores, not only what it produces.
+    pub stockpile: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -683,6 +685,11 @@ pub struct TileDef {
     pub name: String,
     #[serde(default = "yes")]
     pub walkable: bool,
+    /// Digging turns this tile into `dig_to` (rock → floor), yielding `yields` (item, quantity).
+    #[serde(default)]
+    pub dig_to: Option<char>,
+    #[serde(default)]
+    pub yields: Option<(Id, u32)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -722,6 +729,9 @@ pub struct LayerDef {
     pub underground: bool,
     #[serde(default)]
     pub indoor: bool,
+    /// Depth level (0 = surface, -1, -2… underground), for clients.
+    #[serde(default)]
+    pub depth: i32,
     /// Tags of the map itself (every map is also a zone with its own id).
     #[serde(default)]
     pub tags: Vec<String>,

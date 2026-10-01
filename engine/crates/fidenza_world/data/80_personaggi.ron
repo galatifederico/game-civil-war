@@ -47,6 +47,10 @@
         (id: "waifu", name: "Waifu", race: "androide", classes: ["guardiano"], faction: "gilda_nerd", slots: 2),
         (id: "maid", name: "Maid", race: "androide", classes: ["guardiano", "medico"], faction: "gilda_nerd", items: {"tachipirina": 3}, slots: 2),
         (id: "leone", name: "Leone del Casinò", race: "leone", classes: ["bestia", "riscossore"], faction: "casino_diablo", slots: 1),
+        (id: "talpa_del_prosciutto", name: "Talpa del Prosciutto", race: "talpa", classes: ["bestia"], faction: "fauna_selvatica", slots: 0),
+        (id: "verme_del_lambrusco", name: "Verme del Lambrusco", race: "verme", classes: ["bestia"], faction: "fauna_selvatica", slots: 0),
+        (id: "ragno_di_soia", name: "Ragno di Soia", race: "ragno", classes: ["bestia"], faction: "fauna_selvatica", slots: 0),
+        (id: "cinghiale", name: "Cinghiale dello Stirone", race: "cinghiale", classes: ["bestia"], faction: "fauna_selvatica", slots: 0),
         (id: "elfo_logistica", name: "Elfo della Logistica", race: "elfo_logistica", classes: ["logistico"], faction: "babbo_natale", rank: "elfo", money: 2),
 
         // NPC unici e leggendari.

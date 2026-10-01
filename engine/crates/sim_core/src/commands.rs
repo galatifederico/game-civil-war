@@ -45,6 +45,17 @@ pub enum SimCommand {
     /// A player proposes an alliance: accepted when the other faction's relation is at least
     /// `social.alliance_threshold` (players accept each other's automatically).
     PlayerAlliance { player: String, faction: String },
+    /// Dwarf-Fortress style designation: a job (default "dig") for every suitable cell of an area,
+    /// posted on the board for the player's (or the given) faction.
+    Designate {
+        #[serde(default)] player: Option<String>,
+        #[serde(default)] faction: Option<String>,
+        layer: String,
+        rect: (i32, i32, i32, i32),
+        #[serde(default)] job: Option<String>,
+    },
+    /// Admin: paint a tile.
+    SetTile { layer: String, x: i32, y: i32, tile: char },
     /// A player's order to one of its squads.
     PlayerSquadOrder { player: String, squad: u64, order: Option<SquadOrder> },
     /// A player creates a squad from members of its faction (the champion leads it).
@@ -256,6 +267,49 @@ pub fn apply(world: &mut World, cmd: SimCommand) -> Result<String, String> {
             }
             crate::social::ally(world, &mine, &faction);
             Ok("alleanza stretta".into())
+        }
+        SimCommand::Designate { player, faction, layer, rect, job } => {
+            let faction = match (faction, player) {
+                (Some(f), _) => Some(f),
+                (None, Some(p)) => Some(world.resource::<crate::factions::Players>().players.get(&p).ok_or("giocatore inesistente")?.faction.clone()),
+                _ => None,
+            };
+            let content = world.resource::<Content>().clone();
+            let job = job.unwrap_or_else(|| content.jobs.values().find(|j| j.handler == "dig").map(|j| j.id.clone()).unwrap_or_default());
+            if !content.jobs.contains_key(&job) {
+                return Err("nessun lavoro di scavo nei contenuti".into());
+            }
+            let map = world.resource::<WorldMap>().clone();
+            let li = map.layers.iter().position(|l| l.id == layer).ok_or("mappa inesistente")? as u16;
+            let existing: std::collections::BTreeSet<(i32, i32)> = world
+                .resource::<crate::jobs::JobBoard>()
+                .jobs
+                .values()
+                .filter_map(|j| match j.target {
+                    JobTarget::Cell(p) if p.layer == li && j.job == job => Some((p.x, p.y)),
+                    _ => None,
+                })
+                .collect();
+            let mut n = 0;
+            for y in rect.1..rect.1 + rect.3.min(64) {
+                for x in rect.0..rect.0 + rect.2.min(64) {
+                    let p = crate::map::Position::new(li, x, y);
+                    if map.tile(&p).is_some_and(|c| map.diggable.contains_key(&c)) && !existing.contains(&(x, y)) {
+                        crate::jobs::post_job(world, &job, faction.clone(), JobTarget::Cell(p), 0, None);
+                        n += 1;
+                    }
+                }
+            }
+            Ok(format!("{n} celle designate per lo scavo"))
+        }
+        SimCommand::SetTile { layer, x, y, tile } => {
+            let map = world.resource::<WorldMap>().clone();
+            let li = map.layers.iter().position(|l| l.id == layer).ok_or("mappa inesistente")? as u16;
+            if !map.legend.contains_key(&tile) {
+                return Err(format!("'{tile}' non è nella legenda"));
+            }
+            crate::map::change_tile(world, crate::map::Position::new(li, x, y), tile);
+            Ok(format!("({x},{y}) = '{tile}'"))
         }
         SimCommand::PlayerOrder { player, entity, order } => crate::player::give_order(world, &player, entity, order),
         SimCommand::PlayerSquadOrder { player, squad, order } => {

@@ -20,6 +20,8 @@ fn main() {
         }
         let per: BTreeMap<String, String> = per.into_iter().map(|(k, (n, f))| (k, format!("{n} (fame {:.2})", f / n as f32))).collect();
         let deliveries = sim.events().all().iter().filter(|e| e.message.contains("consegna")).count();
-        println!("giorno {d}: {} consegne totali · {:?}", deliveries, per);
+        let dug = sim.world.resource::<sim_core::map::TerrainChanges>().0.len();
+        let stone: u32 = snap.entities.iter().filter_map(|e| e.building.as_ref()).filter(|b| b.def == "deposito").map(|b| b.stock.values().sum::<u32>()).sum();
+        println!("giorno {d}: {dug} celle scavate, {stone} materiali nei depositi, {} consegne totali · {:?}", deliveries, per);
     }
 }
