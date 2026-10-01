@@ -54,6 +54,11 @@ Principi:
 | 20 | [Campione, ordini, strategia, pathfinding, salvataggi, bilanciamento](20-giocatore-e-bilanciamento.md) | ✅ fatto |
 | 21 | [Sprite chibi in pixel art (stile Pokémon)](21-sprite-chibi.md) | ✅ prima versione |
 | 22 | [Regione in mappe contigue, terreno in pixel art](22-mappe-contigue.md) | ✅ prima versione |
+| 23 | [Grafica più vicina a Pokémon](23-grafica-pokemon.md) | ✅ fatto |
+| 24 | [Un mondo unico, come Dwarf Fortress](24-mondo-unico.md) | ✅ fatto |
+| 25 | [Rifornimenti da fuori e luoghi di divertimento](25-rifornimenti-e-svago.md) | ✅ fatto |
+| 26 | [Conquista dei quartieri](26-conquista-quartieri.md) | ✅ fatto |
+| 27 | [Console di amministrazione](27-console-admin.md) | ✅ fatto |
 
 Le task 01-10 formano la "fetta verticale" che fa girare la demo richiesta dal design; le 11-18 completano i
 sottosistemi; la 19 è fuori scopo per ora.
