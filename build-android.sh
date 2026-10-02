@@ -15,6 +15,10 @@ if pgrep -f "unityhub-unity-edito[r]" >/dev/null; then
   echo "L'editor di Unity è aperto su un progetto: chiudilo prima di compilare." >&2
   exit 1
 fi
+if pgrep -f "Unity.*-projectPath $ROOT/unity-clien[t]" >/dev/null; then
+  echo "C'è già una build di Unity in corso su questo progetto: aspetta che finisca." >&2
+  exit 1
+fi
 
 # RAM libera + swap: sotto i ~10 GB la build rischia di essere uccisa per memoria.
 avail_mb=$(( $(awk '/MemAvailable/ {print $2}' /proc/meminfo) / 1024 ))
