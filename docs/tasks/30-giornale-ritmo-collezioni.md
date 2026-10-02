@@ -26,7 +26,11 @@
 - **Collezioni** (`data/32_collezioni.ron`), 20 pezzi ciascuna con un effetto e una descrizione:
   - Opere del Borgazzi (uniche, bonus a chi le porta): il Borgazzi ne dipinge una ogni 48 tick e la mette in
     vendita nella nuova **Galleria del Borgazzi** in Piazza Garibaldi; le pedine ricche ogni tanto ne comprano una.
-  - Foto di Pag (bonus a chi le porta) e Santini (metà da usare, metà da tenere): si trovano nelle **bustine**
+  - Foto di Pag (bonus a chi le porta) e Santini: santi veri (San Donnino, Sant'Onofrio, San Giuda Taddeo, San
+    Lorenzo, Santa Lucia…) con effetti presi dalla loro storia, dal martirio e dai simboli (Santa Lucia dà la vista,
+    San Lorenzo la resistenza al fuoco, Sant'Antonio Abate guarisce dalla mutazione porcina, San Rocco dal morbo,
+    San Cristoforo fa camminare più svelti); metà si usano, metà si tengono in tasca.
+    Entrambe si trovano nelle **bustine**
     (Fumetteria, Banchetto dei Santini, rifornite ogni giorno) che si aprono subito con un pezzo a caso (nuovo
     effetto `GiveRandomItem`). Anche le pedine collezionano.
   - Nell'Inventario: scheda **Collezioni** con posseduti/totale, punti e barra; ogni collezione apre la griglia dei
