@@ -44,6 +44,7 @@ pub const DEFAULTS: &[(&str, f64, &str)] = &[
     ("economy.export_price", 0.9, "Prezzo di export come quota del prezzo di mercato"),
     ("economy.savings_cap", 10.0, "Risparmi (in stipendi) oltre cui si versa un contributo alla gilda"),
     ("economy.guild_contribution", 0.15, "Quota dei risparmi in eccesso versata alla gilda a ogni paga"),
+    ("population.nonbinary_share", 0.06, "Quota di pedine non binarie tra quelle che nascono senza un sesso fissato"),
     ("player.obedience_base", 0.85, "Probabilità base che un membro obbedisca al giocatore"),
     ("player.knockout_ticks", 12.0, "Tick in cui un campione resta a terra invece di morire"),
     ("player.knockout_money_loss", 0.2, "Quota dei soldi che il campione perde quando va al tappeto"),

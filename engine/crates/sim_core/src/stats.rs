@@ -26,6 +26,14 @@ pub struct TemplateId(pub String);
 #[derive(Component, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Race(pub String);
 
+/// Sex of a pawn (races marked `sexless`, like machines, have none).
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Sex {
+    Male,
+    Female,
+    NonBinary,
+}
+
 #[derive(Component, Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Classes(pub Vec<String>);
 

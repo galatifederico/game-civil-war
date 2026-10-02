@@ -267,13 +267,18 @@ def to_img(grid):
     return img
 
 
-def humanoid_frames(race):
-    """Returns {dir: [base grids]} and {dir: [cloth grids]} for 3 poses."""
+def humanoid_frames(race, hair=None):
+    """Returns {dir: [base grids]} and {dir: [cloth grids]} for 3 poses. `hair`: "long" (women) or "bob"
+    (non-binary) adds hair down the sides of the head."""
     p = RACES[race]
     pal = {k: hexrgba(v) for k, v in p.items() if k != "extras"}
     pal["W"] = (255, 255, 255, 255)
     pal["M"] = hexrgba("#a0524a")
-    extras = p.get("extras", [])
+    extras = list(p.get("extras", []))
+    if hair == "long" and "long_hair" not in extras:
+        extras.append("long_hair")
+    if hair == "bob":
+        extras.append("bob_hair")
     cloth_pal = {"C": (235, 235, 235, 255), "c": (170, 170, 170, 255)}
     base, cloth = {}, {}
     for d in DIRS:
@@ -301,6 +306,11 @@ def humanoid_frames(race):
                     for x in ([1, 2, 13, 14] if d in ("down", "up") else [10, 11, 12, 13]):
                         if g[y + bob][x] is None or d == "up":
                             g[y + bob][x] = pal["H"] if y < 11 else pal["h"]
+            if "bob_hair" in extras:
+                for y in range(5, 9):
+                    for x in ([1, 2, 13, 14] if d in ("down", "up") else [10, 11, 12]):
+                        if g[y + bob][x] is None or d == "up":
+                            g[y + bob][x] = pal["H"] if y < 8 else pal["h"]
             if "tail" in extras and d != "down":
                 tail = [(12, 14), (13, 15), (14, 15), (15, 14)] if d in ("left", "up") else []
                 for x, y in tail:
@@ -415,6 +425,18 @@ def acc(name, d):
         for x in (4, 7, 11):
             px.append((x, 0, "#f2c12e"))
         px.append((7, 1, "#e53935"))
+    elif name == "goth":
+        # Black hood with a purple bow, dark lipstick shade on the face.
+        rect(2, 1, 13, 3, "#16121c")
+        rect(2, 4, 2, 11, "#16121c")
+        rect(13, 4, 13, 11, "#16121c")
+        if d == "up":
+            rect(2, 1, 13, 11, "#16121c")
+        else:
+            rect(11, 1, 12, 2, "#7b2d9e")
+            if d == "down":
+                px.append((7, 10, "#3a1240"))
+                px.append((8, 10, "#3a1240"))
     elif name == "aureola":
         rect(5, 0, 10, 0, "#fff59d")
     if d == "right":
@@ -423,7 +445,7 @@ def acc(name, d):
 
 
 ACCESSORY_NAMES = ["cap_polizia", "elmo", "cappello_mago", "fascia_ninja", "corona_foglie", "cappuccio", "cappuccio_sith",
-                   "berretto_medico", "cappellino_boomer", "fedora_stampa", "corona", "aureola"]
+                   "berretto_medico", "cappellino_boomer", "fedora_stampa", "corona", "aureola", "goth"]
 
 
 def sheet(frames):
@@ -443,6 +465,10 @@ def main():
         sheet({d: [outline(g) for g in base[d]] for d in DIRS}).save(out / f"chibi_{race}.png")
         # Cloth outline comes from the base layer, so the tint never covers it.
         sheet(cloth).save(out / f"chibi_{race}_cloth.png")
+        # Women (long hair) and non-binary pawns (bob): same body, other hair.
+        for hair, suffix in (("long", "f"), ("bob", "nb")):
+            hb, _ = humanoid_frames(race, hair)
+            sheet({d: [outline(g) for g in hb[d]] for d in DIRS}).save(out / f"chibi_{race}_{suffix}.png")
         made.append(race)
     for name in CREATURES:
         f = creature_frames(name)

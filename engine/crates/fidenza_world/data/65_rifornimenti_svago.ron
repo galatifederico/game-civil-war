@@ -50,6 +50,8 @@
         (id: "ortaggi", name: "Ortofrutta dai grossisti", item: "ortaggi", per_shop: 8, max_per_day: 40, variation: 0.3, cost: 0.3),
         (id: "carne", name: "Camion frigo", item: "carne", per_shop: 5, max_per_day: 20, variation: 0.3, cost: 0.3),
         (id: "salumi", name: "Salumi da Langhirano", item: "salumi", per_shop: 4, max_per_day: 15, variation: 0.3, cost: 0.35),
+        (id: "bustine_santini", name: "Santini dalla tipografia diocesana", item: "bustina_santini", per_shop: 30, max_per_day: 30, variation: 0.2, cost: 0.3),
+        (id: "bustine_pag", name: "Foto di Pag stampate a Salso", item: "bustina_foto_pag", per_shop: 15, max_per_day: 15, variation: 0.3, cost: 0.3),
         (id: "birra", name: "Flusso continuo di birra", item: "birra", per_shop: 15, max_per_day: 70, variation: 0.2, cost: 0.25),
         (id: "vino", name: "Lambrusco dalle cantine sociali", item: "vino", per_shop: 8, max_per_day: 30, variation: 0.25, cost: 0.3),
         (id: "grappa", name: "Grappa dal Veneto", item: "grappa", per_shop: 4, max_per_day: 10, variation: 0.3, cost: 0.35),

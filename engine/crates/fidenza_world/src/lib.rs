@@ -120,13 +120,22 @@ fn oracle_reveal(world: &mut World, _ctx: &EffectCtx, _p: &serde_json::Value) {
 
 fn borgazzi_masterpiece(world: &mut World, _ctx: &EffectCtx, _p: &serde_json::Value) {
     let Some(b) = find_template(world, "gerolamo_borgazzi") else { return };
+    // The works already in the world (carried or in some building), then the next one of the collection.
     let existing: std::collections::BTreeSet<String> = {
         let mut q = world.query::<&Inventory>();
-        q.iter(world).flat_map(|i| i.items().map(|(k, _)| k.clone()).collect::<Vec<_>>()).collect()
+        let mut seen: std::collections::BTreeSet<String> = q.iter(world).flat_map(|i| i.items().map(|(k, _)| k.clone()).collect::<Vec<_>>()).collect();
+        let mut qs = world.query::<&sim_core::inventory::Stock>();
+        seen.extend(qs.iter(world).flat_map(|s| s.0.iter().filter(|(_, n)| **n > 0).map(|(k, _)| k.clone()).collect::<Vec<_>>()));
+        seen
     };
-    let next = ["opera_borgazzi_1", "opera_borgazzi_2", "opera_borgazzi_3"].into_iter().find(|o| !existing.contains(*o));
-    let Some(opera) = next else { return };
-    if sim_core::inventory_ops::give(world, b, opera, 1) == 0 {
+    let works = world.resource::<Content>().collections.get("opere_borgazzi").map(|c| c.items.clone()).unwrap_or_default();
+    let Some(opera) = works.into_iter().find(|o| !existing.contains(o)) else { return };
+    let opera = opera.as_str();
+    // Finished works go on show (and on sale) in his gallery; without it he keeps them.
+    let gallery = sim_core::sorted_entities::<sim_core::buildings::Building>(world)
+        .into_iter()
+        .find(|e| world.get::<sim_core::buildings::Building>(*e).is_some_and(|x| x.def == "galleria_borgazzi" && x.hp > 0.0));
+    if sim_core::inventory_ops::give(world, gallery.unwrap_or(b), opera, 1) == 0 {
         return;
     }
     let name = world.resource::<Content>().items[opera].name.clone();

@@ -118,6 +118,8 @@ pub struct EntityView {
     pub kind: &'static str,
     pub template: Option<String>,
     pub race: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sex: Option<crate::stats::Sex>,
     pub classes: Vec<String>,
     pub faction: Option<String>,
     pub rank: Option<String>,
@@ -277,6 +279,7 @@ pub fn entity_view(world: &World, e: Entity, truth: bool) -> Option<EntityView> 
         kind,
         template: if hide { None } else { world.get::<TemplateId>(e).map(|t| t.0.clone()) },
         race: crate::infiltration::apparent_race(world, e).filter(|_| building.is_none()),
+        sex: world.get::<crate::stats::Sex>(e).copied(),
         classes: world.get::<Classes>(e).map(|c| c.0.clone()).unwrap_or_default(),
         faction: crate::infiltration::apparent_faction(world, e).or_else(|| match building.as_ref().map(|b| &b.owner) {
             Some(Owner::Faction(f)) => Some(f.clone()),

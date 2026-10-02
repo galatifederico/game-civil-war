@@ -49,6 +49,8 @@ pub fn effect(c: &Content, e: &Effect) -> String {
         Effect::Immunize { status: s, ticks } if *ticks > 0 => format!("protegge da {} per {ticks} ore", status(c, s)),
         Effect::Immunize { status: s, .. } => format!("protegge per sempre da {}", status(c, s)),
         Effect::GiveItem { item: i, qty } => format!("dà {qty}× {}", item(c, i)),
+        Effect::GiveRandomItem { tag: Some(t), .. } => format!("dà un pezzo a caso della serie «{t}»"),
+        Effect::GiveRandomItem { .. } => "dà un oggetto a sorpresa".into(),
         Effect::TakeItem { item: i, qty } => format!("toglie {qty}× {}", item(c, i)),
         Effect::ModMoney(m) => format!("soldi {m:+.0} €"),
         Effect::ModTreasury(m) => format!("fondo di gilda {m:+.0} €"),

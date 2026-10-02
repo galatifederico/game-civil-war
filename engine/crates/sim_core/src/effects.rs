@@ -176,6 +176,22 @@ pub fn apply_effect(world: &mut World, ctx: &EffectCtx, effect: &Effect) {
                 crate::inventory_ops::give(world, e, item, *qty);
             }
         }
+        Effect::GiveRandomItem { items, tag, qty } => {
+            if let Some(e) = subj {
+                let content = world.resource::<Content>().clone();
+                let mut pool: Vec<String> = items.clone();
+                if let Some(t) = tag {
+                    pool.extend(content.items.values().filter(|d| d.tags.contains(t)).map(|d| d.id.clone()));
+                }
+                pool.sort();
+                pool.dedup();
+                for _ in 0..*qty {
+                    if let Some(item) = world.resource_mut::<crate::rng::SimRng>().pick(&pool).cloned() {
+                        crate::inventory_ops::give(world, e, &item, 1);
+                    }
+                }
+            }
+        }
         Effect::TakeItem { item, qty } => {
             if let Some(e) = subj {
                 crate::inventory_ops::take(world, e, item, *qty);

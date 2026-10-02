@@ -70,11 +70,6 @@
         (id: "pc_smart_working", name: "PC per Smart Working", category: "attrezzi", stack_max: 1, base_price: 90, tags: ["attrezzi", "informatica"], carried_stats: {"intelletto": 5}),
 
         // Collezionabili.
-        (id: "santino", name: "Santino", category: "collezione", stack_max: 20, base_price: 1, tags: ["collezionabile", "santino"]),
-        (id: "foto_di_pag", name: "Foto di Pag", category: "collezione", stack_max: 20, base_price: 5, tags: ["collezionabile"]),
-        (id: "opera_borgazzi_1", name: "Opera del Borgazzi: \"Il Lambrusco Cosmico\"", category: "arte", stack_max: 1, base_price: 500, unique: true, tags: ["collezionabile", "arte"]),
-        (id: "opera_borgazzi_2", name: "Opera del Borgazzi: \"Autoritratto con Rotonda\"", category: "arte", stack_max: 1, base_price: 500, unique: true, tags: ["collezionabile", "arte"]),
-        (id: "opera_borgazzi_3", name: "Opera del Borgazzi: \"Natura Morta con Salame\"", category: "arte", stack_max: 1, base_price: 500, unique: true, tags: ["collezionabile", "arte"]),
         (id: "regalo_di_natale", name: "Regalo di Natale", category: "regali", stack_max: 10, base_price: 20, tags: ["collezionabile", "regalo"]),
         (id: "corona_re_anolino", name: "Corona di Re Anolino", category: "insegne", stack_max: 1, base_price: 1000, unique: true, tags: ["collezionabile", "insegna"], victory_points: 50),
         (id: "petardo", name: "Petardo", category: "sballo", stack_max: 10, base_price: 2, tags: ["collezionabile", "contrabbando"]),
@@ -104,8 +99,6 @@
          items: ["gamba_destra", "gamba_sinistra", "testa_san_donnino", "mano_destra", "mano_sinistra"]),
         (id: "reliquie_minori", name: "Il Corredo di San Donnino", per_faction: true, victory_points: 150,
          items: ["boccale_san_donnino", "gonnella_san_donnino", "fallo_san_donnino", "grinder_san_donnino", "gladio_san_donnino"]),
-        (id: "opere_borgazzi", name: "Trittico del Borgazzi", per_faction: true, victory_points: 200,
-         items: ["opera_borgazzi_1", "opera_borgazzi_2", "opera_borgazzi_3"]),
         (id: "regali_di_natale", name: "Natale d'Agosto", per_faction: true, victory_points: 50, tag: "regalo", count: 1,
          description: "Ricevere almeno un regalo dal Capannone di Babbo Natale Estivo."),
         (id: "kit_sballo", name: "Kit dello Sballo", per_faction: false, victory_points: 10,
@@ -113,7 +106,5 @@
         (id: "fossili_stirone", name: "Museo dei Fossili dello Stirone", per_faction: true, victory_points: 120,
          description: "Un dente di squalo, un'ammonite e un osso di dinosauro: il Parco dello Stirone in vetrina.",
          items: ["fossile_dente_squalo", "fossile_ammonite", "fossile_osso_dinosauro"]),
-        (id: "santini", name: "Album dei Santini", per_faction: false, victory_points: 5, items: ["santino", "foto_di_pag"],
-         bonus: [ApplyStatus(status: "benedetto")]),
     ],
 )

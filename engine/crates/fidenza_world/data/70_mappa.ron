@@ -125,6 +125,7 @@
         Building(building: "fucina", zone: "borgo_templari", at: (148, 44), owner_faction: "templari_borgo"),
         Building(building: "forno", zone: "borgo_templari", at: (140, 38), owner_faction: "templari_borgo", name: "Forno del Borgo"),
         Building(building: "fumetteria", zone: "fumetteria", at: (140, 11), owner_faction: "gilda_nerd"),
+        Building(building: "galleria_borgazzi", zone: "piazza_garibaldi", at: (114, 33)),
         Building(building: "monolite_soia", zone: "impero_vegano", at: (60, 10), owner_faction: "impero_vegano"),
         Building(building: "cattedrale_idroponica", zone: "impero_vegano", at: (49, 11), owner_faction: "impero_vegano"),
         Building(building: "bar_estratti", zone: "impero_vegano", at: (70, 11), owner_faction: "impero_vegano"),

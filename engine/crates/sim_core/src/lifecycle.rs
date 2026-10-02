@@ -92,6 +92,19 @@ pub fn spawn_template(world: &mut World, template: &str, pos: Option<Position>, 
         Notebook::default(),
         Movement::default(),
     ));
+    let sexless = content.races.get(&t.race).is_some_and(|r| r.sexless);
+    let sex = match t.sex {
+        _ if sexless => None,
+        Some(s) => Some(s),
+        None => {
+            let nb = world.resource::<crate::params::Params>().get("population.nonbinary_share", 0.06) as f32;
+            let roll = world.resource_mut::<crate::rng::SimRng>().next_f32();
+            Some(if roll < nb { crate::stats::Sex::NonBinary } else if roll < nb + (1.0 - nb) / 2.0 { crate::stats::Sex::Female } else { crate::stats::Sex::Male })
+        }
+    };
+    if let Some(s) = sex {
+        world.entity_mut(e).insert(s);
+    }
     if t.virtual_entity {
         world.entity_mut(e).insert(Virtual);
     } else {

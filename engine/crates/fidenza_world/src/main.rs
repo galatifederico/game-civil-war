@@ -240,6 +240,7 @@ fn run_server(sim: Simulation, addr: &str, tick_ms: u64, metrics: Option<sim_cor
         factory: Some(Arc::new(move || fidenza_world::builder(seed))),
         token,
         assets: fidenza_world::sprites_dir(),
+        ui_cache: Default::default(),
     };
     println!("\nServer attivo su http://{addr}  (admin: /admin/, client: /ui/, MCP: POST /mcp, metriche: /metrics) — Ctrl+C per uscire");
     let rt = tokio::runtime::Runtime::new().expect("runtime tokio");

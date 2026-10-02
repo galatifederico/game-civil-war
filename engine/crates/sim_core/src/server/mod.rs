@@ -46,7 +46,12 @@ pub struct AppState {
     pub token: Option<String>,
     /// Folder of sprite images (PNG) shown by the admin console under `/assets/`.
     pub assets: Option<std::path::PathBuf>,
+    /// Light UI state already serialized, per fog faction, for the tick it was made at.
+    pub ui_cache: UiCache,
 }
+
+/// See [`AppState::ui_cache`]: faction ("" = no fog) → (tick, JSON).
+pub type UiCache = Arc<Mutex<std::collections::HashMap<String, (u64, Arc<String>)>>>;
 
 /// Installs the global Prometheus recorder (once per process).
 pub fn install_metrics() -> Option<PrometheusHandle> {
@@ -54,6 +59,10 @@ pub fn install_metrics() -> Option<PrometheusHandle> {
 }
 
 pub fn router(state: AppState) -> Router {
+    router_inner(state).layer(tower_http::compression::CompressionLayer::new())
+}
+
+fn router_inner(state: AppState) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/admin/", get(admin_page))
@@ -93,6 +102,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/ui/talk", post(ui_talk))
         .route("/api/ui/interactions/{player}/{target}", get(ui_interactions))
         .route("/api/ui/item/{item}", get(ui_item))
+        .route("/api/ui/collections", get(ui_collections))
         .route("/api/ui/economy", get(ui_economy))
         .route("/api/save", post(save_game))
         .route("/api/load", post(load_game))
@@ -184,7 +194,7 @@ async fn ui_player(State(s): State<AppState>, Path(player): Path<String>) -> Api
             health_sum += v.health;
             Some(json!({
                 "id": v.id, "name": v.name, "rank": v.rank, "classes": v.classes, "pos": v.pos,
-                "race": v.race, "race_name": race_name(&v.race),
+                "race": v.race, "race_name": race_name(&v.race), "sex": v.sex,
                 "class_names": v.classes.iter().map(class_name).collect::<Vec<_>>(),
                 "health": v.health, "morale": morale, "mood": v.activity.as_ref().map(|a| a.mood.clone()),
                 "money": v.money,
@@ -454,6 +464,41 @@ async fn ui_item(State(s): State<AppState>, Path(item): Path<String>, Query(q): 
         "stack_max": d.stack_max, "victory_points": d.victory_points, "unique": d.unique,
         "effects": crate::describe::item_effects(&content, &item), "holders": holders,
     })))
+}
+
+/// The collections with how many of their pieces the player's team holds (members and faction buildings).
+async fn ui_collections(State(s): State<AppState>, Query(q): Query<ItemQ>) -> ApiResult {
+    let mut sim = s.sim.lock().unwrap();
+    let content = sim.content().clone();
+    let faction = q.player.as_ref().and_then(|p| sim.world.resource::<Players>().players.get(p)).map(|p| p.faction.clone());
+    let held = faction.as_ref().map(|f| crate::inventory_ops::faction_holdings(&mut sim.world, f)).unwrap_or_default();
+    let out: Vec<Value> = content
+        .collections
+        .values()
+        .map(|c| {
+            // A collection lists its pieces, or asks for `count` different items with a tag.
+            let mut pieces: Vec<String> = c.items.clone();
+            if let Some(t) = &c.tag {
+                pieces.extend(content.items.values().filter(|d| d.tags.contains(t)).map(|d| d.id.clone()));
+            }
+            let items: Vec<Value> = pieces
+                .iter()
+                .map(|i| {
+                    let d = content.items.get(i);
+                    json!({ "id": i, "name": d.map_or(i.clone(), |d| d.name.clone()), "category": d.map(|d| d.category.clone()),
+                            "qty": held.get(i).copied().unwrap_or(0) })
+                })
+                .collect();
+            let owned = items.iter().filter(|i| i["qty"].as_u64().unwrap_or(0) > 0).count();
+            let total = if c.items.is_empty() && c.count > 0 { c.count as usize } else { items.len() };
+            json!({
+                "id": c.id, "name": c.name, "description": c.description, "victory_points": c.victory_points,
+                "per_faction": c.per_faction, "total": total, "owned": owned.min(total), "complete": owned >= total && total > 0,
+                "items": items,
+            })
+        })
+        .collect();
+    Ok(Json(json!(out)))
 }
 
 /// State of the world's resources: price index and inflation, money in circulation, disruptions and
@@ -811,10 +856,20 @@ async fn ui_terrain(State(s): State<AppState>, Query(q): Query<SinceQ>) -> ApiRe
 struct UiQ {
     /// Apply the fog of war of this faction (default: no fog).
     faction: Option<String>,
+    /// Light state for the game client: what the map needs of each entity (the card asks the rest),
+    /// only the dirty cells as `[layer, x, y, dirt × 10, pathogens]`, no sprite mapping (unless `since` is
+    /// missing), no chronicle.
+    #[serde(default)]
+    lite: bool,
+    /// Light state only: the tick the client already has; same tick → `{"unchanged": true}`.
+    since: Option<u64>,
 }
 
 /// Everything the client needs each frame: apparent entities, feed, market, factions, sprites.
-async fn ui_state(State(s): State<AppState>, Query(q): Query<UiQ>) -> ApiResult {
+async fn ui_state(State(s): State<AppState>, Query(q): Query<UiQ>) -> Response {
+    if q.lite {
+        return ui_state_lite(&s, &q);
+    }
     let mut sim = s.sim.lock().unwrap();
     let mut snap = sim.snapshot(false);
     let fog = q.faction.as_ref().map(|f| crate::snapshot::fog_of_war(&mut sim.world, f));
@@ -838,8 +893,73 @@ async fn ui_state(State(s): State<AppState>, Query(q): Query<UiQ>) -> ApiResult 
         .take(30)
         .cloned()
         .collect();
-    Ok(Json(json!({ "snapshot": snap, "sprites": sprites, "cells": cells, "recent_events": recent,
-                     "fog": fog.map(|f| json!({ "faction": f.faction, "observers": f.observers })) })))
+    Json(json!({ "snapshot": snap, "sprites": sprites, "cells": cells, "recent_events": recent,
+                 "fog": fog.map(|f| json!({ "faction": f.faction, "observers": f.observers })) }))
+    .into_response()
+}
+
+/// The light state, built once per tick and fog faction and shared by every client asking for it.
+fn ui_state_lite(s: &AppState, q: &UiQ) -> Response {
+    let key = q.faction.clone().unwrap_or_default();
+    let tick = s.sim.lock().unwrap().tick_count();
+    if q.since == Some(tick) {
+        return Json(json!({ "unchanged": true, "tick": tick })).into_response();
+    }
+    let cached = s.ui_cache.lock().unwrap().get(&key).filter(|(t, _)| *t == tick).map(|(_, j)| j.clone());
+    let body = match cached {
+        Some(j) => j,
+        None => {
+            let j = Arc::new(build_lite(&mut s.sim.lock().unwrap(), q.faction.as_deref()).to_string());
+            s.ui_cache.lock().unwrap().insert(key, (tick, j.clone()));
+            j
+        }
+    };
+    let body = if q.since.is_none() {
+        // First request: the sprite mapping too (it rarely changes, so later requests go without it).
+        let sprites = serde_json::to_string(s.sim.lock().unwrap().world.resource::<SpriteMapping>()).unwrap_or_else(|_| "{}".into());
+        format!("{{\"sprites\":{sprites},{}", &body[1..])
+    } else {
+        body.as_str().to_string()
+    };
+    ([(header::CONTENT_TYPE, "application/json")], body).into_response()
+}
+
+fn build_lite(sim: &mut Simulation, faction: Option<&str>) -> Value {
+    let mut snap = sim.snapshot(false);
+    let fog = faction.map(|f| crate::snapshot::fog_of_war(&mut sim.world, f));
+    if let Some(f) = &fog {
+        snap.entities.retain(|e| f.visible.contains(&e.id));
+    }
+    let entities: Vec<Value> = snap
+        .entities
+        .iter()
+        .map(|e| {
+            json!({
+                "id": e.id, "kind": e.kind, "name": e.name, "template": e.template, "race": e.race, "classes": e.classes,
+                "faction": e.faction, "pos": e.pos, "dead": e.dead, "sex": e.sex,
+                "activity": e.activity.as_ref().map(|a| json!({ "label": a.label, "progress": a.progress, "flags": a.flags, "mood": a.mood })),
+                "building": e.building.as_ref().map(|b| json!({ "def": b.def, "hp": b.hp, "max_hp": b.max_hp, "owner": b.owner })),
+            })
+        })
+        .collect();
+    let cells: Vec<Value> = sim
+        .world
+        .resource::<crate::map::Environment>()
+        .cells
+        .iter()
+        .filter(|(_, c)| c.dirt >= 0.3 || !c.pathogens.is_empty())
+        // Compact: [layer, x, y, dirt × 10, pathogens].
+        .map(|(p, c)| json!([p.layer, p.x, p.y, (c.dirt * 10.0).round() as i32, c.pathogens.len()]))
+        .collect();
+    json!({
+        "tick": snap.tick,
+        "snapshot": {
+            "tick": snap.tick, "entities": entities, "factions": snap.factions, "scores": snap.scores,
+            "territories": snap.territories, "players": snap.players, "winner": snap.winner, "titles": snap.titles,
+        },
+        "cells": cells,
+        "fog": fog.map(|f| json!({ "faction": f.faction, "observers": f.observers })),
+    })
 }
 
 async fn ui_page(State(s): State<AppState>) -> Response {

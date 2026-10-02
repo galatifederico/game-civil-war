@@ -594,6 +594,11 @@ impl Validator<'_> {
             Effect::GiveItem { item, .. } | Effect::TakeItem { item, .. } => {
                 self.check(&c.items, "oggetto", item, ctx)
             }
+            Effect::GiveRandomItem { items, .. } => {
+                for item in items {
+                    self.check(&c.items, "oggetto", item, ctx);
+                }
+            }
             Effect::ModRelation { faction, .. } | Effect::JoinFaction(faction) => {
                 self.check(&c.factions, "fazione", faction, ctx)
             }

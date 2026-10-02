@@ -57,6 +57,8 @@ pub enum Effect {
     RemoveTag(String),
     GiveItem { item: String, #[serde(default = "one_u32")] qty: u32 },
     TakeItem { item: String, #[serde(default = "one_u32")] qty: u32 },
+    /// One item drawn at random from `items` or from every item carrying `tag` (a pack of collectibles).
+    GiveRandomItem { #[serde(default)] items: Vec<String>, #[serde(default)] tag: Option<String>, #[serde(default = "one_u32")] qty: u32 },
     ModMoney(f64),
     /// Adds to (or takes from) the treasury of the subject's faction.
     ModTreasury(f64),

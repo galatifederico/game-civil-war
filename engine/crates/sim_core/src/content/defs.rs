@@ -200,6 +200,9 @@ pub struct RaceDef {
     /// Needs that do not apply to this race (machines do not eat, beasts find their own food…).
     #[serde(default)]
     pub needs_exempt: Vec<Id>,
+    /// Members have no sex (machines, programs…).
+    #[serde(default)]
+    pub sexless: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -810,6 +813,8 @@ pub struct EntityTemplate {
     pub cover: Option<f32>,
     /// Titles held at spawn.
     pub titles: Vec<Id>,
+    /// Fixed sex; when missing it is drawn at spawn (see `population.nonbinary_share`).
+    pub sex: Option<crate::stats::Sex>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
