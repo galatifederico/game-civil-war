@@ -58,6 +58,7 @@ pub struct ContentData {
     pub global_modifiers: BTreeMap<Id, GlobalModifierDef>,
     pub supplies: BTreeMap<Id, SupplyDef>,
     pub sprites: BTreeMap<Id, SpriteDef>,
+    pub dialogue: BTreeMap<String, Vec<String>>,
 }
 
 fn merge<T, F: Fn(&T) -> &str>(dst: &mut BTreeMap<Id, T>, src: Vec<T>, id: F) {
@@ -122,6 +123,9 @@ impl Content {
             merge(&mut c.global_modifiers, p.global_modifiers, |d| &d.id);
             merge(&mut c.supplies, p.supplies, |d| &d.id);
             c.sprites.extend(p.sprites);
+            for (k, lines) in p.dialogue {
+                c.dialogue.entry(k).or_default().extend(lines);
+            }
         }
         if let Some(m) = c.map.as_mut() {
             for l in m.layers.iter_mut() {

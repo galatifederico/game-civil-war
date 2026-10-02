@@ -19,6 +19,7 @@ pub mod effects;
 pub mod events;
 pub mod extensions;
 pub mod factions;
+pub mod describe;
 pub mod handlers;
 pub mod hygiene;
 pub mod ids;

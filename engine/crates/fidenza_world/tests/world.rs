@@ -369,3 +369,24 @@ fn champion_walks_step_by_step() {
         assert_eq!(*sim.world.get::<Position>(e).unwrap(), now);
     }
 }
+
+#[test]
+fn champion_talks_and_the_team_shares_items() {
+    let mut sim = sim(1);
+    let champion = sim.world.resource::<Players>().players["giocatore"].leader.unwrap();
+    let me = sim.entity(champion).unwrap();
+    let here = *sim.world.get::<Position>(me).unwrap();
+    // Someone to talk to, put next to the champion.
+    let (other_id, other) = id_of(&mut sim, "allevatore");
+    sim.world.entity_mut(other).insert(Position::new(here.layer, here.x + 1, here.y));
+    let said = sim.execute(SimCommand::PlayerTalk { player: "giocatore".into(), target: other_id }).expect("answers");
+    assert!(said.contains('«'), "{said}");
+    // Too far: no answer.
+    sim.world.entity_mut(other).insert(Position::new(here.layer, here.x + 9, here.y));
+    assert!(sim.execute(SimCommand::PlayerTalk { player: "giocatore".into(), target: other_id }).is_err());
+    // A beer from the faction's stock goes to the champion, who drinks it.
+    sim.execute(SimCommand::PlayerGiveItem { player: "giocatore".into(), item: "birra".into(), to: champion, qty: 1 }).expect("given");
+    assert_eq!(sim_core::inventory_ops::count(&sim.world, me, "birra"), 1);
+    sim.execute(SimCommand::PlayerUseItem { player: "giocatore".into(), entity: champion, item: "birra".into() }).expect("drunk");
+    assert_eq!(sim_core::inventory_ops::count(&sim.world, me, "birra"), 0);
+}

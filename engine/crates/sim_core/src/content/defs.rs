@@ -43,6 +43,11 @@ pub struct ContentPack {
     pub global_modifiers: Vec<GlobalModifierDef>,
     pub supplies: Vec<SupplyDef>,
     pub sprites: BTreeMap<Id, SpriteDef>,
+    /// Stock phrases pawns say when a player talks to them, by key: "default", "race:<id>",
+    /// "class:<id>", "faction:<id>", "template:<id>" (all matching keys are pooled; "default" only for
+    /// races without lines of their own).
+    /// Lines may use {name}, {faction}, {zone}, {player_name}.
+    pub dialogue: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

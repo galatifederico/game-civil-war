@@ -45,6 +45,12 @@ pub enum SimCommand {
     /// Walks the player's champion one cell right away (Pokémon-style, outside the tick); a passage
     /// (door, stairs) under the new cell is crossed.
     PlayerStep { player: String, dx: i32, dy: i32 },
+    /// The champion talks to a pawn next to it: the answer is one of the content's stock phrases.
+    PlayerTalk { player: String, target: SimId },
+    /// Hands an item held by the team (members, then faction buildings) to one of its members.
+    PlayerGiveItem { player: String, item: String, to: SimId, #[serde(default = "one")] qty: u32 },
+    /// A member of the team uses an item (handed one by the team if it carries none).
+    PlayerUseItem { player: String, entity: SimId, item: String },
     /// A player proposes an alliance: accepted when the other faction's relation is at least
     /// `social.alliance_threshold` (players accept each other's automatically).
     PlayerAlliance { player: String, faction: String },
@@ -370,6 +376,9 @@ pub fn apply(world: &mut World, cmd: SimCommand) -> Result<String, String> {
             Ok(format!("{} rimosso", id.0))
         }
         SimCommand::PlayerOrder { player, entity, order } => crate::player::give_order(world, &player, entity, order),
+        SimCommand::PlayerTalk { player, target } => crate::player::talk(world, &player, target).map(|(n, l)| format!("{n}: «{l}»")),
+        SimCommand::PlayerGiveItem { player, item, to, qty } => crate::player::give_item(world, &player, &item, to, qty.max(1)),
+        SimCommand::PlayerUseItem { player, entity, item } => crate::player::use_item(world, &player, entity, &item),
         SimCommand::PlayerStep { player, dx, dy } => crate::player::step(world, &player, dx, dy).map(|p| format!("({}, {}, {})", p.layer, p.x, p.y)),
         SimCommand::PlayerSquadOrder { player, squad, order } => {
             let faction = world.resource::<crate::factions::Players>().players.get(&player).map(|p| p.faction.clone()).ok_or("giocatore inesistente")?;

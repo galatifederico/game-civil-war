@@ -312,3 +312,139 @@ pub fn wake_up(world: &mut World) {
         }
     }
 }
+
+/// Conversations held so far (not saved: it only varies the lines).
+#[derive(Resource, Default)]
+struct Conversations(u64);
+
+fn champion_of(world: &World, player: &str) -> Result<(crate::factions::Player, Entity), String> {
+    let p = world.resource::<Players>().players.get(player).cloned().ok_or_else(|| format!("giocatore '{player}' inesistente"))?;
+    let e = entity(world, p.leader.ok_or("nessun campione")?)?;
+    Ok((p, e))
+}
+
+/// The champion talks to a pawn within two cells: it answers with one of the stock phrases of the content
+/// (`dialogue`) matching its template, classes, faction and race, plus the "default" ones unless its race
+/// has lines of its own.
+/// Returns (speaker name, line).
+pub fn talk(world: &mut World, player: &str, target: SimId) -> Result<(String, String), String> {
+    let (_, me) = champion_of(world, player)?;
+    let t = entity(world, target)?;
+    if t == me {
+        return Err("parlare da soli non porta lontano".into());
+    }
+    if world.get::<crate::buildings::Building>(t).is_some() {
+        return Err("è un edificio: non risponde".into());
+    }
+    let name = crate::infiltration::apparent_name(world, t);
+    if world.get::<Dead>(t).is_some() {
+        return Err(format!("{name} non può più parlare"));
+    }
+    if world.get::<KnockedOut>(t).is_some() {
+        return Err(format!("{name} è svenuto"));
+    }
+    let (Some(a), Some(b)) = (world.get::<Position>(me).copied(), world.get::<Position>(t).copied()) else {
+        return Err("non è sulla mappa".into());
+    };
+    if !a.within(&b, 2) {
+        return Err(format!("{name} è troppo lontano: avvicinati"));
+    }
+    let content = world.resource::<Content>().clone();
+    let faction = crate::infiltration::apparent_faction(world, t);
+    let race = crate::infiltration::apparent_race(world, t);
+    let mut keys: Vec<String> = Vec::new();
+    if let Some(tpl) = world.get::<crate::stats::TemplateId>(t) {
+        keys.push(format!("template:{}", tpl.0));
+    }
+    for c in world.get::<crate::stats::Classes>(t).map(|c| c.0.clone()).unwrap_or_default() {
+        keys.push(format!("class:{c}"));
+    }
+    if let Some(f) = &faction {
+        keys.push(format!("faction:{f}"));
+    }
+    let race_key = race.as_ref().map(|r| format!("race:{r}"));
+    // Races with lines of their own (animals, robots…) keep to them; the others also use the generic ones.
+    let race_lines = race_key.as_ref().is_some_and(|k| content.dialogue.get(k).is_some_and(|l| !l.is_empty()));
+    keys.extend(race_key);
+    if !race_lines {
+        keys.push("default".into());
+    }
+    let lines: Vec<String> = keys.iter().filter_map(|k| content.dialogue.get(k)).flatten().cloned().collect();
+    // Varied but without touching the simulation's random stream.
+    if world.get_resource::<Conversations>().is_none() {
+        world.insert_resource(Conversations::default());
+    }
+    let n = {
+        let mut c = world.resource_mut::<Conversations>();
+        c.0 += 1;
+        c.0
+    };
+    let tick = world.resource::<SimClock>().tick;
+    let mix = (target.0 ^ tick.rotate_left(17) ^ n.wrapping_mul(0x9E37_79B9_7F4A_7C15)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    let line = &lines[(mix >> 33) as usize % lines.len()];
+    let map = world.resource::<crate::map::WorldMap>().clone();
+    let faction_name = faction.as_ref().and_then(|f| content.factions.get(f)).map_or("nessuno".to_string(), |f| f.name.clone());
+    let zone = map.zone_name_at(&b).unwrap_or("qui").to_string();
+    let me_name = crate::effects::name_of(world, me);
+    let line = line.replace("{name}", &name).replace("{faction}", &faction_name).replace("{zone}", &zone).replace("{player_name}", &me_name);
+    Ok((name, line))
+}
+
+/// Members of the player's faction (alive, sorted) and the faction's buildings with a stock.
+fn team_holders(world: &mut World, faction: &str) -> Vec<Entity> {
+    let mut out: Vec<Entity> = crate::sorted_entities::<FactionMember>(world)
+        .into_iter()
+        .filter(|e| world.get::<FactionMember>(*e).is_some_and(|m| m.faction == faction) && world.get::<Dead>(*e).is_none())
+        .collect();
+    out.extend(crate::sorted_entities::<crate::buildings::Building>(world).into_iter().filter(|e| {
+        world.get::<crate::buildings::Building>(*e).is_some_and(|b| b.owner == crate::buildings::Owner::Faction(faction.to_string()))
+            && world.get::<crate::inventory::Stock>(*e).is_some()
+    }));
+    out
+}
+
+/// Hands `qty` of an item held by the team (members first, then the faction's buildings) to one member.
+pub fn give_item(world: &mut World, player: &str, item: &str, to: SimId, qty: u32) -> Result<String, String> {
+    let (p, _) = champion_of(world, player)?;
+    let dest = entity(world, to)?;
+    if !world.get::<FactionMember>(dest).is_some_and(|m| m.faction == p.faction) || world.get::<Dead>(dest).is_some() {
+        return Err("non è un membro del tuo team".into());
+    }
+    let item_name = world.resource::<Content>().items.get(item).map(|d| d.name.clone()).ok_or_else(|| format!("oggetto '{item}' inesistente"))?;
+    let to_name = crate::effects::name_of(world, dest);
+    let sources: Vec<Entity> = team_holders(world, &p.faction).into_iter().filter(|e| *e != dest).collect();
+    let available: u32 = sources.iter().map(|e| crate::inventory_ops::count(world, *e, item)).sum();
+    if available == 0 {
+        return Err(format!("nel team nessun altro ha {item_name}"));
+    }
+    let mut moved = 0;
+    for s in sources {
+        if moved >= qty {
+            break;
+        }
+        moved += crate::inventory_ops::transfer(world, s, dest, item, qty - moved);
+    }
+    if moved == 0 {
+        return Err(format!("{to_name} non ha posto per {item_name}"));
+    }
+    Ok(format!("{moved}× {item_name} a {to_name}"))
+}
+
+/// A member uses an item (eats, drinks, takes the medicine…); if it does not carry one, the team hands it one.
+pub fn use_item(world: &mut World, player: &str, user: SimId, item: &str) -> Result<String, String> {
+    let (p, _) = champion_of(world, player)?;
+    let e = entity(world, user)?;
+    if !world.get::<FactionMember>(e).is_some_and(|m| m.faction == p.faction) || world.get::<Dead>(e).is_some() {
+        return Err("non è un membro del tuo team".into());
+    }
+    let def = world.resource::<Content>().items.get(item).cloned().ok_or_else(|| format!("oggetto '{item}' inesistente"))?;
+    if def.on_use.is_empty() {
+        return Err(format!("{} non si usa: fa effetto portandolo addosso", def.name));
+    }
+    if crate::inventory_ops::count(world, e, item) == 0 {
+        give_item(world, player, item, user, 1)?;
+    }
+    let r = crate::handlers::use_item(world, e, item);
+    let name = crate::effects::name_of(world, e);
+    if r.ok { Ok(format!("{name} usa {}", def.name)) } else { Err(r.message.unwrap_or_else(|| "non riesce a usarlo".into())) }
+}

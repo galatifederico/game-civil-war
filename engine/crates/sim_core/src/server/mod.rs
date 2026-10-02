@@ -90,6 +90,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/ui/feed", get(ui_feed))
         .route("/api/ui/actions/{id}", get(ui_actions))
         .route("/api/ui/step", post(ui_step))
+        .route("/api/ui/talk", post(ui_talk))
+        .route("/api/ui/interactions/{player}/{target}", get(ui_interactions))
+        .route("/api/ui/item/{item}", get(ui_item))
         .route("/api/ui/economy", get(ui_economy))
         .route("/api/save", post(save_game))
         .route("/api/load", post(load_game))
@@ -338,6 +341,113 @@ async fn ui_step(State(s): State<AppState>, Json(b): Json<StepBody>) -> ApiResul
     let mut sim = s.sim.lock().unwrap();
     let pos = crate::player::step(&mut sim.world, &b.player, b.dx, b.dy).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
     Ok(Json(json!({ "pos": pos })))
+}
+
+#[derive(Deserialize)]
+struct TalkBody {
+    player: String,
+    target: u64,
+}
+
+/// The champion talks to someone next to it: who answers and what it says.
+async fn ui_talk(State(s): State<AppState>, Json(b): Json<TalkBody>) -> ApiResult {
+    let mut sim = s.sim.lock().unwrap();
+    let (name, line) = crate::player::talk(&mut sim.world, &b.player, SimId(b.target)).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    Ok(Json(json!({ "name": name, "line": line })))
+}
+
+/// What the player's champion can do with a pawn or building: talk (pawns), then the champion's jobs whose
+/// target filter accepts it, its abilities with a range, following. With the distance from the champion.
+async fn ui_interactions(State(s): State<AppState>, Path((player, target)): Path<(String, u64)>) -> ApiResult {
+    let mut sim = s.sim.lock().unwrap();
+    let p = sim.world.resource::<Players>().players.get(&player).cloned().ok_or_else(|| not_found(&player))?;
+    let me = p.leader.and_then(|id| sim.entity(id)).ok_or_else(|| not_found("campione"))?;
+    let t = sim.entity(SimId(target)).ok_or_else(|| not_found(target))?;
+    let content = sim.content().clone();
+    let building = sim.world.get::<crate::buildings::Building>(t).is_some();
+    let dead = sim.world.get::<Dead>(t).is_some();
+    let distance = match (sim.world.get::<Position>(me), sim.world.get::<Position>(t)) {
+        (Some(a), Some(b)) => a.distance(b),
+        _ => None,
+    };
+    let mut out = Vec::new();
+    if t != me && !building && !dead {
+        out.push(json!({ "kind": "talk", "id": "talk", "name": "Parla", "needs_target": "entity" }));
+    }
+    if t != me && !dead {
+        let actions = sim.world.get::<crate::ai::Brain>(me).map(|b| b.actions.clone()).unwrap_or_default();
+        let mut seen = std::collections::BTreeSet::new();
+        for a in actions.iter().filter_map(|a| content.actions.get(a)) {
+            let crate::content::ActionKind::Job { job, target: sel } = &a.kind else { continue };
+            let filter = match sel {
+                crate::content::Selector::Nearest(f) | crate::content::Selector::Random(f) => f,
+                _ => continue,
+            };
+            if seen.contains(job) {
+                continue;
+            }
+            // The target must fit the job (a shop for shopping, a pawn for a theft…); distance and sight
+            // do not count: the champion walks there.
+            let mut f = filter.clone();
+            f.max_distance = None;
+            f.visible = false;
+            if crate::targeting::candidates(&mut sim.world, me, &f).iter().any(|(id, _)| id.0 == target) {
+                seen.insert(job.clone());
+                let name = content.jobs.get(job).map_or(job.clone(), |j| j.name.clone());
+                out.push(json!({ "kind": "job", "id": job, "name": name, "needs_target": "entity" }));
+            }
+        }
+        if !building {
+            for ab in crate::abilities::known(&sim.world, me) {
+                if let Some(d) = content.abilities.get(&ab).filter(|d| d.range > 0) {
+                    out.push(json!({ "kind": "ability", "id": ab, "name": d.name, "needs_target": "entity" }));
+                }
+            }
+            out.push(json!({ "kind": "follow", "id": "follow", "name": "Segui", "needs_target": "entity" }));
+        }
+    }
+    let name = crate::infiltration::apparent_name(&sim.world, t);
+    Ok(Json(json!({ "target": target, "name": name, "building": building, "distance": distance, "actions": out })))
+}
+
+#[derive(Deserialize)]
+struct ItemQ {
+    player: Option<String>,
+}
+
+/// An item explained: description, what it does, prices, and who in the player's team holds it.
+async fn ui_item(State(s): State<AppState>, Path(item): Path<String>, Query(q): Query<ItemQ>) -> ApiResult {
+    let mut sim = s.sim.lock().unwrap();
+    let content = sim.content().clone();
+    let d = content.items.get(&item).cloned().ok_or_else(|| not_found(&item))?;
+    let price = sim.world.resource::<crate::market::Market>().price(&item);
+    let mut holders = Vec::new();
+    if let Some(p) = q.player.as_ref().and_then(|p| sim.world.resource::<Players>().players.get(p).cloned()) {
+        for e in crate::sorted_entities::<FactionMember>(&mut sim.world) {
+            if !sim.world.get::<FactionMember>(e).is_some_and(|m| m.faction == p.faction) || sim.world.get::<Dead>(e).is_some() {
+                continue;
+            }
+            let n = crate::inventory_ops::count(&sim.world, e, &item);
+            if n > 0 {
+                let id = sim.world.get::<SimId>(e).copied();
+                holders.push(json!({ "id": id, "name": crate::effects::name_of(&sim.world, e), "qty": n, "building": false }));
+            }
+        }
+        for e in crate::sorted_entities::<crate::buildings::Building>(&mut sim.world) {
+            let owned = sim.world.get::<crate::buildings::Building>(e).is_some_and(|b| b.owner == crate::buildings::Owner::Faction(p.faction.clone()));
+            let n = if owned { sim.world.get::<crate::inventory::Stock>(e).map_or(0, |s| s.count(&item)) } else { 0 };
+            if n > 0 {
+                let id = sim.world.get::<SimId>(e).copied();
+                holders.push(json!({ "id": id, "name": crate::effects::name_of(&sim.world, e), "qty": n, "building": true }));
+            }
+        }
+    }
+    Ok(Json(json!({
+        "id": d.id, "name": d.name, "description": d.description, "category": d.category, "tags": d.tags,
+        "base_price": d.base_price, "price": price, "usable": !d.on_use.is_empty(), "reusable": d.reusable,
+        "stack_max": d.stack_max, "victory_points": d.victory_points, "unique": d.unique,
+        "effects": crate::describe::item_effects(&content, &item), "holders": holders,
+    })))
 }
 
 /// State of the world's resources: price index and inflation, money in circulation, disruptions and

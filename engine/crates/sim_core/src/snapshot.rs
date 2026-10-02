@@ -133,6 +133,10 @@ pub struct EntityView {
     pub statuses: Vec<StatusView>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub inventory: Vec<(String, u32)>,
+    /// Inventory slots (a slot holds items of one category) and how many the pawn has.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub slots: Vec<SlotView>,
+    pub max_slots: u32,
     pub money: f64,
     pub wanted: f32,
     pub dissent: f32,
@@ -151,6 +155,13 @@ pub struct TrueIdentity {
     pub race: String,
     pub faction: Option<String>,
     pub cover: f32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SlotView {
+    pub category: String,
+    /// (item id, item name, quantity)
+    pub items: Vec<(String, String, u32)>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -284,6 +295,20 @@ pub fn entity_view(world: &World, e: Entity, truth: bool) -> Option<EntityView> 
         needs: world.get::<Needs>(e).map(|n| n.0.iter().map(|(k, v)| (k.clone(), (v * 100.0).round() / 100.0)).collect()).unwrap_or_default(),
         statuses,
         inventory: world.get::<Inventory>(e).map(|i| i.items().map(|(k, v)| (k.clone(), v)).collect()).unwrap_or_default(),
+        slots: world
+            .get::<Inventory>(e)
+            .map(|i| {
+                i.slots
+                    .iter()
+                    .filter(|s| s.total() > 0)
+                    .map(|s| SlotView {
+                        category: s.category.clone(),
+                        items: s.items.iter().filter(|(_, n)| **n > 0).map(|(k, n)| (k.clone(), content.items.get(k).map_or(k.clone(), |d| d.name.clone()), *n)).collect(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        max_slots: world.get::<Inventory>(e).map_or(0, |i| i.max_slots),
         money: world.get::<Wallet>(e).map_or(0.0, |w| (w.0 * 100.0).round() / 100.0),
         wanted: world.get::<Wanted>(e).map_or(0.0, |w| (w.level * 10.0).round() / 10.0),
         dissent: world.get::<Dissent>(e).map_or(0.0, |d| (d.0 * 10.0).round() / 10.0),
