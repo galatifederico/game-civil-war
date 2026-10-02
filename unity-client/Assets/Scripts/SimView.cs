@@ -188,8 +188,19 @@ public class SimView : MonoBehaviour
         SetLayer(0);
         while (true)
         {
-            var query = string.IsNullOrEmpty(FogFaction) ? "" : "?faction=" + UnityEngine.Networking.UnityWebRequest.EscapeURL(FogFaction);
-            yield return Api.Get("/api/ui/state" + query, j => { State = (JObject)j; Error = null; OnState(); }, e => Error = "Server non raggiungibile (" + e + ")");
+            // Light state, asked again only when the tick changes (the server answers "unchanged" otherwise).
+            var fog = FogFaction ?? "";
+            var query = "?lite=true" + (fog.Length == 0 ? "" : "&faction=" + UnityEngine.Networking.UnityWebRequest.EscapeURL(fog))
+                        + (State != null && fog == stateFog && Sprites != null ? "&since=" + (long?)State["tick"] : "");
+            yield return Api.Get("/api/ui/state" + query, j =>
+            {
+                Error = null;
+                if ((bool?)j["unchanged"] == true) return;
+                if (j["sprites"] is JObject sp) Sprites = sp;
+                State = (JObject)j;
+                stateFog = fog;
+                OnState();
+            }, e => Error = "Server non raggiungibile (" + e + ")");
             yield return Api.Get("/api/control", j => Control = (JObject)j);
             yield return Api.Get("/api/ui/terrain?since=" + Mathf.Max(0, terrainSeen), OnTerrain, _ => { });
             if (PlayerId == null && State?["snapshot"]?["players"] is JObject players && players.Properties().Any())
@@ -361,7 +372,9 @@ public class SimView : MonoBehaviour
             if (e["pos"] is not JObject p || (int)p["layer"] != layer || (long)e["id"] == ChampionId.Value || (bool?)e["dead"] == true) continue;
             int px = (int)p["x"], py = (int)p["y"];
             bool building = (string)e["kind"] == "building";
-            int score = px == ax && py == ay ? 0 : Mathf.Max(Mathf.Abs(px - x), Mathf.Abs(py - y)) <= 1 ? 1 : int.MaxValue;
+            // In front first, then next to it, then two cells away (the reach of a conversation).
+            int d = Mathf.Max(Mathf.Abs(px - x), Mathf.Abs(py - y));
+            int score = px == ax && py == ay ? 0 : d <= 1 ? 1 : d <= 2 ? 2 : int.MaxValue;
             if (score == int.MaxValue) continue;
             score = score * 2 + (building ? 1 : 0);
             if (score < bestScore)
@@ -381,6 +394,10 @@ public class SimView : MonoBehaviour
     public void Talk(long target, System.Action<string, string> ok) =>
         StartCoroutine(Api.Post("/api/ui/talk", new JObject { ["player"] = PlayerId, ["target"] = target },
             j => ok((string)j["name"], (string)j["line"]), e => ok(null, e)));
+
+    /// The collections, with how many pieces the team holds.
+    public void Collections(System.Action<JArray> ok) =>
+        StartCoroutine(Api.Get($"/api/ui/collections?player={UnityEngine.Networking.UnityWebRequest.EscapeURL(PlayerId ?? "")}", j => ok((JArray)j), e => LastCommandResult = e));
 
     /// An item explained, with who in the team holds it.
     public void ItemInfo(string item, System.Action<JObject> ok) =>
@@ -599,7 +616,11 @@ public class SimView : MonoBehaviour
 
     // ── State → sprites ───────────────────────────────────────────────────────
 
-    public JToken SpriteDef(string key) => State?["sprites"]?[key];
+    /// Sprite mapping (sent with the first state only).
+    public JObject Sprites { get; private set; }
+    string stateFog;
+
+    public JToken SpriteDef(string key) => Sprites?[key];
 
     void OnState()
     {
@@ -708,7 +729,10 @@ public class SimView : MonoBehaviour
         go.Mine.enabled = go.MineEdge.enabled = IsMine((long)e["id"]) && (bool?)e["dead"] != true;
         bool championChibi = ChampionId.HasValue && (long)e["id"] == ChampionId.Value;
         go.Dead = (bool?)e["dead"] ?? false;
-        go.BaseFrames = Chibi.Load((string)rs?["sheet"]);
+        // Women have long hair, non-binary pawns a bob (sheets <race>_f / _nb, when the race has them).
+        string sheetName = (string)rs?["sheet"];
+        string hair = (string)e["sex"] switch { "Female" => "_f", "NonBinary" => "_nb", _ => "" };
+        go.BaseFrames = (hair.Length > 0 && sheetName != null ? Chibi.Load(sheetName + hair) : null) ?? Chibi.Load(sheetName);
         if (go.BaseFrames != null)
         {
             // Chibi mode: an oval "team" shadow in the faction colour under the feet.
@@ -775,14 +799,14 @@ public class SimView : MonoBehaviour
         int i = 0;
         foreach (var c in State["cells"] ?? new JArray())
         {
-            var p = c["pos"];
-            float dirt = (float?)c["dirt"] ?? 0f;
-            int pathogens = (int?)c["pathogens"] ?? 0;
-            if ((int)p["layer"] != Layer || (dirt < 0.3f && pathogens == 0)) continue;
+            // [layer, x, y, dirt × 10, pathogens]
+            int layer = (int)c[0], cx = (int)c[1], cy = (int)c[2], pathogens = (int)c[4];
+            float dirt = (int)c[3] / 10f;
+            if (layer != Layer || (dirt < 0.3f && pathogens == 0)) continue;
             if (i >= cellPool.Count) cellPool.Add(NewSprite("Cell", cellsRoot, Shapes.Pixel, Color.clear, 2).gameObject);
             var go = cellPool[i++];
             go.SetActive(true);
-            go.transform.position = new Vector3((int)p["x"], -(int)p["y"], 0);
+            go.transform.position = new Vector3(cx, -cy, 0);
             float a = Mathf.Min(0.35f, 0.05f + dirt * 0.03f);
             go.GetComponent<SpriteRenderer>().color = pathogens > 0 ? new Color(0.45f, 0.65f, 0.15f, a + 0.1f) : new Color(0.4f, 0.3f, 0.15f, a);
         }
@@ -844,13 +868,22 @@ public class SimView : MonoBehaviour
 
     // ── Frame update: movement, camera, selection ────────────────────────────
 
+    float TickSeconds => Mathf.Max(0.05f, ((float?)Control?["tick_ms"] ?? 1000f) / 1000f);
+    EntityGo championGo;
+
     void Update()
     {
+        championGo = ChampionId.HasValue && gos.TryGetValue(ChampionId.Value, out var cg) ? cg : null;
         foreach (var go in gos.Values)
         {
             if (!go.Root.activeSelf) continue;
             var before = go.Root.transform.position;
-            go.Root.transform.position = Vector3.Lerp(before, go.Target, 1f - Mathf.Exp(-Time.deltaTime * 8f));
+            // Walk at a steady pace that covers the step in about one tick (the champion at its own brisk pace);
+            // far jumps (doors, stairs) are instant.
+            float dist = Vector3.Distance(before, go.Target);
+            bool champ = ChampionId.HasValue && go == championGo;
+            float speed = champ ? 8f : Mathf.Max(1f, dist / TickSeconds * 1.1f);
+            go.Root.transform.position = dist > 6f ? go.Target : Vector3.MoveTowards(before, go.Target, speed * Time.deltaTime);
             if (go.Mine != null && go.Mine.enabled)
             {
                 // Bobbing arrow, grown in the overview so it still shows when the pawns are dots.

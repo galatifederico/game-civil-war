@@ -23,7 +23,8 @@ contenuti, sprite, parametri, fazioni e quartieri, eventi, comandi).
 Nel client, in alto al centro ci sono sempre i punti vittoria, il fondo di gilda e quanti siete nel team. A destra:
 Mappa (M, la panoramica del mondo con quanti dei tuoi ci sono in ogni area), Inventario (I, cosa ha raccolto il
 team), Team (T, il riepilogo del team e poi ogni membro con razza, classe, vita, umore, soldi e attività) e Opzioni
-(O: tempo, vista, scavo, salvataggi, nebbia, server, esci). A sinistra: il Piccione Viaggiatore (P, i canali delle
+(O: tempo, vista, scavo, salvataggi, nebbia, server, esci). L'inventario ha anche le Collezioni (Opere del
+Borgazzi, Foto di Pag, Santini…) con i pezzi posseduti e quelli che mancano. A sinistra: il Piccione Viaggiatore (P, i canali delle
 notizie; il numero rosso conta le non lette del canale principale), la Classifica ufficiale (L), le Risorse mondiali
 (R: prezzi, inflazione, moneta, circostanze) e il Manuale (H). Il pulsante in alto a sinistra (o Tab) nasconde e fa
 ricomparire tutto.

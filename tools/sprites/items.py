@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Pokémon-style 16×16 item icons for the Fidenza world, one per item category (bag icons).
+"""Pokémon-style 16×16 item icons for the Fidenza world, one per item category (bag icons), plus
+one per collection piece (paintings, holiday photos, holy cards) drawn from the piece's id.
 
 Drawn here from ASCII templates (original art) and outlined in dark ink. The client shows item_<id> when
 it exists, otherwise item_<category>, otherwise item_varie. Output: item_<name>.png in Resources/Sprites.
@@ -352,6 +353,20 @@ ICONS = {
         "................",
     ],
 }
+ICONS["bustina"] = [
+    "................",
+    "...cccccccccc...",
+    "...cCcCcCcCcc...",
+    "...cwcccccccc...",
+    "...cwccyyyccc...",
+    "...cccyyyyycc...",
+    "...cccyywyycc...",
+    "...cccyyyyycc...",
+    "...ccccyyyccc...",
+    "...cccccccccc...",
+    "...cCcCcCcCcc...",
+    "................",
+]
 # Categories that share a drawing.
 ALIASES = {"sballo": "sostanze"}
 
@@ -378,11 +393,83 @@ def draw(rows):
     return img
 
 
+import random
+import re
+
+COLLECTIONS_RON = Path(__file__).resolve().parents[2] / "engine/crates/fidenza_world/data/32_collezioni.ron"
+
+
+def piece_ids():
+    """Ids of the collection pieces, from the content file."""
+    text = COLLECTIONS_RON.read_text(encoding="utf-8") if COLLECTIONS_RON.exists() else ""
+    return re.findall(r'\(id: "((?:opera_borgazzi|foto_pag|foto_di_pag|santino)[a-z0-9_]*)"', text)
+
+
+def piece_icon(item):
+    """A small different picture for every piece, stable for its id: a framed painting, a holiday
+    snapshot or a holy card."""
+    rnd = random.Random(item)
+    img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+    px = img.load()
+    col = lambda: (rnd.randint(40, 230), rnd.randint(40, 230), rnd.randint(40, 230), 255)
+
+    def rect(x0, y0, x1, y1, c):
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                px[x, y] = c
+
+    if item.startswith("opera_borgazzi"):
+        gold, dark = rgb("#f6d04d"), rgb("#c8962a")
+        rect(1, 2, 14, 13, dark)
+        rect(2, 3, 13, 12, gold)
+        sky, ground = col(), col()
+        horizon = rnd.randint(6, 9)
+        rect(3, 4, 12, horizon, sky)
+        rect(3, horizon + 1, 12, 11, ground)
+        # A subject: a blob somewhere in the middle.
+        cx, cy, r = rnd.randint(5, 10), rnd.randint(5, 9), rnd.randint(1, 2)
+        subject = col()
+        for y in range(cy - r, cy + r + 1):
+            for x in range(cx - r, cx + r + 1):
+                if 3 <= x <= 12 and 4 <= y <= 11 and (x - cx) ** 2 + (y - cy) ** 2 <= r * r + 1:
+                    px[x, y] = subject
+    elif item.startswith("foto"):
+        rect(2, 1, 13, 14, rgb("#ffffff"))
+        sky, sea, sand = (rnd.randint(90, 160), rnd.randint(170, 220), 255, 255), (30, rnd.randint(110, 160), rnd.randint(170, 220), 255), rgb("#f2e6c8")
+        rect(3, 2, 12, 5, sky)
+        rect(3, 6, 12, 8, sea)
+        rect(3, 9, 12, 11, sand)
+        for _ in range(rnd.randint(1, 3)):
+            x, y = rnd.randint(4, 11), rnd.randint(7, 10)
+            body = col()
+            px[x, y - 1] = rgb("#f2c9a0")
+            px[x, y] = body
+        if rnd.random() < 0.5:
+            px[rnd.randint(9, 11), 3] = rgb("#f6d04d")
+    else:
+        rect(3, 1, 12, 14, rgb("#c8962a"))
+        rect(4, 2, 11, 13, rgb("#f2e6c8"))
+        robe = col()
+        rect(6, 3, 9, 3, rgb("#f6d04d"))
+        rect(6, 4, 9, 6, rgb("#f2c9a0"))
+        rect(5, 7, 10, 12, robe)
+        rect(7, 7, 8, 12, tuple(min(255, v + 40) for v in robe[:3]) + (255,))
+    # Same dark outline as the other icons.
+    edge = [(x, y) for y in range(16) for x in range(16) if px[x, y][3] == 0
+            and any(0 <= x + dx < 16 and 0 <= y + dy < 16 and px[x + dx, y + dy][3] > 0 and px[x + dx, y + dy] != OUT
+                    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))]
+    for x, y in edge:
+        px[x, y] = OUT
+    return img
+
+
 def main():
     out = Path(sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else "unity-client/Assets/Resources/Sprites")
     out.mkdir(parents=True, exist_ok=True)
     icons = {k: draw(v) for k, v in ICONS.items()}
     icons.update({k: icons[v] for k, v in ALIASES.items()})
+    # Every collection piece has its own picture.
+    icons.update({k: piece_icon(k) for k in piece_ids()})
     for k, img in icons.items():
         img.save(out / f"item_{k}.png")
     if "--preview" in sys.argv:

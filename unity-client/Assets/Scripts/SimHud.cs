@@ -25,7 +25,12 @@ public class SimHud : MonoBehaviour
     GUIStyle cell, cellHead, statValue, statLabel, badge, rowButton, padStyle, big, bigButton, slotStyle, promptStyle;
     Texture2D panelTex, barTex, barFillTex, barLowTex, dimTex, badgeTex, padTex, circleBase, circleKnob, circleA;
 
-    enum Win { None, Map, Inventory, Team, Options, Pigeon, Ranking, Economy, Manual, Card, Actions, Item }
+    enum Win { None, Map, Inventory, Team, Options, Pigeon, Ranking, Economy, Manual, Card, Actions, Item, Collection }
+    // Inventory: objects or collections; the collections as last received and the one opened.
+    bool invCollections;
+    JArray collections;
+    float collectionsAt = -10f;
+    string collectionId;
     Win win;
     /// Windows to go back to with Esc / "Indietro" (Team → card → item…).
     readonly List<Win> stack = new();
@@ -70,7 +75,7 @@ public class SimHud : MonoBehaviour
     bool touch => SimView.TouchUi;
     float rowH => touch ? 46 : 30;
     float colW => touch ? 124 : 116;
-    static readonly (string name, int ms)[] Speeds = { ("Lenta", 1000), ("Normale", 400), ("Veloce", 120), ("Turbo", 30) };
+    static readonly (string name, int ms)[] Speeds = { ("Lenta", 2000), ("Normale", 1000), ("Veloce", 400), ("Turbo", 100) };
 
     void Awake()
     {
@@ -87,6 +92,18 @@ public class SimHud : MonoBehaviour
         else if (name == "vicino" && view.NearbyTarget() is long near) OpenActions(near, Win.None);
         else if (name == "parla" && view.NearbyTarget() is long who) StartTalk(who);
         else if (name.StartsWith("oggetto:")) OpenItem(name.Substring(8), Win.None);
+        else if (name == "collezioni")
+        {
+            Open(Win.Inventory);
+            invCollections = true;
+        }
+        else if (name.StartsWith("collezione:"))
+        {
+            Open(Win.Inventory);
+            invCollections = true;
+            collectionId = name.Substring(11);
+            OpenSub(Win.Collection, Win.Inventory);
+        }
         else if (System.Enum.TryParse<Win>(name switch
                  {
                      "mappa" => "Map", "inventario" => "Inventory", "team" => "Team", "opzioni" => "Options",
@@ -378,6 +395,7 @@ public class SimHud : MonoBehaviour
         view.EconomyOpen = which == Win.Economy;
         if (which == Win.Map) view.ShowOverview(0);
         if (which == Win.Pigeon && view.FeedFilter == "main") MarkRead();
+        if (which == Win.Inventory) collectionsAt = -10f;
     }
 
     void Close()
@@ -417,6 +435,7 @@ public class SimHud : MonoBehaviour
             case Win.Card: CardWin(inner); break;
             case Win.Actions: ActionsWin(inner); break;
             case Win.Item: ItemWin(inner); break;
+            case Win.Collection: CollectionWin(inner); break;
         }
         GUILayout.EndScrollView();
         GUILayout.EndArea();
@@ -427,6 +446,7 @@ public class SimHud : MonoBehaviour
         Win.Card => ((string)view.SelectedEntity?["name"] ?? "").ToUpperInvariant(),
         Win.Actions => ("Azioni con " + ((string)interactions?["name"] ?? "…")).ToUpperInvariant(),
         Win.Item => ((string)itemInfo?["name"] ?? "Oggetto").ToUpperInvariant(),
+        Win.Collection => ((string)Collection(collectionId)?["name"] ?? "Collezione").ToUpperInvariant(),
         Win.Inventory => "INVENTARIO DEL TEAM",
         Win.Team => "IL TUO TEAM",
         Win.Options => "OPZIONI",
@@ -518,6 +538,15 @@ public class SimHud : MonoBehaviour
 
     void InventoryWin(float width)
     {
+        int done = collections?.Count(c => (bool?)c["complete"] == true) ?? 0;
+        int pick = GUILayout.Toolbar(invCollections ? 1 : 0, new[] { "Oggetti", collections == null ? "Collezioni" : $"Collezioni ({done}/{collections.Count} complete)" }, bigButton, GUILayout.Height(rowH + 6));
+        invCollections = pick == 1;
+        GUILayout.Space(6);
+        if (invCollections)
+        {
+            CollectionsList(width);
+            return;
+        }
         var inv = view.PlayerInfo?["inventory"] as JArray;
         if (inv == null || inv.Count == 0)
         {
@@ -545,6 +574,90 @@ public class SimHud : MonoBehaviour
             }
         }
     }
+
+    /// Collections are polled every few seconds while the inventory or a collection is open.
+    void RefreshCollections()
+    {
+        if (Time.time - collectionsAt < 3f || view.PlayerId == null) return;
+        collectionsAt = Time.time;
+        view.Collections(j => collections = j);
+    }
+
+    JToken Collection(string id) => collections?.FirstOrDefault(c => (string)c["id"] == id);
+
+    void CollectionsList(float width)
+    {
+        RefreshCollections();
+        if (collections == null)
+        {
+            GUILayout.Label("…", big);
+            return;
+        }
+        GUILayout.Label("Gruppi di oggetti da riunire nel team: a collezione completa arrivano punti vittoria e un premio. Tocca una collezione per vederne i pezzi.", small, GUILayout.Width(width));
+        foreach (var c in collections)
+        {
+            int owned = (int)c["owned"], total = (int)c["total"];
+            bool complete = (bool?)c["complete"] == true;
+            GUILayout.BeginHorizontal();
+            var r = GUILayoutUtility.GetRect(36, 36, GUILayout.Width(36), GUILayout.Height(36));
+            var first = c["items"]?.FirstOrDefault();
+            var icon = first == null ? null : ItemIcon((string)first["id"], (string)first["category"]);
+            if (icon != null) GUI.DrawTexture(r, icon);
+            string text = $"{(complete ? "✔ " : "")}{c["name"]}   {owned} / {total}   ·   {c["victory_points"]} PV";
+            if (GUILayout.Button(text, new GUIStyle(rowButton) { fontSize = big.fontSize, fontStyle = complete ? FontStyle.Bold : FontStyle.Normal }, GUILayout.Width(width * 0.72f), GUILayout.Height(rowH + 4)))
+            {
+                collectionId = (string)c["id"];
+                OpenSub(Win.Collection, Win.Inventory);
+            }
+            var bar = GUILayoutUtility.GetRect(width * 0.2f, 12, GUILayout.Width(width * 0.2f));
+            bar.y += (rowH + 4) / 2f - 6;
+            GUI.DrawTexture(bar, barTex);
+            GUI.DrawTexture(new Rect(bar.x, bar.y, bar.width * (total > 0 ? (float)owned / total : 0f), bar.height), barFillTex);
+            GUILayout.EndHorizontal();
+        }
+    }
+
+    /// Every piece of a collection: the ones the team holds in colour with their quantity, the missing
+    /// ones faded. Each opens its detail.
+    void CollectionWin(float width)
+    {
+        RefreshCollections();
+        var c = Collection(collectionId);
+        if (c == null)
+        {
+            GUILayout.Label("…", big);
+            return;
+        }
+        int owned = (int)c["owned"], total = (int)c["total"];
+        GUILayout.Label($"Posseduti {owned} su {total}  ·  {c["victory_points"]} punti vittoria a collezione completa" + ((bool?)c["complete"] == true ? "  ·  COMPLETA!" : ""), new GUIStyle(big) { fontStyle = FontStyle.Bold }, GUILayout.Width(width));
+        if (!string.IsNullOrEmpty((string)c["description"])) GUILayout.Label((string)c["description"], big, GUILayout.Width(width));
+        GUILayout.Space(8);
+        float box = touch ? 120 : 110, gap = 10;
+        int perRow = Mathf.Max(1, (int)((width + gap) / (box + gap)));
+        var items = c["items"].ToList();
+        for (int i = 0; i < items.Count; i += perRow)
+        {
+            GUILayout.BeginHorizontal();
+            foreach (var it in items.Skip(i).Take(perRow))
+            {
+                int qty = (int?)it["qty"] ?? 0;
+                var r = GUILayoutUtility.GetRect(box, box, GUILayout.Width(box), GUILayout.Height(box));
+                if (GUI.Button(r, GUIContent.none, slotStyle)) OpenItem((string)it["id"], Win.Collection);
+                var icon = ItemIcon((string)it["id"], (string)it["category"]);
+                GUI.color = qty > 0 ? Color.white : new Color(1, 1, 1, 0.25f);
+                if (icon != null) GUI.DrawTexture(new Rect(r.x + box / 2 - 28, r.y + 10, 56, 56), icon);
+                GUI.color = Color.white;
+                if (qty > 1) GUI.Label(new Rect(r.xMax - 40, r.y + 6, 34, 20), "×" + qty, new GUIStyle(small) { alignment = TextAnchor.UpperRight, fontStyle = FontStyle.Bold });
+                var nameStyle = new GUIStyle(small) { alignment = TextAnchor.MiddleCenter, wordWrap = true, clipping = TextClipping.Clip, fontStyle = qty > 0 ? FontStyle.Bold : FontStyle.Normal };
+                GUI.Label(new Rect(r.x + 4, r.y + box - 40, box - 8, 38), (string)it["name"], nameStyle);
+                GUILayout.Space(gap);
+            }
+            GUILayout.EndHorizontal();
+            GUILayout.Space(gap);
+        }
+    }
+
+    static string SexLabel(JToken s) => (string)s switch { "Male" => "uomo", "Female" => "donna", "NonBinary" => "non binario", _ => null };
 
     static string Num(JToken t) => (int?)t is int n && n > 0 ? n.ToString() : "–";
 
@@ -586,7 +699,7 @@ public class SimHud : MonoBehaviour
 
         Section("Membri");
         var cols = new[] { 0.22f, 0.13f, 0.15f, 0.08f, 0.13f, 0.09f, 0.2f };
-        Row(width, cols, cellHead, "Nome", "Razza", "Classe", "Vita", "Umore", "Soldi", "Attività");
+        Row(width, cols, cellHead, "Nome", "Razza e sesso", "Classe", "Vita", "Umore", "Soldi", "Attività");
         foreach (var m in p["members"])
         {
             long id = (long)m["id"];
@@ -599,7 +712,8 @@ public class SimHud : MonoBehaviour
                 view.Select(id, byChampion: true);
                 OpenSub(Win.Card, Win.Team);
             }
-            GUILayout.Label((string)m["race_name"] ?? (string)m["race"], cell, GUILayout.Width(width * cols[1] - 4));
+            string sex = SexLabel(m["sex"]);
+            GUILayout.Label(((string)m["race_name"] ?? (string)m["race"]) + (sex != null ? ", " + sex : ""), cell, GUILayout.Width(width * cols[1] - 4));
             GUILayout.Label(string.Join(", ", (m["class_names"] ?? m["classes"]).Select(c => (string)c)), cell, GUILayout.Width(width * cols[2] - 4));
             GUILayout.Label($"{hp * 100:0}%", hp < 0.5f ? new GUIStyle(cell) { normal = { textColor = fake.normal.textColor } } : cell, GUILayout.Width(width * cols[3] - 4));
             GUILayout.Label((string)m["mood"] ?? "", cell, GUILayout.Width(width * cols[4] - 4));
@@ -696,7 +810,11 @@ public class SimHud : MonoBehaviour
             view.SendControl(new JObject { ["paused"] = !paused });
         if (GUILayout.Button("Avanza 1 ora", button, GUILayout.Width(third), h))
             view.SendControl(new JObject { ["step"] = 1 });
-        if (GUILayout.Button("Velocità: " + Speeds[speedIndex].name, button, GUILayout.Width(third), h))
+        // The speed the server is really running at (another client may have changed it).
+        int ms = (int?)view.Control?["tick_ms"] ?? Speeds[speedIndex].ms;
+        speedIndex = System.Array.FindIndex(Speeds, x => x.ms == ms) is int found and >= 0 ? found : speedIndex;
+        string speedName = Speeds[speedIndex].ms == ms ? Speeds[speedIndex].name : $"{ms} ms";
+        if (GUILayout.Button("Velocità: " + speedName, button, GUILayout.Width(third), h))
         {
             speedIndex = (speedIndex + 1) % Speeds.Length;
             view.SendControl(new JObject { ["tick_ms"] = Speeds[speedIndex].ms });
@@ -941,6 +1059,7 @@ public class SimHud : MonoBehaviour
         ("Lo scopo", "Guidi una fazione di Fidenza e Salsomaggiore. Si vince in tre modi: riunire le cinque reliquie del Corpo di San Donnino, mettere il proprio capo sul Trono degli Ubriaconi (quando Re Anolino muore) oppure accumulare 3000 punti vittoria. I punti arrivano dalle collezioni di oggetti, dai titoli e dai quartieri controllati."),
         ("Il campione", "Il tuo campione è l'unico personaggio che muovi direttamente, passo per passo: frecce o WASD sul PC, il joystick in basso a sinistra sul telefono (anche in diagonale). Le porte e le scale si attraversano camminandoci sopra. Quando gli sta accanto qualcuno compare il suggerimento: Spazio (o E, o il tasto A sul telefono) apre le azioni possibili, a cominciare da Parla: chiunque ti risponde, con le sue frasi. Finché lo muovi a mano il campione aspetta i tuoi comandi; lasciato a sé per un giorno di gioco torna a badare a fame, sonno e svago. Non muore: va al tappeto, perde parte dei soldi e si rialza. Mentre una finestra è aperta il campione sta fermo."),
         ("Le schede", "Tocca una pedina o un edificio per aprirne la scheda: vita e bisogni, soldi, i tre slot degli oggetti (ognuno tiene una categoria) e il pulsante AZIONI. Tocca un oggetto per vedere cosa fa."),
+        ("Le collezioni", "Nell'Inventario, alla voce Collezioni, trovi i gruppi di oggetti da riunire: le Opere del Borgazzi (venti quadri unici, il pittore ne finisce uno ogni due giorni e li vende nella sua galleria in Piazza Garibaldi), le Foto di Pag (bustine alla Fumetteria) e i Santini (bustine al Banchetto dei Santini). Ogni pezzo ha il suo effetto; a collezione completa arrivano punti vittoria e un premio. Anche le altre fazioni collezionano."),
         ("Gli oggetti", "Nell'Inventario c'è tutto quello che il team possiede, addosso ai membri e negli edifici della fazione. Toccando un oggetto vedi cosa fa (usandolo o portandolo addosso), quanto vale e chi ce l'ha; scegli un membro con le frecce e puoi assegnarglielo o farglielo usare (se non ce l'ha, il team gliene passa uno)."),
         ("Il team", "Gli altri membri della fazione vivono da soli: lavorano, mangiano, si divertono. Puoi dare ordini (seleziona un tuo membro e scegli un ordine; clic destro o pressione lunga lo manda in un punto), ma obbediscono solo in parte: conta l'umore, il dissenso e il rango. Dal pannello Team vedi tutti i membri, crei squadre che seguono il campione, cambi gli stipendi e le priorità di lavoro."),
         ("Soldi e punti", "In alto vedi i punti vittoria, il fondo di gilda (il tesoro della fazione) e quanti siete. Il fondo paga stipendi e tangenti; i membri hanno anche soldi in tasca. Ogni quartiere controllato rende soldi e un punto vittoria al giorno."),
@@ -1006,7 +1125,8 @@ public class SimHud : MonoBehaviour
             return;
         }
         var classes = string.Join(", ", e["classes"].Select(c => (string)c));
-        GUILayout.Label($"{e["race"]} · {classes} · {FactionName((string)e["faction"])} · {e["rank"]}{(mine ? "  (tuo)" : "")}", big, GUILayout.Width(width));
+        string sexText = SexLabel(e["sex"]);
+        GUILayout.Label($"{e["race"]}{(sexText != null ? " (" + sexText + ")" : "")} · {classes} · {FactionName((string)e["faction"])} · {e["rank"]}{(mine ? "  (tuo)" : "")}", big, GUILayout.Width(width));
         var act = e["activity"];
         GUILayout.Label($"Sta facendo: {act?["label"]}  ·  umore: {act?["mood"]}", big, GUILayout.Width(width));
         string missing = e["missing_parts"] is JArray mp && mp.Count > 0 ? " (manca: " + string.Join(", ", mp.Select(x => (string)x)) + ")" : "";

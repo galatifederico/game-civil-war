@@ -128,6 +128,8 @@ impl SimPlugin for MioMondo {
 | `GET/POST /api/control` `{"paused", "tick_ms", "step"}` | pausa, velocità, avanzamento manuale |
 | `GET /api/compendium`, `/api/extensions` | compendium per la wiki, estensioni registrate |
 | `GET /api/ui/state?faction=`, `/api/ui/activity`, `/api/ui/map` | API per il client (con nebbia di guerra per fazione) |
+| `GET /api/ui/state?lite=true&faction=&since=TICK` | stato leggero per il client, una volta per tick e per fazione, gzip; `{"unchanged": true}` se il tick è lo stesso |
+| `GET /api/ui/collections?player=` | collezioni con pezzi posseduti dal team e totale |
 | `GET /api/ui/terrain?since=N` | caselle cambiate dopo la N-esima modifica (scavi, pittura) |
 | `GET /api/ui/player/{id}` | vista del giocatore: membri (razza, classe, salute, umore, soldi, attività, obbedienza), riepilogo e inventario del team, squadre, stipendi |
 | `GET /api/ui/feed?filter=&player=` | il Piccione: `main` (canale principale: notizie sulla fazione del giocatore e grandi fatti, soglie `press.main_*`), `mine`, `all`, una categoria |
