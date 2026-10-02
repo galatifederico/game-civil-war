@@ -29,8 +29,10 @@ notizie; il numero rosso conta le non lette del canale principale), la Classific
 ricomparire tutto.
 
 Il campione si muove a mano, una casella alla volta come in Pokémon: frecce o WASD (in panoramica spostano la
-vista); porte e scale si attraversano camminandoci sopra. Spazio (o E) apre la scheda di chi gli sta davanti con
-quello che il campione può fargli. Trascinare la mappa sposta la vista, un clic seleziona; C torna al campione,
+vista); porte e scale si attraversano camminandoci sopra. Quando gli sta accanto qualcuno, Spazio (o E) apre le
+azioni possibili, a cominciare da Parla. Un clic su una pedina o un edificio apre la sua scheda (vita, bisogni, i
+tre slot degli oggetti, AZIONI); un clic su un oggetto ne mostra il dettaglio, da cui assegnarlo o usarlo. Con una
+finestra aperta il campione sta fermo. Trascinare la mappa sposta la vista, un clic seleziona; C torna al campione,
 F segue la pedina selezionata; "Scava" (nelle Opzioni) e poi trascinare un rettangolo fa scavare la tua fazione.
 Esc chiude la finestra o la scheda aperta e annulla l'ordine o lo scavo in corso, altrimenti chiede se uscire
 (Invio conferma, anche Ctrl+Q). La freccia verde sopra la testa segna le pedine della tua fazione.
@@ -45,7 +47,8 @@ sudo ufw allow 8787:8788/tcp   # una volta sola: apre le porte del server e del 
 Lo script stampa l'indirizzo da cui il telefono scarica l'APK (`unity-client/Builds/Android/FidenzaClient.apk`;
 se il telefono è collegato via USB con il debug attivo lo installa da solo) e quello da inserire nell'app al
 primo avvio (resta salvato; il pulsante "Server" nelle Opzioni lo cambia). Sul telefono: la croce in basso a
-sinistra muove il campione e il tasto A interagisce con chi ha davanti; un dito trascina la mappa, un tocco
+sinistra è un joystick che muove il campione e il tasto A apre le azioni con chi gli sta accanto (con una finestra
+aperta spariscono); un dito trascina la mappa, un tocco
 seleziona o sceglie il bersaglio di un ordine, una pressione lunga manda lì la tua pedina selezionata, due dita
 zoomano; finestre e schede scorrono col dito; il tasto indietro chiude o annulla, altrimenti chiede se uscire.
 

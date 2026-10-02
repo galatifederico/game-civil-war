@@ -28,3 +28,20 @@ soldi = fondo di gilda.
   di gioco torni autonomo?
 - Quali **altri canali** del piccione vuoi abilitare per primi (es. un canale per fazione alleata, uno per il
   mercato, messaggi privati tra giocatori)?
+
+## Aggiornamento (task 29)
+
+**Decisioni prese.**
+- **Parla:** per ora solo frasi fatte, pescate per razza, classe e fazione (`95_dialoghi.ron`). Le pedine con
+  una razza "propria" (animali, robot, zombie…) dicono solo le loro; gli altri anche quelle generiche.
+- **Joystick a 8 direzioni:** il motore permette i passi in diagonale (senza tagliare gli angoli dei muri).
+- **I 3 slot** sono quelli dell'inventario del motore: ogni slot tiene una categoria (es. tutte le bevande), quindi
+  uno slot può contenere più oggetti; nel riquadro si vede il primo con "+N".
+- **Assegnare** è immediato e prende l'oggetto da chiunque nel team lo abbia, edifici compresi (anche i negozi
+  della fazione: la birra del banco del mercato si può dare a un membro).
+- **Il campione può usare l'oggetto** anche se non ce l'ha: il team gliene passa uno.
+
+**Domande aperte.**
+- Assegnare dovrebbe richiedere che qualcuno porti l'oggetto a piedi (più realistico, più lento)?
+- I negozi della fazione vanno esclusi dall'inventario del team (la merce in vendita non è "roba nostra")?
+- Gli indizi nei dialoghi: legati a cosa (reliquie, trono, chi è un rettiliano travestito…)?

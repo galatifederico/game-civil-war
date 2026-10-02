@@ -80,8 +80,12 @@ public class SimView : MonoBehaviour
 
     // Champion walked by hand, one cell per step as in Pokémon. Facing: the cell in front of it.
     public Vector2Int Facing { get; private set; } = new(0, 1);
-    /// Direction held on the on-screen pad (set every frame by the HUD).
+    /// Direction held on the on-screen joystick (set every frame by the HUD); diagonals allowed.
     public Vector2Int PadWalk { get; set; }
+    /// Set by the HUD while a menu is open: the champion does not move.
+    public bool MovementLocked { get; set; }
+    /// A pawn or building picked on the map with a click or a tap (the HUD opens its card).
+    public System.Action<long> Picked;
     public JArray ChampionActions { get; private set; }
     const float StepSeconds = 0.17f;
     bool stepInFlight;
@@ -103,7 +107,9 @@ public class SimView : MonoBehaviour
     Vector3 dragOrigin;
 
     /// Phones and tablets: one finger pans, taps select, a long press sends our pawn, two fingers zoom.
-    public static bool TouchUi => Application.isMobilePlatform;
+    /// <c>--touch-ui</c> shows the phone layout on a PC (for checks).
+    public static bool TouchUi => Application.isMobilePlatform || ForcedTouch;
+    static readonly bool ForcedTouch = System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "--touch-ui") >= 0;
     const string ServerPref = "server";
     Vector2 touchStart;
     float touchStartTime, pinchStartDist, pinchStartZoom;
@@ -260,8 +266,8 @@ public class SimView : MonoBehaviour
 
     public void SendControl(JObject body) => StartCoroutine(Api.Post("/api/control", body, j => Control = (JObject)j, e => LastCommandResult = e));
 
-    public void SendCommand(JObject cmd) => StartCoroutine(Api.Post("/api/commands?now=true", cmd,
-        j => LastCommandResult = (string)j["ok"] ?? j.ToString(), e => LastCommandResult = "Rifiutato: " + e));
+    public void SendCommand(JObject cmd, System.Action done = null) => StartCoroutine(Api.Post("/api/commands?now=true", cmd,
+        j => { LastCommandResult = (string)j["ok"] ?? j.ToString(); done?.Invoke(); }, e => { LastCommandResult = "Rifiutato: " + e; done?.Invoke(); }));
 
     /// Who the camera follows: the selected pawn, otherwise our champion.
     public long? FollowId => !walkFocus && Selected.HasValue && gos.TryGetValue(Selected.Value, out var g) && !g.Building ? Selected : ChampionId;
@@ -342,18 +348,17 @@ public class SimView : MonoBehaviour
         go.Root.SetActive(true);
     }
 
-    /// The pawn (or else the building) in front of the champion, or next to it: its card opens with what
-    /// the champion can do to it.
-    public void Interact()
+    /// The pawn (or else the building) in front of the champion or next to it, if any.
+    public long? NearbyTarget()
     {
-        if (!ChampionId.HasValue || EntityById(ChampionId.Value)?["pos"] is not JObject me) return;
+        if (!ChampionId.HasValue || State == null || EntityById(ChampionId.Value)?["pos"] is not JObject me) return null;
         int layer = (int)me["layer"], x = (int)me["x"], y = (int)me["y"];
         int ax = x + Facing.x, ay = y + Facing.y;
         long? best = null;
         int bestScore = int.MaxValue;
         foreach (var e in State["snapshot"]["entities"])
         {
-            if (e["pos"] is not JObject p || (int)p["layer"] != layer || (long)e["id"] == ChampionId.Value) continue;
+            if (e["pos"] is not JObject p || (int)p["layer"] != layer || (long)e["id"] == ChampionId.Value || (bool?)e["dead"] == true) continue;
             int px = (int)p["x"], py = (int)p["y"];
             bool building = (string)e["kind"] == "building";
             int score = px == ax && py == ay ? 0 : Mathf.Max(Mathf.Abs(px - x), Mathf.Abs(py - y)) <= 1 ? 1 : int.MaxValue;
@@ -365,9 +370,21 @@ public class SimView : MonoBehaviour
                 best = (long)e["id"];
             }
         }
-        if (best.HasValue) Select(best, byChampion: true);
-        else LastCommandResult = "Non c'è nessuno davanti al campione";
+        return best;
     }
+
+    /// What the champion can do with a pawn or building (talk, jobs, abilities, follow).
+    public void Interactions(long target, System.Action<JObject> ok) =>
+        StartCoroutine(Api.Get($"/api/ui/interactions/{UnityEngine.Networking.UnityWebRequest.EscapeURL(PlayerId)}/{target}", j => ok((JObject)j), e => LastCommandResult = e));
+
+    /// The champion talks to someone: answers (name, line) or the reason it cannot.
+    public void Talk(long target, System.Action<string, string> ok) =>
+        StartCoroutine(Api.Post("/api/ui/talk", new JObject { ["player"] = PlayerId, ["target"] = target },
+            j => ok((string)j["name"], (string)j["line"]), e => ok(null, e)));
+
+    /// An item explained, with who in the team holds it.
+    public void ItemInfo(string item, System.Action<JObject> ok) =>
+        StartCoroutine(Api.Get($"/api/ui/item/{UnityEngine.Networking.UnityWebRequest.EscapeURL(item)}?player={UnityEngine.Networking.UnityWebRequest.EscapeURL(PlayerId ?? "")}", j => ok((JObject)j), e => LastCommandResult = e));
 
     /// The whole of a map seen from above (the world map), leaving the champion where it is.
     public void ShowOverview(int layer)
@@ -407,11 +424,11 @@ public class SimView : MonoBehaviour
         SendCommand(new JObject { ["type"] = "player_order", ["player"] = PlayerId, ["entity"] = entity, ["order"] = order });
     }
 
-    public void SendPlayerCommand(JObject cmd)
+    public void SendPlayerCommand(JObject cmd, System.Action done = null)
     {
         if (PlayerId == null) return;
         cmd["player"] = PlayerId;
-        SendCommand(cmd);
+        SendCommand(cmd, done);
     }
 
     public void Save() => StartCoroutine(Api.Post("/api/save", new JObject { ["path"] = "saves/quick.json" }, j => LastCommandResult = (string)j["ok"], e => LastCommandResult = e));
@@ -919,12 +936,12 @@ public class SimView : MonoBehaviour
         int kx = keysFree ? (Key(KeyCode.RightArrow, KeyCode.D) ? 1 : 0) - (Key(KeyCode.LeftArrow, KeyCode.A) ? 1 : 0) : 0;
         int ky = keysFree ? (Key(KeyCode.DownArrow, KeyCode.S) ? 1 : 0) - (Key(KeyCode.UpArrow, KeyCode.W) ? 1 : 0) : 0;
         bool walking = Zoom >= 1f && ChampionId.HasValue && PlayerId != null;
-        if (walking || PadWalk != Vector2Int.zero)
+        if (MovementLocked) Walk(Vector2Int.zero);
+        else if (walking || PadWalk != Vector2Int.zero)
         {
-            var dir = PadWalk != Vector2Int.zero ? PadWalk : new Vector2Int(kx, kx != 0 ? 0 : ky);
+            var dir = PadWalk != Vector2Int.zero ? PadWalk : new Vector2Int(kx, ky);
             if (!walking && dir != Vector2Int.zero && ChampionId.HasValue) CloseView();
             Walk(dir);
-            if (keysFree && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.E) || Input.GetKeyDown(KeyCode.Return))) Interact();
         }
         else
         {
@@ -959,7 +976,7 @@ public class SimView : MonoBehaviour
         if (click)
         {
             if (PendingAction != null) ResolvePending(Input.mousePosition);
-            else Select(Pick(Input.mousePosition));
+            else PickAt(Input.mousePosition);
         }
         // Right click with one of our pawns selected: go there.
         if (Input.GetMouseButtonDown(1) && Selected.HasValue && IsMine(Selected.Value))
@@ -1102,8 +1119,16 @@ public class SimView : MonoBehaviour
         if (t.phase == TouchPhase.Ended && !longPressDone)
         {
             if (PendingAction != null) ResolvePending(t.position);
-            else Select(Pick(t.position));
+            else PickAt(t.position);
         }
+    }
+
+    /// Click or tap on the map: selects what is there and tells the HUD.
+    void PickAt(Vector3 screen)
+    {
+        var id = Pick(screen);
+        Select(id);
+        if (id.HasValue) Picked?.Invoke(id.Value);
     }
 
     static bool Key(KeyCode a, KeyCode b) => Input.GetKey(a) || Input.GetKey(b);

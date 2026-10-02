@@ -5,7 +5,8 @@ using UnityEngine;
 /// Command line helper for automated checks: <c>--screenshot=path.png [--shot-after=8]</c> saves a
 /// screenshot after some seconds and quits. <c>--open=team</c> (or mappa, inventario, piccione, …) opens a
 /// HUD window first, <c>--walk=RRDDL</c> walks the champion (R, L, U, D: one step each),
-/// <c>--select-near</c> then opens the card of the pawn next to it.
+/// <c>--select-near</c> then opens the actions with the pawn next to it;
+/// <c>--open=scheda</c> opens the card of the selection, <c>--open=oggetto:birra</c> an item.
 /// </summary>
 public class AutoScreenshot : MonoBehaviour
 {
@@ -52,7 +53,7 @@ public class AutoScreenshot : MonoBehaviour
         foreach (var a in System.Environment.GetCommandLineArgs())
         {
             if (a.StartsWith("--open=")) GetComponent<SimHud>()?.OpenByName(a.Substring(7));
-            if (a == "--select-near" && view != null) view.Interact();
+            if (a == "--select-near") GetComponent<SimHud>()?.OpenByName("vicino");
         }
         foreach (var a in System.Environment.GetCommandLineArgs())
             if (a.StartsWith("--map=") && view != null)

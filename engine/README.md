@@ -132,6 +132,9 @@ impl SimPlugin for MioMondo {
 | `GET /api/ui/player/{id}` | vista del giocatore: membri (razza, classe, salute, umore, soldi, attività, obbedienza), riepilogo e inventario del team, squadre, stipendi |
 | `GET /api/ui/feed?filter=&player=` | il Piccione: `main` (canale principale: notizie sulla fazione del giocatore e grandi fatti, soglie `press.main_*`), `mine`, `all`, una categoria |
 | `POST /api/ui/step` `{"player", "dx", "dy"}` | un passo del campione, subito (anche in pausa); risponde con la posizione |
+| `POST /api/ui/talk` `{"player", "target"}` | il campione parla con chi gli sta accanto (frasi da `dialogue` nei dati) |
+| `GET /api/ui/interactions/{player}/{target}` | cosa può fare il campione con una pedina o un edificio (Parla, job adatti, abilità, Segui) |
+| `GET /api/ui/item/{id}?player=` | un oggetto spiegato (effetti, prezzo) e chi lo tiene nel team; comandi `player_give_item`, `player_use_item` |
 | `GET /api/ui/economy` | indice dei prezzi, inflazione delle ultime 24 ore, moneta in circolazione, circostanze, quota locale, merci |
 | `GET /admin/` | console di amministrazione |
 | `GET /api/content`, `/api/assets`, `/assets/{file}.png` | tutte le definizioni caricate, elenco e file delle immagini |
