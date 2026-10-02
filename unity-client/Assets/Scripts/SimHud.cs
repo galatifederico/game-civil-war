@@ -4,39 +4,41 @@ using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 /// <summary>
-/// Immediate-mode HUD. Top bar: time, pause, speed, layers, fog, champion, save/load.
-/// Right panel: selected pawn (with orders if it is ours), then the "Mondo" tab (feed, chronicle,
-/// market, factions) or the "La mia fazione" tab (members and their obedience, squads, salaries,
-/// work priorities of the selected member).
+/// Immediate-mode HUD, all in one side menu on the right that can be open, reduced to a rail of quick
+/// buttons or hidden behind a "Menu" button. Open, it holds the game controls (time, speed, camera,
+/// dig, map, fog, save/load, server, exit), the selected pawn (with orders if it is ours), then the
+/// "Mondo" tab (feed, chronicle, market, factions) or the "La mia fazione" tab (members and their
+/// obedience, squads, salaries, work priorities of the selected member).
+/// Esc (the back button on phones) cancels what is in progress, otherwise asks whether to quit.
 /// </summary>
 [RequireComponent(typeof(SimView))]
 public class SimHud : MonoBehaviour
 {
     SimView view;
     float scale = 1f;
-    Vector2 scrollRight;
-    Rect topRect, rightRect;
+    Vector2 scrollPanel;
+    Rect panelRect, pendingRect, connectRect;
     GUIStyle box, title, small, label, zoneLabel, button, fake, hover, good, toggle, textBox, banner;
-    Texture2D panelTex, barTex, barFillTex;
-    bool panelHidden;
+    Texture2D panelTex, barTex, barFillTex, dimTex;
+    enum Panel { Open, Rail, Hidden }
+    Panel panel = Panel.Open;
+    bool controlsOpen = true;
+    bool exitAsk;
     string bannerKey;
     float bannerUntil, noticeUntil;
     string noticeKey, noticeText;
     int speedIndex = 1;
     int tab;
     bool mapMenu;
-    Vector2 mapScroll;
-    Rect mapRect;
-    // Touch: the bar on top and the panels scroll by dragging a finger on them.
-    Vector2 scrollTop;
-    Rect pendingRect, connectRect;
-    int touchScrolling; // 0 none, 1 top bar, 2 right panel, 3 map list
+    // Touch: the menu scrolls by dragging a finger on it.
+    bool touchScrolling;
     bool touchDragged;
     string serverField;
     bool serverOpen;
     bool ConnectShown => view.Map == null || serverOpen;
+    bool PendingShown => view.PendingAction != null || view.DigMode;
     bool touch => SimView.TouchUi;
-    float barH => touch ? 52 : 34;
+    float rowH => touch ? 48 : 30;
     static readonly (string name, int ms)[] Speeds = { ("Lenta", 1000), ("Normale", 400), ("Veloce", 120), ("Turbo", 30) };
     static readonly string[] Tabs = { "Mondo", "La mia fazione" };
 
@@ -46,9 +48,10 @@ public class SimHud : MonoBehaviour
 
     public bool IsOverUi(Vector3 mouse)
     {
+        // The exit question is modal: the map takes no input behind it.
+        if (exitAsk) return true;
         var p = new Vector2(mouse.x, Screen.height - mouse.y) / scale;
-        return topRect.Contains(p) || (!panelHidden && rightRect.Contains(p)) || (mapMenu && mapRect.Contains(p))
-               || (view.PendingAction != null && pendingRect.Contains(p)) || (ConnectShown && connectRect.Contains(p));
+        return panelRect.Contains(p) || (PendingShown && pendingRect.Contains(p)) || (ConnectShown && connectRect.Contains(p));
     }
 
     /// Pokémon-like window: white fill, rounded double border (9-sliced).
@@ -92,6 +95,7 @@ public class SimHud : MonoBehaviour
         var btnDown = Frame(new Color(0.78f, 0.84f, 0.93f), edge, new Color(0.56f, 0.66f, 0.8f));
         barTex = Tex(new Color(0.2f, 0.25f, 0.3f, 0.25f));
         barFillTex = Tex(new Color(0.35f, 0.78f, 0.45f));
+        dimTex = Tex(new Color(0.05f, 0.06f, 0.1f, 0.55f));
         var slice = new RectOffset(4, 4, 4, 4);
         box = new GUIStyle(GUI.skin.box) { normal = { background = panelTex }, border = slice, padding = new RectOffset(12, 12, 8, 8), alignment = TextAnchor.UpperLeft };
         title = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, fontSize = 13, normal = { textColor = new Color(0.2f, 0.36f, 0.66f) } };
@@ -127,6 +131,13 @@ public class SimHud : MonoBehaviour
     /// Keyboard hint after a button label, hidden on phones.
     string Key(string k) => touch ? "" : " (" + k + ")";
 
+    float PanelWidth(float w) => panel switch
+    {
+        Panel.Open => Mathf.Min(400, w * 0.42f),
+        Panel.Rail => touch ? 104 : 88,
+        _ => 0,
+    };
+
     void OnGUI()
     {
         InitStyles();
@@ -134,75 +145,71 @@ public class SimHud : MonoBehaviour
         scale = touch ? Mathf.Clamp((Screen.dpi > 0 ? Screen.dpi : 320f) / 160f, 1f, Screen.height / 360f) : Mathf.Max(1f, Screen.height / 900f);
         if (touchDragged && (Event.current.type == EventType.MouseUp || Event.current.type == EventType.MouseDown))
         {
-            // A finger that scrolled a panel does not also press the button it ends on.
+            // A finger that scrolled the menu does not also press the button it ends on.
             GUIUtility.hotControl = 0;
             Event.current.Use();
         }
         GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1));
         float w = Screen.width / scale, h = Screen.height / scale;
+        // Behind the exit question nothing else can be pressed.
+        GUI.enabled = !exitAsk;
 
-        float pw = panelHidden ? 0 : Mathf.Min(400, w * 0.42f);
+        float areaW = w - PanelWidth(w);
         if (view.Map != null && view.Zoom < 1f) ZoneLabels();
         LocationBanner();
-        Notice(w - pw, h);
-        if (!touch) HoverTip();
-        if (ConnectShown) ConnectWindow(w, h);
-        if (view.PendingAction != null && touch)
-        {
-            // No pointer to follow on a phone: a box on top with the order and a way out.
-            pendingRect = new Rect(w / 2 - 230, barH + 8, 460, 52);
-            GUILayout.BeginArea(pendingRect, box);
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Tocca il bersaglio: " + view.PendingAction["name"], label);
-            if (GUILayout.Button("Annulla", button, GUILayout.Width(90))) view.PendingAction = null;
-            GUILayout.EndHorizontal();
-            GUILayout.EndArea();
-        }
-        else if (view.PendingAction != null)
-        {
-            var m = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y) / scale;
-            GUI.Label(new Rect(m.x + 14, m.y - 26, 260, 22), "Scegli il bersaglio: " + view.PendingAction["name"] + " (Esc annulla)", hover);
-        }
+        Notice(areaW, h);
+        if (!touch && !exitAsk) HoverTip();
+        if (ConnectShown) ConnectWindow(areaW, h);
+        if (PendingShown) PendingBox(areaW);
+        SideMenu(w, h);
 
-        topRect = new Rect(0, 0, w, barH);
-        GUILayout.BeginArea(topRect, box);
-        if (touch) scrollTop = GUILayout.BeginScrollView(scrollTop, GUIStyle.none, GUIStyle.none);
+        GUI.enabled = true;
+        if (exitAsk) ExitWindow(w, h);
+    }
+
+    /// The order waiting for a target (or the dig rectangle) and a way out of it.
+    void PendingBox(float areaW)
+    {
+        string what = view.DigMode ? "Scava: trascina un rettangolo sulla mappa"
+            : (touch ? "Tocca" : "Clicca") + " il bersaglio: " + view.PendingAction["name"];
+        float bw = Mathf.Min(touch ? 480 : 440, areaW - 16);
+        pendingRect = new Rect(Mathf.Max(8, areaW / 2 - bw / 2), 8, bw, rowH + 16);
+        GUILayout.BeginArea(pendingRect, box);
         GUILayout.BeginHorizontal();
-        TopBar();
+        GUILayout.Label(what, label);
+        if (GUILayout.Button("Annulla" + Key("Esc"), button, GUILayout.Width(touch ? 100 : 110))) view.CancelCurrent();
         GUILayout.EndHorizontal();
-        if (touch) GUILayout.EndScrollView();
         GUILayout.EndArea();
+    }
 
-        if (mapMenu && view.Layers != null)
+    void SideMenu(float w, float h)
+    {
+        if (panel == Panel.Hidden)
         {
-            // Map list grouped as in the data: outdoors, interiors, underground.
-            float row = touch ? 40 : 22;
-            mapRect = new Rect(touch ? 8 : 420, barH, touch ? 320 : 280, Mathf.Min(h - barH - 26, row * view.Layers.Count + 20));
-            GUILayout.BeginArea(mapRect, box);
-            mapScroll = GUILayout.BeginScrollView(mapScroll);
-            for (int i = 0; i < view.Layers.Count; i++)
-            {
-                var l = view.Layers[i];
-                string kind = (bool?)l["underground"] == true ? "⤓ " : (bool?)l["indoor"] == true ? "⌂ " : "";
-                var st = new GUIStyle(button) { alignment = TextAnchor.MiddleLeft, fontStyle = i == view.Layer ? FontStyle.Bold : FontStyle.Normal };
-                if (GUILayout.Button(kind + (string)l["name"], st))
-                {
-                    view.SetLayer(i);
-                    view.FollowCamera = false;
-                    mapMenu = false;
-                }
-            }
-            GUILayout.EndScrollView();
-            GUILayout.EndArea();
+            float bw = touch ? 110 : 96;
+            panelRect = new Rect(w - bw - 8, 8, bw, rowH);
+            if (GUI.Button(panelRect, "≡ Menu", button)) panel = Panel.Open;
+            return;
         }
-
-        if (panelHidden || ConnectShown) return;
-        rightRect = new Rect(w - pw, barH, pw, h - barH);
-        GUILayout.BeginArea(rightRect, box);
-        scrollRight = GUILayout.BeginScrollView(scrollRight);
-        float inner = pw - 34;
+        if (panel == Panel.Rail)
+        {
+            float rw = PanelWidth(w);
+            panelRect = new Rect(w - rw, 0, rw, Mathf.Min(h, (rowH + 4) * 7 + 20));
+            GUILayout.BeginArea(panelRect, box);
+            Rail();
+            GUILayout.EndArea();
+            return;
+        }
+        float pw = PanelWidth(w);
+        panelRect = new Rect(w - pw, 0, pw, h);
+        GUILayout.BeginArea(panelRect, box);
+        // Vertical only: a row a few points too wide must not bring up a horizontal bar.
+        scrollPanel = GUILayout.BeginScrollView(scrollPanel, false, false, GUIStyle.none, GUI.skin.verticalScrollbar);
+        float inner = pw - 40;
+        Header(inner);
+        if (controlsOpen) Controls(inner);
         if (view.State == null)
-            GUILayout.Label("In attesa del server…\nAvvia: cd engine && cargo run --release -p fidenza_world -- --serve", label);
+            GUILayout.Label("In attesa del server…\nAvvia: cd engine && cargo run --release -p fidenza_world -- --serve", label, GUILayout.Width(inner));
         else
         {
             Selected(inner);
@@ -215,55 +222,151 @@ public class SimHud : MonoBehaviour
         GUILayout.EndArea();
     }
 
-    void TopBar()
+    /// Reduced menu: a column of the buttons used most.
+    void Rail()
     {
-        GUILayout.Label("Fidenza & Salsomaggiore", title, GUILayout.Width(180));
-        if (view.Error != null)
-        {
-            GUILayout.Label(view.Error, fake);
-            return;
-        }
-        long tick = (long?)view.State?["snapshot"]?["tick"] ?? 0;
-        GUILayout.Label($"tick {tick} · g.{tick / 24 + 1} {tick % 24}:00", label, GUILayout.Width(120));
+        var h = GUILayout.Height(rowH);
+        if (GUILayout.Button("◂ Menu", button, h)) panel = Panel.Open;
         bool paused = (bool?)view.Control?["paused"] ?? false;
-        if (GUILayout.Button("Server", button, GUILayout.Width(touch ? 80 : 60)))
+        if (GUILayout.Button(paused ? "Riprendi" : "Pausa", button, h)) view.SendControl(new JObject { ["paused"] = !paused });
+        if (view.ChampionId.HasValue && GUILayout.Button("★ Camp.", button, h)) GoToChampion();
+        if (view.Layers != null && GUILayout.Button(view.Zoom >= 1f ? "Mappa" : "Vicino", button, h)) view.ToggleOverview();
+        if (GUILayout.Button(view.DigMode ? "▸ Scava" : "Scava", button, h)) view.DigMode = !view.DigMode;
+        if (GUILayout.Button("Nascondi", button, h)) panel = Panel.Hidden;
+        if (GUILayout.Button("Esci", button, h)) exitAsk = true;
+    }
+
+    void Header(float width)
+    {
+        GUILayout.BeginHorizontal();
+        GUILayout.Label("Fidenza & Salsomaggiore", title);
+        GUILayout.FlexibleSpace();
+        if (GUILayout.Button("▸", button, GUILayout.Width(touch ? 48 : 30))) panel = Panel.Rail;
+        if (GUILayout.Button("Nascondi" + Key("Tab"), button, GUILayout.Width(touch ? 110 : 120))) panel = Panel.Hidden;
+        GUILayout.EndHorizontal();
+        GUILayout.BeginHorizontal();
+        if (view.Error != null) GUILayout.Label(view.Error, fake, GUILayout.Width(width - 110));
+        else
         {
-            serverField = view.Api.BaseUrl;
-            serverOpen = !serverOpen;
+            long tick = (long?)view.State?["snapshot"]?["tick"] ?? 0;
+            GUILayout.Label($"Giorno {tick / 24 + 1}, ore {tick % 24}:00 · tick {tick}", label);
         }
-        if (GUILayout.Button(paused ? "Riprendi" : "Pausa", button, GUILayout.Width(72)))
+        GUILayout.FlexibleSpace();
+        if (GUILayout.Button(controlsOpen ? "Comandi ▴" : "Comandi ▾", button, GUILayout.Width(touch ? 120 : 100))) controlsOpen = !controlsOpen;
+        GUILayout.EndHorizontal();
+    }
+
+    /// The game controls, three to a row.
+    void Controls(float width)
+    {
+        float third = width / 3f - 6, half = width / 2f - 6;
+        var h = GUILayout.Height(rowH);
+        bool paused = (bool?)view.Control?["paused"] ?? false;
+
+        GUILayout.BeginHorizontal();
+        if (GUILayout.Button(paused ? "Riprendi" : "Pausa", button, GUILayout.Width(third), h))
             view.SendControl(new JObject { ["paused"] = !paused });
-        if (GUILayout.Button("+1", button, GUILayout.Width(30)))
+        if (GUILayout.Button("Avanza 1", button, GUILayout.Width(third), h))
             view.SendControl(new JObject { ["step"] = 1 });
-        if (GUILayout.Button(Speeds[speedIndex].name, button, GUILayout.Width(70)))
+        if (GUILayout.Button(Speeds[speedIndex].name, button, GUILayout.Width(third), h))
         {
             speedIndex = (speedIndex + 1) % Speeds.Length;
             view.SendControl(new JObject { ["tick_ms"] = Speeds[speedIndex].ms });
         }
-        if (view.Layers != null && GUILayout.Button("Mappa: " + (string)view.Layers[view.Layer]["name"] + " ▾", button, GUILayout.Width(250)))
+        GUILayout.EndHorizontal();
+
+        GUILayout.BeginHorizontal();
+        GUI.enabled = !exitAsk && view.ChampionId.HasValue;
+        if (GUILayout.Button("★ Campione" + Key("C"), button, GUILayout.Width(third), h)) GoToChampion();
+        GUI.enabled = !exitAsk;
+        view.FollowCamera = GUILayout.Toggle(view.FollowCamera, "Segui" + Key("F"), button, GUILayout.Width(third), h);
+        if (GUILayout.Button((view.Zoom >= 1f ? "Panoramica" : "Da vicino") + Key("M"), button, GUILayout.Width(third), h)) view.ToggleOverview();
+        GUILayout.EndHorizontal();
+
+        GUILayout.BeginHorizontal();
+        if (GUILayout.Button(view.DigMode ? "▸ Scava" : "Scava", button, GUILayout.Width(third), h)) view.DigMode = !view.DigMode;
+        if (GUILayout.Button("Salva", button, GUILayout.Width(third), h)) view.Save();
+        if (GUILayout.Button("Carica", button, GUILayout.Width(third), h)) view.Load();
+        GUILayout.EndHorizontal();
+
+        if (view.Layers != null && GUILayout.Button("Mappa: " + (string)view.Layers[view.Layer]["name"] + (mapMenu ? " ▴" : " ▾"), button, GUILayout.Width(width), h))
             mapMenu = !mapMenu;
+        if (mapMenu && view.Layers != null)
+        {
+            // Map list grouped as in the data: outdoors, interiors, underground.
+            for (int i = 0; i < view.Layers.Count; i++)
+            {
+                var l = view.Layers[i];
+                string kind = (bool?)l["underground"] == true ? "⤓ " : (bool?)l["indoor"] == true ? "⌂ " : "";
+                var st = new GUIStyle(button) { alignment = TextAnchor.MiddleLeft, fontStyle = i == view.Layer ? FontStyle.Bold : FontStyle.Normal };
+                if (GUILayout.Button("   " + kind + (string)l["name"], st, GUILayout.Width(width)))
+                {
+                    view.SetLayer(i);
+                    view.FollowCamera = false;
+                    mapMenu = false;
+                }
+            }
+        }
+
         var factions = Factions();
         string fogName = string.IsNullOrEmpty(view.FogFaction) ? "nessuna" : FactionName(view.FogFaction);
-        if (GUILayout.Button("Nebbia: " + fogName, button, GUILayout.Width(200)) && factions.Count > 0)
+        if (GUILayout.Button("Nebbia: " + fogName, button, GUILayout.Width(width), h) && factions.Count > 0)
         {
             var ids = new List<string> { "" };
             ids.AddRange(factions.Select(f => (string)f["id"]));
             int i = ids.IndexOf(view.FogFaction);
             view.ChooseFog(ids[(i + 1) % ids.Count]);
         }
-        if (view.ChampionId.HasValue && GUILayout.Button("Campione" + Key("C"), button, GUILayout.Width(100)))
+
+        GUILayout.BeginHorizontal();
+        if (GUILayout.Button("Server", button, GUILayout.Width(half), h))
         {
-            view.Select(view.ChampionId);
-            view.FocusOn(view.ChampionId.Value);
+            serverField = view.Api.BaseUrl;
+            serverOpen = !serverOpen;
         }
-        view.FollowCamera = GUILayout.Toggle(view.FollowCamera, "Segui" + Key("F"), touch ? button : toggle, GUILayout.Width(80));
-        if (GUILayout.Button((view.Zoom >= 1f ? "Panoramica" : "Da vicino") + Key("M"), button, GUILayout.Width(115))) view.ToggleOverview();
-        if (GUILayout.Button((panelHidden ? "Pannello ◂" : "Pannello ▸") + Key("Tab"), button, GUILayout.Width(120))) panelHidden = !panelHidden;
-        if (GUILayout.Button(view.DigMode ? "▸ Scava: trascina" + Key("Esc") : "Scava", button, GUILayout.Width(view.DigMode ? 160 : 60)))
-            view.DigMode = !view.DigMode;
-        if (GUILayout.Button("Salva", button, GUILayout.Width(55))) view.Save();
-        if (GUILayout.Button("Carica", button, GUILayout.Width(60))) view.Load();
+        if (GUILayout.Button("Esci" + Key("Esc"), button, GUILayout.Width(half), h)) exitAsk = true;
+        GUILayout.EndHorizontal();
+    }
+
+    void GoToChampion()
+    {
+        if (!view.ChampionId.HasValue) return;
+        view.Select(view.ChampionId);
+        view.FocusOn(view.ChampionId.Value);
+    }
+
+    void ExitWindow(float w, float h)
+    {
+        GUI.DrawTexture(new Rect(0, 0, w, h), dimTex);
+        float ew = Mathf.Min(touch ? 440 : 380, w - 32), eh = touch ? 190 : 150;
+        GUILayout.BeginArea(new Rect(w / 2 - ew / 2, h / 2 - eh / 2, ew, eh), box);
+        GUILayout.Label("Vuoi uscire dal gioco?", title);
+        GUILayout.Label("Il mondo continua a girare sul server: rientrando lo ritrovi dove l'hai lasciato.", label);
         GUILayout.FlexibleSpace();
+        GUILayout.BeginHorizontal();
+        if (GUILayout.Button("Esci" + Key("Invio"), button, GUILayout.Height(rowH))) Quit();
+        if (GUILayout.Button("Annulla" + Key("Esc"), button, GUILayout.Height(rowH))) exitAsk = false;
+        GUILayout.EndHorizontal();
+        GUILayout.EndArea();
+    }
+
+    static void Quit()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
+    }
+
+    /// Esc / back button: close the exit question, else cancel what is in progress, else ask to quit.
+    void Back()
+    {
+        if (exitAsk) exitAsk = false;
+        else if (view.CancelCurrent()) { }
+        else if (serverOpen && view.Map != null) serverOpen = false;
+        else if (mapMenu) mapMenu = false;
+        else exitAsk = true;
     }
 
     string ZoneName(string id) => (string)view.Map?["zones"]?.FirstOrDefault(z => (string)z["id"] == id)?["name"] ?? id;
@@ -450,7 +553,7 @@ public class SimHud : MonoBehaviour
         var e = view.SelectedEntity;
         if (!view.Selected.HasValue)
         {
-            GUILayout.Label("Clic sinistro: seleziona. Clic destro: muovi la tua pedina selezionata. Tasto centrale o WASD: sposta la vista. Rotella: zoom. C: campione.", small, GUILayout.Width(width));
+            GUILayout.Label((touch ? "Tocco: seleziona. Trascina: sposta la vista. Pressione lunga: manda lì la tua pedina selezionata. Due dita: zoom." : "Clic sinistro: seleziona. Trascina o WASD: sposta la vista. Clic destro: muovi la tua pedina selezionata. Rotella: zoom. C: campione.") + " La freccia verde sopra la testa segna le tue pedine.", small, GUILayout.Width(width));
             if (!string.IsNullOrEmpty(view.LastCommandResult)) GUILayout.Label(view.LastCommandResult, small, GUILayout.Width(width));
             return;
         }
@@ -499,7 +602,7 @@ public class SimHud : MonoBehaviour
             GUILayout.BeginHorizontal();
             foreach (var a in view.SelectedActions)
             {
-                if (GUILayout.Button((string)a["name"], button, GUILayout.Width(width / 2f - 4)))
+                if (GUILayout.Button((string)a["name"], button, GUILayout.Width(width / 2f - 6)))
                 {
                     if ((string)a["needs_target"] == "none")
                         view.SendPlayerOrder((long)e["id"], SimView.OrderFor((string)a["kind"], (string)a["id"], null));
@@ -537,7 +640,11 @@ public class SimHud : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetKeyDown(KeyCode.Tab)) panelHidden = !panelHidden;
+        if (Input.GetKeyDown(KeyCode.Escape)) Back();
+        if (exitAsk && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))) Quit();
+        bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl) || Input.GetKey(KeyCode.LeftCommand);
+        if (ctrl && Input.GetKeyDown(KeyCode.Q)) exitAsk = true;
+        if (Input.GetKeyDown(KeyCode.Tab)) panel = panel == Panel.Open ? Panel.Hidden : Panel.Open;
         if (touch) TouchScroll();
     }
 
@@ -547,7 +654,7 @@ public class SimHud : MonoBehaviour
         if (Input.touchCount != 1)
         {
             if (Input.touchCount == 0) touchDragged = false;
-            touchScrolling = 0;
+            touchScrolling = false;
             return;
         }
         var t = Input.GetTouch(0);
@@ -555,16 +662,14 @@ public class SimHud : MonoBehaviour
         if (t.phase == TouchPhase.Began)
         {
             touchDragged = false;
-            touchScrolling = topRect.Contains(p) ? 1 : mapMenu && mapRect.Contains(p) ? 3 : !panelHidden && rightRect.Contains(p) ? 2 : 0;
+            touchScrolling = !exitAsk && panel == Panel.Open && panelRect.Contains(p);
             return;
         }
-        if (touchScrolling == 0 || t.phase != TouchPhase.Moved) return;
+        if (!touchScrolling || t.phase != TouchPhase.Moved) return;
         var d = t.deltaPosition / scale;
         if (!touchDragged && d.magnitude < 0.5f) return;
         touchDragged = true;
-        if (touchScrolling == 1) scrollTop.x = Mathf.Max(0, scrollTop.x - d.x);
-        else if (touchScrolling == 2) scrollRight.y = Mathf.Max(0, scrollRight.y + d.y);
-        else mapScroll.y = Mathf.Max(0, mapScroll.y + d.y);
+        scrollPanel.y = Mathf.Max(0, scrollPanel.y + d.y);
     }
 
     /// Address of the sim server: asked when it cannot be reached (and from the "Server" button),
@@ -572,7 +677,8 @@ public class SimHud : MonoBehaviour
     void ConnectWindow(float w, float h)
     {
         serverField ??= view.Api?.BaseUrl ?? "";
-        connectRect = new Rect(w / 2 - 260, Mathf.Max(barH + 10, h / 2 - 120), 520, 210);
+        float cw = Mathf.Min(520, w - 16);
+        connectRect = new Rect(Mathf.Max(8, w / 2 - cw / 2), Mathf.Max(10, h / 2 - 120), cw, 210);
         GUILayout.BeginArea(connectRect, box);
         GUILayout.Label("Collegati al server", title);
         GUILayout.Label(view.Error ?? "Collegamento in corso…", small);
@@ -581,6 +687,7 @@ public class SimHud : MonoBehaviour
         GUILayout.BeginHorizontal();
         if (GUILayout.Button("Connetti", button)) view.SetServer(serverField);
         if (view.Map != null && GUILayout.Button("Chiudi", button, GUILayout.Width(90))) serverOpen = false;
+        if (GUILayout.Button("Esci", button, GUILayout.Width(80))) exitAsk = true;
         GUILayout.EndHorizontal();
         GUILayout.EndArea();
     }
@@ -609,7 +716,7 @@ public class SimHud : MonoBehaviour
             bannerUntil = Time.time + 3f;
         }
         if (Time.time > bannerUntil || view.Zoom < 1f) return;
-        GUI.Label(new Rect(14, barH + 12, Mathf.Max(220, name.Length * 9 + 40), 40), name, banner);
+        GUI.Label(new Rect(14, 12, Mathf.Max(220, name.Length * 9 + 40), 40), name, banner);
     }
 
     /// Text box at the bottom with the newest headline of the chosen feed filter.

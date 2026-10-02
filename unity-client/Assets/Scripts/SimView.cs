@@ -31,15 +31,35 @@ public class SimView : MonoBehaviour
     public JObject PlayerInfo { get; private set; }
     public JArray SelectedActions { get; private set; }
     /// Order waiting for a target click (a cell or an entity).
-    public JObject PendingAction { get; set; }
+    public JObject PendingAction
+    {
+        get => pendingAction;
+        set
+        {
+            pendingAction = value;
+            if (value != null) DigMode = false;
+        }
+    }
+    JObject pendingAction;
     public bool FollowCamera { get; set; }
 
     /// Screen pixels per sprite pixel. Whole numbers (close view, Pokémon-like) are pixel-perfect;
     /// below 1 is the map overview.
     public float Zoom { get; set; } = 3f;
 
-    /// Drag a rectangle on the map to designate digging for our faction.
-    public bool DigMode { get; set; }
+    /// Drag a rectangle on the map to designate digging for our faction. It lasts for one rectangle:
+    /// outside of it, dragging only moves the view.
+    public bool DigMode
+    {
+        get => digMode;
+        set
+        {
+            digMode = value;
+            if (value) pendingAction = null;
+            else CancelDig();
+        }
+    }
+    bool digMode;
     Vector2Int? digStart;
     SpriteRenderer digRect;
     Texture2D terrainTex;
@@ -66,6 +86,11 @@ public class SimView : MonoBehaviour
     Vector2 touchStart;
     float touchStartTime, pinchStartDist, pinchStartZoom;
     bool touchMoved, touchOnUi, longPressDone, pinching;
+    // Mouse: the left button selects with a click and pans with a drag.
+    Vector3 leftStart, leftOrigin;
+    bool leftDown, leftDragged;
+    /// Marker over our own pawns, only on this player's screen.
+    static readonly Color MineColor = new(0.45f, 1f, 0.5f);
 
     class EntityGo
     {
@@ -73,6 +98,9 @@ public class SimView : MonoBehaviour
         public SpriteRenderer Body, Outline, BarBg, Bar, Marker;
         // Chibi layers: base (race), cloth (tinted with the faction colour), accessory (class or crown).
         public SpriteRenderer Base, Cloth, Acc;
+        // Arrow over the head of the pawns of our faction.
+        public SpriteRenderer Mine, MineEdge;
+        public float MineY;
         public Sprite[] BaseFrames, ClothFrames, AccFrames;
         public int Dir;
         public float Anim;
@@ -480,6 +508,10 @@ public class SimView : MonoBehaviour
             go.Cloth = NewSprite("Cloth", root.transform, null, Color.white, 12);
             go.Acc = NewSprite("Accessory", root.transform, null, Color.white, 13);
             foreach (var sr in new[] { go.Base, go.Cloth, go.Acc }) sr.transform.localPosition = feet;
+            // Above trees, roofs and fog: our pawns are always found at a glance.
+            go.MineEdge = NewSprite("MineEdge", root.transform, Shapes.Get("triangle"), new Color(0.08f, 0.12f, 0.1f, 0.9f), 31700);
+            go.Mine = NewSprite("Mine", root.transform, Shapes.Get("triangle"), MineColor, 31701);
+            go.Mine.transform.localRotation = go.MineEdge.transform.localRotation = Quaternion.Euler(0, 0, 180);
         }
         return go;
     }
@@ -515,6 +547,7 @@ public class SimView : MonoBehaviour
         }
         var race = (string)e["race"];
         var rs = SpriteDef("race:" + race);
+        go.Mine.enabled = go.MineEdge.enabled = IsMine((long)e["id"]) && (bool?)e["dead"] != true;
         bool championChibi = ChampionId.HasValue && (long)e["id"] == ChampionId.Value;
         go.Dead = (bool?)e["dead"] ?? false;
         go.BaseFrames = Chibi.Load((string)rs?["sheet"]);
@@ -529,6 +562,7 @@ public class SimView : MonoBehaviour
             }
             if (championChibi) accSheet = "acc_corona";
             go.AccFrames = Chibi.Load(accSheet);
+            go.MineY = 1.15f;
             go.Body.enabled = false;
             go.Outline.sprite = Shapes.Get("circle");
             go.Outline.color = championChibi ? new Color(1f, 0.82f, 0.2f, 0.9f) : new Color(outline.r, outline.g, outline.b, 0.75f);
@@ -553,6 +587,7 @@ public class SimView : MonoBehaviour
             return;
         }
         go.Body.enabled = true;
+        go.MineY = 0.8f;
         var shape = (string)rs?["shape"];
         go.Body.sprite = Shapes.Get(shape);
         go.Outline.sprite = Shapes.Get(shape);
@@ -658,6 +693,15 @@ public class SimView : MonoBehaviour
             if (!go.Root.activeSelf) continue;
             var before = go.Root.transform.position;
             go.Root.transform.position = Vector3.Lerp(before, go.Target, 1f - Mathf.Exp(-Time.deltaTime * 8f));
+            if (go.Mine != null && go.Mine.enabled)
+            {
+                // Bobbing arrow, grown in the overview so it still shows when the pawns are dots.
+                float grow = Mathf.Clamp(0.7f / Mathf.Max(0.05f, Zoom), 1f, 6f);
+                var at = new Vector3(0, go.MineY + 0.2f * (grow - 1f) + Mathf.Sin(Time.time * 4f) * 0.06f, 0);
+                go.Mine.transform.localPosition = go.MineEdge.transform.localPosition = at;
+                go.Mine.transform.localScale = Vector3.one * 0.44f * grow;
+                go.MineEdge.transform.localScale = Vector3.one * 0.66f * grow;
+            }
             if (go.BaseFrames == null) continue;
             var delta = go.Target - before;
             bool moving = delta.sqrMagnitude > 0.0025f && !go.Dead;
@@ -720,12 +764,14 @@ public class SimView : MonoBehaviour
             if (Zoom >= 1f && (Zoom > 1f || scroll > 0)) ZoomAt(Input.mousePosition, Mathf.Round(Zoom) + Mathf.Sign(scroll));
             else ZoomAt(Input.mousePosition, Zoom * (scroll > 0 ? 1.25f : 0.8f));
         }
+        bool click = false;
         if (TouchUi) Pinch();
         else
         {
             if (Input.GetMouseButtonDown(2)) dragOrigin = cam.ScreenToWorldPoint(Input.mousePosition);
             if (Input.GetMouseButton(2))
                 cam.transform.position += dragOrigin - cam.ScreenToWorldPoint(Input.mousePosition);
+            click = LeftButton(overUi);
         }
         var move = new Vector3(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"), 0);
         if (move.sqrMagnitude > 0) FollowCamera = false;
@@ -750,19 +796,12 @@ public class SimView : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.M)) ToggleOverview();
         if (TouchUi)
         {
-            // Android's back button arrives as Escape: it cancels what is in progress.
-            if (Input.GetKeyDown(KeyCode.Escape))
-            {
-                PendingAction = null;
-                DigMode = false;
-                CancelDig();
-            }
             TouchControls(hud);
             return;
         }
         if (overUi && !digStart.HasValue) return;
         if (DigMode && DigControls()) return;
-        if (Input.GetMouseButtonDown(0))
+        if (click)
         {
             if (PendingAction != null) ResolvePending(Input.mousePosition);
             else Select(Pick(Input.mousePosition));
@@ -773,12 +812,49 @@ public class SimView : MonoBehaviour
             PendingAction = new JObject { ["kind"] = "move", ["id"] = "move", ["needs_target"] = "cell" };
             ResolvePending(Input.mousePosition);
         }
-        if (Input.GetKeyDown(KeyCode.Escape)) PendingAction = null;
         if (Input.GetKeyDown(KeyCode.C) && ChampionId.HasValue)
         {
             Select(ChampionId);
             FocusOn(ChampionId.Value);
         }
+    }
+
+    /// Left button on the map outside of dig mode: a drag moves the view, a click (released without
+    /// moving) is returned true to select or to pick the order's target.
+    bool LeftButton(bool overUi)
+    {
+        if (DigMode)
+        {
+            leftDown = false;
+            return false;
+        }
+        var mp = Input.mousePosition;
+        if (Input.GetMouseButtonDown(0) && !overUi)
+        {
+            leftDown = true;
+            leftDragged = false;
+            leftStart = mp;
+            leftOrigin = cam.ScreenToWorldPoint(mp);
+        }
+        if (!leftDown) return false;
+        if (!leftDragged && Vector2.Distance(mp, leftStart) > 6f) leftDragged = true;
+        if (leftDragged)
+        {
+            FollowCamera = false;
+            cam.transform.position += leftOrigin - cam.ScreenToWorldPoint(mp);
+        }
+        if (Input.GetMouseButton(0)) return false;
+        leftDown = false;
+        return !leftDragged;
+    }
+
+    /// <summary>Esc or back: drops the order waiting for a target or the dig; false if there was none.</summary>
+    public bool CancelCurrent()
+    {
+        if (PendingAction == null && !DigMode) return false;
+        PendingAction = null;
+        DigMode = false;
+        return true;
     }
 
     /// Zoom keeping the world point under <paramref name="screen"/> still: whole steps in the close
@@ -863,7 +939,9 @@ public class SimView : MonoBehaviour
             longPressDone = true;
             PendingAction = new JObject { ["kind"] = "move", ["id"] = "move", ["needs_target"] = "cell" };
             ResolvePending(t.position);
+#if UNITY_ANDROID || UNITY_IOS
             Handheld.Vibrate();
+#endif
             return;
         }
         if (t.phase == TouchPhase.Ended && !longPressDone)
@@ -882,10 +960,9 @@ public class SimView : MonoBehaviour
     /// Rectangle drag for digging; true while it consumes the mouse.
     bool DigControls()
     {
-        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetMouseButtonDown(1))
+        if (Input.GetMouseButtonDown(1))
         {
             DigMode = false;
-            CancelDig();
             return true;
         }
         if (Input.GetMouseButtonDown(0)) digStart = MouseCell();
@@ -910,7 +987,7 @@ public class SimView : MonoBehaviour
     void FinishDig(Vector2Int a, Vector2Int b)
     {
         var r = DigArea(a, b);
-        CancelDig();
+        DigMode = false;
         SendPlayerCommand(new JObject
         {
             ["type"] = "designate", ["layer"] = (string)Layers[Layer]["id"],
