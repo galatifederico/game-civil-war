@@ -108,7 +108,7 @@
          effects: [Custom(id: "dig_frontier", params: {"zone": "#fortezza", "faction": "nani_miniere", "count": 4, "max_open": 14})]),
         (id: "oracolo_assegnazione", name: "L'Oracolo sceglie da che parte stare", when: TickAtLeast(0),
          effects: [Custom(id: "oracle_assign")]),
-        (id: "oracolo_rivelazione", name: "L'Oracolo parla", repeat: true, cooldown: 24,
+        (id: "oracolo_rivelazione", name: "L'Oracolo parla", repeat: true, cooldown: 96,
          when: All([TickAtLeast(12), TemplateAlive("oracolo")]), effects: [Custom(id: "oracle_reveal")]),
         (id: "gallerie_violate", name: "Intrusi nelle Gallerie dei Nani!", news: 0.7,
          when: Custom(id: "intruders", params: {"zone": "gallerie", "faction": "nani_miniere", "min": 1}),
@@ -175,19 +175,19 @@
         ],
     ),
     news_sources: [
-        (id: "propaganda_chiesa", author: "vescovo", start_tick: 20, interval: 36, truth: Propaganda, headlines: [
+        (id: "propaganda_chiesa", author: "vescovo", start_tick: 20, interval: 120, truth: Propaganda, headlines: [
             (headline: "Il Vescovo: «Chi custodisce la Testa di San Donnino custodisce Fidenza»", topics: ["propaganda", "chiesa"]),
             (headline: "Messa in piazza: offerte raddoppiate, peccati dimezzati", topics: ["propaganda", "chiesa"], effects: [ModTreasury(50)]),
         ]),
-        (id: "propaganda_vegana", author: "gran_sacerdote_tofu", start_tick: 30, interval: 36, truth: Propaganda, headlines: [
+        (id: "propaganda_vegana", author: "gran_sacerdote_tofu", start_tick: 30, interval: 120, truth: Propaganda, headlines: [
             (headline: "Il Gran Sacerdote del Tofu: «La soia è l'unica reliquia che conta»", topics: ["propaganda", "vegano"]),
             (headline: "Studio indipendente (nostro): il culatello causa l'alopecia", topics: ["propaganda", "vegano", "carne"]),
         ]),
-        (id: "propaganda_cda", author: "presidente_cda", start_tick: 40, interval: 48, truth: Propaganda, headlines: [
+        (id: "propaganda_cda", author: "presidente_cda", start_tick: 40, interval: 144, truth: Propaganda, headlines: [
             (headline: "Fidenza Village: saldi del 70% su tutto, rettili esclusi", topics: ["propaganda", "shopping"]),
             (headline: "Il CdA smentisce: «Nessun rettiliano nel consiglio. Sssssì, nessuno»", topics: ["propaganda"]),
         ]),
-        (id: "overmind_fake_news", author: "boomer_overmind", start_tick: 0, interval: 8, truth: Fake, headlines: [
+        (id: "overmind_fake_news", author: "boomer_overmind", start_tick: 0, interval: 48, truth: Fake, headlines: [
             (headline: "I Vegani vogliono vietare il culatello: firmate la petizione!", topics: ["bufala", "vegano"]),
             (headline: "Gli Elfi della Logistica rubano il Wi-Fi ai pensionati", topics: ["bufala", "logistica"]),
             (headline: "5G nelle rotonde: ecco perché ti fa male la cervicale", topics: ["bufala"]),

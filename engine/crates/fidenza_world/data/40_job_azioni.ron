@@ -8,6 +8,8 @@
         (id: "compra_da_bere", name: "Ordina da bere", handler: "buy", duration: 1, params: {"tag": "bevanda", "use": true}),
         (id: "dormi", name: "Dorme", duration: 4, effects: [ModNeed(need: "riposo", amount: 0.8)]),
         (id: "girovaga", name: "Girovaga", duration: 2, effects: [ModNeed(need: "svago", amount: 0.12)]),
+        // Ferma sul posto: a guardarsi intorno, a chiacchierare, ad ascoltare chi gli parla.
+        (id: "sosta", name: "Si ferma a chiacchierare", duration: 4, effects: [ModNeed(need: "svago", amount: 0.05)]),
         (id: "muoviti", name: "Si sposta", duration: 0),
         (id: "pattuglia", name: "Pattuglia", duration: 1),
 
@@ -93,6 +95,8 @@
         (id: "girovaga", name: "Girovaga", universal: true, weight: 0.35, kind: Job(job: "girovaga", target: Nearby(8)),
          considerations: [(input: Need("svago"), curve: Logistic(steepness: -12, midpoint: 0.25))], label: "Passeggia"),
         (id: "ozia", name: "Ozia", universal: true, weight: 0.03, kind: Idle),
+        (id: "sosta", name: "Si ferma", universal: true, weight: 0.3, cooldown: 10, kind: Job(job: "sosta"),
+         considerations: [(input: Random, curve: Identity)], label: "Si ferma a chiacchierare"),
         (id: "vai_al_trono", name: "Reclama il trono", universal: true, weight: 3.0,
          kind: Job(job: "muoviti", target: Zone("trono_ubriaconi")),
          requires: All([TitleVacant("trono_degli_ubriaconi"), Any([MemberOf("ubriaconi"), HasTag("leader")])]),
@@ -184,7 +188,7 @@
         (id: "pattuglia", name: "Pattuglia", weight: 0.3, kind: Job(job: "pattuglia", target: OwnFactionZone("pattuglia")),
          label: "Di pattuglia"),
         // Stampa.
-        (id: "pubblica_articolo", name: "Pubblica", weight: 1.3, kind: Job(job: "pubblica"),
+        (id: "pubblica_articolo", name: "Pubblica", weight: 1.3, cooldown: 12, kind: Job(job: "pubblica"),
          considerations: [(input: Scoops(max: 1))], label: "Scrive per il Piccione Viaggiatore"),
         (id: "indaga_sospetto", name: "Inchiesta", weight: 0.7, cooldown: 24,
          kind: Job(job: "inchiesta", target: Nearest((pawn: true, max_distance: 12, condition: Disguised)))),

@@ -374,6 +374,17 @@ pub fn talk(world: &mut World, player: &str, target: SimId) -> Result<(String, S
     if world.get_resource::<Conversations>().is_none() {
         world.insert_resource(Conversations::default());
     }
+    // Whoever is talked to stops to listen (unless busy with an order of its own player).
+    let busy = world.get::<Task>(t).is_some_and(|x| x.forced && x.job.is_some());
+    if !busy && world.resource::<Content>().jobs.contains_key("sosta") && world.get::<Controlled>(t).is_none() {
+        release_task(world, t);
+        start_job(world, t, "sosta", JobTarget::None, None, None);
+        let me_name = crate::effects::name_of(world, me);
+        if let Some(mut task) = world.get_mut::<Task>(t) {
+            task.forced = true;
+            task.label = format!("Parla con {me_name}");
+        }
+    }
     let n = {
         let mut c = world.resource_mut::<Conversations>();
         c.0 += 1;

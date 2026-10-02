@@ -139,7 +139,7 @@ impl SimBuilder {
         world.insert_resource(GlobalModifiers::default());
         world.insert_resource(crate::supply::SupplyStats::default());
         world.insert_resource(crate::territory::Territories::default());
-        world.insert_resource(Feed { name: content.press.feed_name.clone(), articles: vec![] });
+        world.insert_resource(Feed { name: content.press.feed_name.clone(), articles: vec![], next_id: 1 });
         world.insert_resource(crate::press::PressCursor::default());
         world.insert_resource(crate::telemetry::TelemetryCursor::default());
         world.insert_resource(Flags::default());
@@ -168,7 +168,7 @@ impl SimBuilder {
                 .chain()
                 .in_set(SimSet::Social),
         );
-        schedule.add_systems((crate::press::gather_scoops, crate::press::news_sources).chain().in_set(SimSet::Press));
+        schedule.add_systems((crate::press::gather_scoops, crate::press::news_sources, crate::press::prune_feed).chain().in_set(SimSet::Press));
         schedule.add_systems((crate::snapshot::update_activity, crate::telemetry::record_metrics).chain().in_set(SimSet::Output));
         for add in self.systems {
             add(&mut schedule);

@@ -30,7 +30,7 @@ if [[ -x "$ADB" ]] && "$ADB" get-state >/dev/null 2>&1; then
 fi
 
 echo "▸ Avvio il server su 0.0.0.0:$PORT (log in logs/server.log)"
-(cd "$ROOT/engine" && exec ./target/release/fidenza_world --ticks 0 --serve "0.0.0.0:$PORT" --tick-ms 400 --compendium "$ROOT/logs/compendium.json") >"$ROOT/logs/server.log" 2>&1 &
+(cd "$ROOT/engine" && exec ./target/release/fidenza_world --ticks 0 --serve "0.0.0.0:$PORT" --tick-ms 1000 --compendium "$ROOT/logs/compendium.json") >"$ROOT/logs/server.log" 2>&1 &
 SERVER=$!
 # Mini server per scaricare l'APK dal browser del telefono.
 (cd "$(dirname "$APK")" && exec python3 -m http.server "$APK_PORT" --bind 0.0.0.0) >/dev/null 2>&1 &

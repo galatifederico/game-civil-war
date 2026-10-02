@@ -24,7 +24,7 @@ struct Args {
 }
 
 fn parse_args() -> Args {
-    let mut a = Args { seed: 1, ticks: 100, serve: None, tick_ms: 500, mcp_stdio: false, load: None, token: None, compendium: "compendium.json".into(), verbose: false };
+    let mut a = Args { seed: 1, ticks: 100, serve: None, tick_ms: 1000, mcp_stdio: false, load: None, token: None, compendium: "compendium.json".into(), verbose: false };
     let mut it = std::env::args().skip(1).peekable();
     while let Some(arg) = it.next() {
         match arg.as_str() {

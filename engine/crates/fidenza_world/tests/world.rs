@@ -390,3 +390,26 @@ fn champion_talks_and_the_team_shares_items() {
     sim.execute(SimCommand::PlayerUseItem { player: "giocatore".into(), entity: champion, item: "birra".into() }).expect("drunk");
     assert_eq!(sim_core::inventory_ops::count(&sim.world, me, "birra"), 0);
 }
+
+#[test]
+fn feed_keeps_few_main_news_and_drops_old_secondary_ones() {
+    let mut sim = sim(2);
+    sim.execute(SimCommand::SetParam { key: "press.secondary_ttl_ticks".into(), value: 24.0 }).unwrap();
+    sim.execute(SimCommand::SetParam { key: "press.main_keep".into(), value: 5.0 }).unwrap();
+    // Plenty of news, including old ones.
+    for i in 0..40 {
+        sim.execute(SimCommand::Publish { headline: format!("Notizia {i}"), truth: sim_core::content::Truth::Real, topics: vec!["gossip".into()], author: None }).unwrap();
+        sim.tick();
+    }
+    sim.run(30);
+    let tick = sim.tick_count();
+    let params = sim.world.resource::<sim_core::params::Params>().clone();
+    let players = vec!["anarchici_commercio".to_string()];
+    let feed = sim.world.resource::<Feed>();
+    let main = feed.articles.iter().filter(|a| sim_core::press::is_main(&params, a, &players)).count();
+    assert!(main <= 5, "{main} main articles kept");
+    assert!(feed.articles.iter().filter(|a| !sim_core::press::is_main(&params, a, &players)).all(|a| a.tick + 24 + 6 > tick));
+    // Ids keep growing after pruning.
+    assert!(feed.articles.windows(2).all(|w| w[0].id < w[1].id));
+    assert!(feed.next_id > 40);
+}

@@ -23,7 +23,7 @@ if [[ "${1:-}" != "--web" ]] && { [[ "${1:-}" == "--build" ]] || [[ ! -x "$CLIEN
 fi
 
 echo "▸ Avvio il server su http://127.0.0.1:$PORT (log in logs/server.log)"
-(cd "$ROOT/engine" && exec ./target/release/fidenza_world --ticks 0 --serve "127.0.0.1:$PORT" --tick-ms 400 --compendium "$ROOT/logs/compendium.json") >"$ROOT/logs/server.log" 2>&1 &
+(cd "$ROOT/engine" && exec ./target/release/fidenza_world --ticks 0 --serve "127.0.0.1:$PORT" --tick-ms 1000 --compendium "$ROOT/logs/compendium.json") >"$ROOT/logs/server.log" 2>&1 &
 SERVER=$!
 trap 'kill $SERVER 2>/dev/null; echo "▸ Server fermato"' EXIT
 for _ in $(seq 1 60); do curl -s "localhost:$PORT/healthz" >/dev/null && break; sleep 0.5; done

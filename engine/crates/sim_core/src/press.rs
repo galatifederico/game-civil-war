@@ -69,6 +69,43 @@ impl Article {
 pub struct Feed {
     pub name: String,
     pub articles: Vec<Article>,
+    /// Id of the next article (articles get pruned, ids never repeat).
+    #[serde(default)]
+    pub next_id: u64,
+}
+
+/// Whether an article belongs to the main channel: big news for anyone, or news about a player's faction.
+pub fn is_main(params: &Params, a: &Article, player_factions: &[String]) -> bool {
+    let (mine, world) = (params.get("press.main_mine_threshold", 0.5) as f32, params.get("press.main_world_threshold", 0.9) as f32);
+    a.importance >= world || (a.importance >= mine && player_factions.iter().any(|f| a.concerns(f)))
+}
+
+/// Keeps the feed short: the newest `press.main_keep` articles of the main channel, and the others only
+/// for `press.secondary_ttl_ticks` (the server sets it to 24 real hours at the current speed).
+pub fn prune_feed(world: &mut World) {
+    let tick = world.resource::<SimClock>().tick;
+    if !tick.is_multiple_of(6) {
+        return;
+    }
+    let p = world.resource::<Params>().clone();
+    let (keep, ttl) = (p.get("press.main_keep", 60.0) as usize, p.get("press.secondary_ttl_ticks", 2160.0) as u64);
+    let players: Vec<String> = world.resource::<crate::factions::Players>().players.values().map(|p| p.faction.clone()).collect();
+    let mut feed = world.resource_mut::<Feed>();
+    let main_total = feed.articles.iter().filter(|a| is_main(&p, a, &players)).count();
+    let mut main_seen = 0;
+    let mut kept = Vec::with_capacity(feed.articles.len());
+    // Oldest first: the main articles beyond the newest `keep` go.
+    for a in std::mem::take(&mut feed.articles) {
+        if is_main(&p, &a, &players) {
+            main_seen += 1;
+            if main_total - main_seen < keep {
+                kept.push(a);
+            }
+        } else if a.tick + ttl > tick {
+            kept.push(a);
+        }
+    }
+    feed.articles = kept;
 }
 
 #[derive(Resource, Debug, Clone, Default, Serialize, Deserialize)]
@@ -211,7 +248,9 @@ pub fn publish(
     factions.dedup();
     let id = {
         let mut feed = world.resource_mut::<Feed>();
-        let id = feed.articles.len() as u64 + 1;
+        // Saves from before `next_id` existed: continue after the last article.
+        let id = feed.next_id.max(feed.articles.last().map_or(0, |a| a.id) + 1);
+        feed.next_id = id + 1;
         feed.articles.push(Article {
             id,
             tick,

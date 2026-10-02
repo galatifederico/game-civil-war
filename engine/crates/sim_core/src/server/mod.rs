@@ -119,7 +119,13 @@ pub async fn serve_on(state: AppState, listener: tokio::net::TcpListener) -> std
                     (c.paused, c.tick_ms.max(1))
                 };
                 if !paused {
-                    sim.lock().unwrap().tick();
+                    let mut sim = sim.lock().unwrap();
+                    // Secondary news last 24 real hours, whatever the speed.
+                    let ttl = (86_400_000 / ms).max(24) as f64;
+                    if sim.world.resource::<crate::params::Params>().get("press.secondary_ttl_ticks", 0.0) != ttl {
+                        sim.world.resource_mut::<crate::params::Params>().set("press.secondary_ttl_ticks", ttl);
+                    }
+                    sim.tick();
                 }
                 tokio::time::sleep(Duration::from_millis(ms)).await;
             }

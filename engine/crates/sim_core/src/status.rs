@@ -94,7 +94,8 @@ pub fn apply_status(world: &mut World, e: Entity, status: &str, severity: f32, s
     if existing.is_none() {
         let pos = world.get::<Position>(e).copied();
         let (actor, target) = (source.and_then(|s| sim_id(world, s)), sim_id(world, e));
-        let news = if def.kind == crate::content::StatusKind::Disease || def.kind == crate::content::StatusKind::Mutation { 0.3 } else { 0.0 };
+        let disease_news = world.resource::<crate::params::Params>().get("press.disease_news", 0.2) as f32;
+        let news = if def.kind == crate::content::StatusKind::Disease || def.kind == crate::content::StatusKind::Mutation { disease_news } else { 0.0 };
         let who = world_name(world, e);
         world.resource_mut::<EventLog>().push(
             tick,
