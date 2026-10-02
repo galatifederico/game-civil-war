@@ -60,6 +60,13 @@ public class SimView : MonoBehaviour
     bool fogInitialized;
     Vector3 dragOrigin;
 
+    /// Phones and tablets: one finger pans, taps select, a long press sends our pawn, two fingers zoom.
+    public static bool TouchUi => Application.isMobilePlatform;
+    const string ServerPref = "server";
+    Vector2 touchStart;
+    float touchStartTime, pinchStartDist, pinchStartZoom;
+    bool touchMoved, touchOnUi, longPressDone, pinching;
+
     class EntityGo
     {
         public GameObject Root;
@@ -76,8 +83,14 @@ public class SimView : MonoBehaviour
 
     void Start()
     {
+        serverUrl = PlayerPrefs.GetString(ServerPref, serverUrl);
         foreach (var a in System.Environment.GetCommandLineArgs())
             if (a.StartsWith("--server=")) serverUrl = a.Substring(9);
+        if (TouchUi)
+        {
+            Screen.sleepTimeout = SleepTimeout.NeverSleep;
+            Application.targetFrameRate = 60;
+        }
         Api = new SimApi(serverUrl);
         cam = Camera.main;
         if (cam == null)
@@ -94,6 +107,19 @@ public class SimView : MonoBehaviour
         selectionRing = NewSprite("Selection", null, Shapes.Get("ring"), new Color(1f, 0.45f, 0.3f), 31000);
         selectionRing.enabled = false;
         StartCoroutine(Run());
+    }
+
+    /// <summary>Connects to another server (address remembered on this device) by restarting the client.</summary>
+    public void SetServer(string url)
+    {
+        url = url.Trim();
+        if (url.Length == 0) return;
+        if (!url.Contains("://")) url = "http://" + url;
+        // No port given: the default of the sim server.
+        if (url.IndexOf(':', url.IndexOf("://") + 3) < 0) url = url.TrimEnd('/') + ":8787";
+        PlayerPrefs.SetString(ServerPref, url);
+        PlayerPrefs.Save();
+        UnityEngine.SceneManagement.SceneManager.LoadScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
     }
 
     IEnumerator Run()
@@ -688,19 +714,19 @@ public class SimView : MonoBehaviour
         foreach (var q in quarterTint.Values) q.enabled = Zoom < 1f;
         var hud = GetComponent<SimHud>();
         bool overUi = hud != null && hud.IsOverUi(Input.mousePosition);
-        float scroll = Input.mouseScrollDelta.y;
+        float scroll = TouchUi ? 0f : Input.mouseScrollDelta.y;
         if (!overUi && Mathf.Abs(scroll) > 0.01f)
         {
-            var before = cam.ScreenToWorldPoint(Input.mousePosition);
-            if (Zoom >= 1f && (Zoom > 1f || scroll > 0)) Zoom = Mathf.Clamp(Mathf.Round(Zoom) + Mathf.Sign(scroll), 1f, 8f);
-            else Zoom = Mathf.Clamp(Zoom * (scroll > 0 ? 1.25f : 0.8f), 0.1f, 1f);
-            ApplyZoom();
-            var after = cam.ScreenToWorldPoint(Input.mousePosition);
-            cam.transform.position += before - after;
+            if (Zoom >= 1f && (Zoom > 1f || scroll > 0)) ZoomAt(Input.mousePosition, Mathf.Round(Zoom) + Mathf.Sign(scroll));
+            else ZoomAt(Input.mousePosition, Zoom * (scroll > 0 ? 1.25f : 0.8f));
         }
-        if (Input.GetMouseButtonDown(2)) dragOrigin = cam.ScreenToWorldPoint(Input.mousePosition);
-        if (Input.GetMouseButton(2))
-            cam.transform.position += dragOrigin - cam.ScreenToWorldPoint(Input.mousePosition);
+        if (TouchUi) Pinch();
+        else
+        {
+            if (Input.GetMouseButtonDown(2)) dragOrigin = cam.ScreenToWorldPoint(Input.mousePosition);
+            if (Input.GetMouseButton(2))
+                cam.transform.position += dragOrigin - cam.ScreenToWorldPoint(Input.mousePosition);
+        }
         var move = new Vector3(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"), 0);
         if (move.sqrMagnitude > 0) FollowCamera = false;
         cam.transform.position += move * cam.orthographicSize * Time.deltaTime * 1.5f;
@@ -722,6 +748,18 @@ public class SimView : MonoBehaviour
             cam.transform.position = new Vector3(Mathf.Round(cp2.x / unit) * unit, Mathf.Round(cp2.y / unit) * unit, -10f);
         }
         if (Input.GetKeyDown(KeyCode.M)) ToggleOverview();
+        if (TouchUi)
+        {
+            // Android's back button arrives as Escape: it cancels what is in progress.
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                PendingAction = null;
+                DigMode = false;
+                CancelDig();
+            }
+            TouchControls(hud);
+            return;
+        }
         if (overUi && !digStart.HasValue) return;
         if (DigMode && DigControls()) return;
         if (Input.GetMouseButtonDown(0))
@@ -743,6 +781,98 @@ public class SimView : MonoBehaviour
         }
     }
 
+    /// Zoom keeping the world point under <paramref name="screen"/> still: whole steps in the close
+    /// view (pixel-perfect), free below 1 (map overview).
+    void ZoomAt(Vector3 screen, float target)
+    {
+        var before = cam.ScreenToWorldPoint(screen);
+        Zoom = target >= 1f ? Mathf.Clamp(Mathf.Round(target), 1f, 8f) : Mathf.Clamp(target, 0.1f, 1f);
+        ApplyZoom();
+        cam.transform.position += before - cam.ScreenToWorldPoint(screen);
+    }
+
+    /// Two fingers: pinch to zoom, move together to pan.
+    void Pinch()
+    {
+        if (Input.touchCount < 2)
+        {
+            pinching = false;
+            return;
+        }
+        Touch a = Input.GetTouch(0), b = Input.GetTouch(1);
+        Vector2 mid = (a.position + b.position) / 2f;
+        float dist = Mathf.Max(1f, Vector2.Distance(a.position, b.position));
+        if (!pinching)
+        {
+            pinching = true;
+            pinchStartDist = dist;
+            pinchStartZoom = Zoom;
+            dragOrigin = cam.ScreenToWorldPoint(mid);
+            touchMoved = true;
+            CancelDig();
+        }
+        FollowCamera = false;
+        float ratio = dist / pinchStartDist;
+        // Close view zooms in whole steps: ask for a little more stretch before each step.
+        float target = pinchStartZoom >= 1f ? pinchStartZoom * Mathf.Pow(ratio, 1.3f) : pinchStartZoom * ratio;
+        if (pinchStartZoom >= 1f && target < 1f && ratio > 0.6f) target = 1f;
+        ZoomAt(mid, target);
+        cam.transform.position += dragOrigin - cam.ScreenToWorldPoint(mid);
+    }
+
+    /// One finger: drag pans (or draws the dig rectangle), tap selects or picks the order's target,
+    /// long press sends the selected pawn of ours there. Touches starting on the HUD are left to it.
+    void TouchControls(SimHud hud)
+    {
+        if (Input.touchCount != 1 || pinching)
+        {
+            if (Input.touchCount == 0) pinching = false;
+            return;
+        }
+        var t = Input.GetTouch(0);
+        var w = cam.ScreenToWorldPoint(t.position);
+        var cell = new Vector2Int(Mathf.FloorToInt(w.x), Mathf.FloorToInt(-w.y));
+        if (t.phase == TouchPhase.Began)
+        {
+            touchStart = t.position;
+            touchStartTime = Time.time;
+            touchMoved = longPressDone = false;
+            touchOnUi = hud != null && hud.IsOverUi(t.position);
+            dragOrigin = w;
+            if (DigMode && !touchOnUi) digStart = cell;
+            return;
+        }
+        if (touchOnUi) return;
+        float slop = (Screen.dpi > 0 ? Screen.dpi : 160f) * 0.1f;
+        if (!touchMoved && Vector2.Distance(t.position, touchStart) > slop) touchMoved = true;
+        if (DigMode && digStart.HasValue)
+        {
+            DrawDigRect(digStart.Value, cell);
+            if (t.phase == TouchPhase.Ended) FinishDig(digStart.Value, cell);
+            if (t.phase == TouchPhase.Canceled) CancelDig();
+            return;
+        }
+        if (touchMoved)
+        {
+            FollowCamera = false;
+            cam.transform.position += dragOrigin - w;
+            return;
+        }
+        if (!longPressDone && Time.time - touchStartTime > 0.5f && PendingAction == null && Selected.HasValue && IsMine(Selected.Value))
+        {
+            longPressDone = true;
+            PendingAction = new JObject { ["kind"] = "move", ["id"] = "move", ["needs_target"] = "cell" };
+            ResolvePending(t.position);
+            Handheld.Vibrate();
+            return;
+        }
+        if (t.phase == TouchPhase.Ended && !longPressDone)
+        {
+            if (PendingAction != null) ResolvePending(t.position);
+            else Select(Pick(t.position));
+        }
+    }
+
     Vector2Int MouseCell()
     {
         var w = cam.ScreenToWorldPoint(Input.mousePosition);
@@ -755,30 +885,43 @@ public class SimView : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Escape) || Input.GetMouseButtonDown(1))
         {
             DigMode = false;
-            digStart = null;
-            if (digRect != null) digRect.enabled = false;
+            CancelDig();
             return true;
         }
-        if (digRect == null) digRect = NewSprite("DigRect", null, Shapes.Pixel, new Color(1f, 0.75f, 0.2f, 0.35f), 31500);
         if (Input.GetMouseButtonDown(0)) digStart = MouseCell();
         if (!digStart.HasValue) return false;
-        var a = digStart.Value;
-        var b = MouseCell();
-        int x0 = Mathf.Min(a.x, b.x), y0 = Mathf.Min(a.y, b.y), w = Mathf.Abs(a.x - b.x) + 1, h = Mathf.Abs(a.y - b.y) + 1;
-        digRect.enabled = true;
-        digRect.transform.position = new Vector3(x0, -y0, 0);
-        digRect.transform.localScale = new Vector3(w, h, 1);
-        if (Input.GetMouseButtonUp(0))
-        {
-            digStart = null;
-            digRect.enabled = false;
-            SendPlayerCommand(new JObject
-            {
-                ["type"] = "designate", ["layer"] = (string)Layers[Layer]["id"],
-                ["rect"] = new JArray(x0, y0, w, h),
-            });
-        }
+        DrawDigRect(digStart.Value, MouseCell());
+        if (Input.GetMouseButtonUp(0)) FinishDig(digStart.Value, MouseCell());
         return true;
+    }
+
+    static RectInt DigArea(Vector2Int a, Vector2Int b) =>
+        new(Mathf.Min(a.x, b.x), Mathf.Min(a.y, b.y), Mathf.Abs(a.x - b.x) + 1, Mathf.Abs(a.y - b.y) + 1);
+
+    void DrawDigRect(Vector2Int a, Vector2Int b)
+    {
+        if (digRect == null) digRect = NewSprite("DigRect", null, Shapes.Pixel, new Color(1f, 0.75f, 0.2f, 0.35f), 31500);
+        var r = DigArea(a, b);
+        digRect.enabled = true;
+        digRect.transform.position = new Vector3(r.x, -r.y, 0);
+        digRect.transform.localScale = new Vector3(r.width, r.height, 1);
+    }
+
+    void FinishDig(Vector2Int a, Vector2Int b)
+    {
+        var r = DigArea(a, b);
+        CancelDig();
+        SendPlayerCommand(new JObject
+        {
+            ["type"] = "designate", ["layer"] = (string)Layers[Layer]["id"],
+            ["rect"] = new JArray(r.x, r.y, r.width, r.height),
+        });
+    }
+
+    void CancelDig()
+    {
+        digStart = null;
+        if (digRect != null) digRect.enabled = false;
     }
 
     /// <summary>Entity under a screen point (pawns win over buildings).</summary>

@@ -12,3 +12,4 @@ MemoryCaptures/
 *.sln
 *.slnx
 *.user
+.utmp/

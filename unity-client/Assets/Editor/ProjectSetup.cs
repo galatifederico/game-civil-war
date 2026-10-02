@@ -1,10 +1,11 @@
 using UnityEditor;
+using UnityEditor.Build;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
 /// <summary>
 /// Editor helpers: creates the Main scene and builds a Linux player (also usable from the command line
-/// with -executeMethod ProjectSetup.CreateMainScene / ProjectSetup.BuildLinux).
+/// with -executeMethod ProjectSetup.CreateMainScene / ProjectSetup.BuildLinux / ProjectSetup.BuildAndroid).
 /// </summary>
 public static class ProjectSetup
 {
@@ -33,5 +34,39 @@ public static class ProjectSetup
             target = BuildTarget.StandaloneLinux64,
         });
         Debug.Log("Build: " + report.summary.result);
+    }
+
+    /// <summary>
+    /// Android APK for phones: 64-bit ARM (IL2CPP), landscape, plain HTTP allowed (the sim server on
+    /// the LAN has no TLS), drawn inside the safe area so notches do not cover the top bar.
+    /// </summary>
+    [MenuItem("Fidenza/Build Android (APK)")]
+    public static void BuildAndroid()
+    {
+        if (!System.IO.File.Exists(ScenePath)) CreateMainScene();
+        var android = NamedBuildTarget.Android;
+        PlayerSettings.productName = "Fidenza";
+        PlayerSettings.SetApplicationIdentifier(android, "it.fidenza.client");
+        PlayerSettings.SetScriptingBackend(android, ScriptingImplementation.IL2CPP);
+        // Low stripping and size-optimised IL2CPP code: less for il2cpp and clang to chew on (8 GB machine).
+        PlayerSettings.SetManagedStrippingLevel(android, ManagedStrippingLevel.Low);
+        PlayerSettings.SetIl2CppCodeGeneration(android, Il2CppCodeGeneration.OptimizeSize);
+        PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+        PlayerSettings.Android.renderOutsideSafeArea = false;
+        PlayerSettings.insecureHttpOption = InsecureHttpOption.AlwaysAllowed;
+        PlayerSettings.defaultInterfaceOrientation = UIOrientation.AutoRotation;
+        PlayerSettings.allowedAutorotateToLandscapeLeft = true;
+        PlayerSettings.allowedAutorotateToLandscapeRight = true;
+        PlayerSettings.allowedAutorotateToPortrait = false;
+        PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
+        EditorUserBuildSettings.buildAppBundle = false;
+        var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+        {
+            scenes = new[] { ScenePath },
+            locationPathName = "Builds/Android/FidenzaClient.apk",
+            target = BuildTarget.Android,
+        });
+        Debug.Log("Build Android: " + report.summary.result);
+        if (Application.isBatchMode && report.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded) EditorApplication.Exit(1);
     }
 }
