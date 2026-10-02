@@ -338,3 +338,34 @@ fn factions_conquer_quarters_and_the_champion_plants_banners() {
     let banners = sim.snapshot(true).entities.iter().filter(|e| e.kind == "building" && e.building.as_ref().is_some_and(|b| b.def == "stendardo")).count();
     assert!(banners >= 1, "no banner planted");
 }
+
+#[test]
+fn champion_walks_step_by_step() {
+    let mut sim = sim(1);
+    let champion = sim.world.resource::<Players>().players["giocatore"].leader.unwrap();
+    let e = sim.entity(champion).unwrap();
+    let start = *sim.world.get::<Position>(e).unwrap();
+    let map = sim.world.resource::<WorldMap>().clone();
+    // The first free neighbour: one step lands exactly there, and the champion stays put afterwards.
+    let (dx, dy) = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+        .into_iter()
+        .find(|(dx, dy)| !map.blocked(&Position::new(start.layer, start.x + dx, start.y + dy)))
+        .expect("a free neighbour");
+    let to = sim.execute(SimCommand::PlayerStep { player: "giocatore".into(), dx, dy });
+    assert!(to.is_ok(), "{to:?}");
+    let now = *sim.world.get::<Position>(e).unwrap();
+    assert_eq!((now.x, now.y), (start.x + dx, start.y + dy));
+    sim.run(5);
+    assert_eq!(*sim.world.get::<Position>(e).unwrap(), now, "the controlled champion does not wander off");
+    // Walls stop it.
+    let mut blocked = None;
+    for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+        if map.blocked(&Position::new(now.layer, now.x + dx, now.y + dy)) {
+            blocked = Some((dx, dy));
+        }
+    }
+    if let Some((dx, dy)) = blocked {
+        sim.execute(SimCommand::PlayerStep { player: "giocatore".into(), dx, dy }).unwrap();
+        assert_eq!(*sim.world.get::<Position>(e).unwrap(), now);
+    }
+}

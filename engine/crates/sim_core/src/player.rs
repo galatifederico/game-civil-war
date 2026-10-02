@@ -19,6 +19,12 @@ use crate::time::SimClock;
 #[derive(Component, Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Controlled;
 
+/// A champion walked by hand: until `until` its AI leaves it where the player put it.
+#[derive(Component, Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ManualHold {
+    pub until: u64,
+}
+
 /// Keeps an entity close to another. `strict` = glued to it (mounts): no own AI, same cell every tick.
 #[derive(Component, Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Follow {
@@ -97,6 +103,41 @@ pub fn give_order(world: &mut World, player: &str, id: SimId, order: Order) -> R
         }
     }
     apply_order(world, e, order).map(|m| format!("{name}: {m}"))
+}
+
+/// Moves the player's champion one cell (dx, dy in -1..=1) immediately, dropping what it was doing.
+/// A blocked cell leaves it in place; landing on a passage end (door, stairs) crosses it.
+pub fn step(world: &mut World, player: &str, dx: i32, dy: i32) -> Result<Position, String> {
+    let p = world.resource::<Players>().players.get(player).cloned().ok_or_else(|| format!("giocatore '{player}' inesistente"))?;
+    let id = p.leader.ok_or("nessun campione")?;
+    let e = entity(world, id)?;
+    if world.get::<Dead>(e).is_some() || world.get::<KnockedOut>(e).is_some() {
+        return Err("il campione è fuori gioco".into());
+    }
+    if world.get::<crate::crime::Detained>(e).is_some() {
+        return Err("il campione è in arresto".into());
+    }
+    let pos = world.get::<Position>(e).copied().ok_or("il campione non è sulla mappa")?;
+    if world.get::<Task>(e).is_some_and(|t| t.job.is_some()) {
+        release_task(world, e);
+    }
+    world.entity_mut(e).remove::<Follow>();
+    let until = world.resource::<SimClock>().tick + world.resource::<Params>().get("player.manual_hold_ticks", 24.0) as u64;
+    world.entity_mut(e).insert(ManualHold { until });
+    let map = world.resource::<crate::map::WorldMap>().clone();
+    let next = Position::new(pos.layer, pos.x + dx.signum(), pos.y + dy.signum());
+    if next == pos || map.blocked(&next) {
+        return Ok(pos);
+    }
+    // No corner cutting, as in pathfinding.
+    if dx != 0 && dy != 0
+        && (map.blocked(&Position::new(pos.layer, next.x, pos.y)) || map.blocked(&Position::new(pos.layer, pos.x, next.y)))
+    {
+        return Ok(pos);
+    }
+    let land = map.portal_exit(next).unwrap_or(next);
+    world.entity_mut(e).insert((land, crate::movement::Movement::default()));
+    Ok(land)
 }
 
 /// Applies an order unconditionally (admin/tests).

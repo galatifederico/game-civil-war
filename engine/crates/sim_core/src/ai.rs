@@ -200,6 +200,10 @@ pub fn think(world: &mut World) {
         if controlled && world.get::<Task>(e).is_some_and(|t| t.job.is_some() && t.action.is_none()) {
             continue;
         }
+        // Walked by hand a moment ago: it waits for the player.
+        if world.get::<crate::player::ManualHold>(e).is_some_and(|h| h.until > tick) {
+            continue;
+        }
         if world.get::<crate::player::Follow>(e).is_some_and(|f| f.strict) {
             continue;
         }

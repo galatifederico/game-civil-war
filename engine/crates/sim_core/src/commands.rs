@@ -42,6 +42,9 @@ pub enum SimCommand {
     SetSprite { id: String, sprite: SpriteDef },
     /// A player's order to its champion or to a member of its faction (members may refuse).
     PlayerOrder { player: String, entity: SimId, order: crate::player::Order },
+    /// Walks the player's champion one cell right away (Pokémon-style, outside the tick); a passage
+    /// (door, stairs) under the new cell is crossed.
+    PlayerStep { player: String, dx: i32, dy: i32 },
     /// A player proposes an alliance: accepted when the other faction's relation is at least
     /// `social.alliance_threshold` (players accept each other's automatically).
     PlayerAlliance { player: String, faction: String },
@@ -367,6 +370,7 @@ pub fn apply(world: &mut World, cmd: SimCommand) -> Result<String, String> {
             Ok(format!("{} rimosso", id.0))
         }
         SimCommand::PlayerOrder { player, entity, order } => crate::player::give_order(world, &player, entity, order),
+        SimCommand::PlayerStep { player, dx, dy } => crate::player::step(world, &player, dx, dy).map(|p| format!("({}, {}, {})", p.layer, p.x, p.y)),
         SimCommand::PlayerSquadOrder { player, squad, order } => {
             let faction = world.resource::<crate::factions::Players>().players.get(&player).map(|p| p.faction.clone()).ok_or("giocatore inesistente")?;
             let own = world.resource::<Squads>().squads.get(&squad).is_some_and(|s| s.faction.as_deref() == Some(faction.as_str()));

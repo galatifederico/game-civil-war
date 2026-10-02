@@ -89,6 +89,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/ui/player/{player}", get(ui_player))
         .route("/api/ui/feed", get(ui_feed))
         .route("/api/ui/actions/{id}", get(ui_actions))
+        .route("/api/ui/step", post(ui_step))
+        .route("/api/ui/economy", get(ui_economy))
         .route("/api/save", post(save_game))
         .route("/api/load", post(load_game))
         .route("/mcp", post(mcp_http))
@@ -152,13 +154,31 @@ async fn ui_player(State(s): State<AppState>, Path(player): Path<String>) -> Api
     let mut sim = s.sim.lock().unwrap();
     let p = sim.world.resource::<Players>().players.get(&player).cloned().ok_or_else(|| not_found(&player))?;
     let content = sim.content().clone();
+    let race_name = |id: &Option<String>| id.as_ref().map(|r| content.races.get(r).map_or(r.clone(), |d| d.name.clone()));
+    let class_name = |id: &String| content.classes.get(id).map_or(id.clone(), |d| d.name.clone());
+    let item_name = |id: &String| content.items.get(id).map_or(id.clone(), |d| d.name.clone());
+    // Items the team holds: carried by the members and stored in the faction's buildings.
+    let mut carried = std::collections::BTreeMap::<String, u32>::new();
+    let mut stored = std::collections::BTreeMap::<String, u32>::new();
+    let (mut pocket, mut morale_sum, mut health_sum) = (0.0f64, 0.0f32, 0.0f32);
     let members: Vec<Value> = crate::sorted_entities::<FactionMember>(&mut sim.world)
         .into_iter()
         .filter(|e| sim.world.get::<FactionMember>(*e).is_some_and(|m| m.faction == p.faction) && sim.world.get::<Dead>(*e).is_none())
         .filter_map(|e| {
             let v = crate::snapshot::entity_view(&sim.world, e, true)?;
+            for (item, n) in &v.inventory {
+                *carried.entry(item.clone()).or_default() += n;
+            }
+            let morale = v.activity.as_ref().map_or(50.0, |a| a.morale);
+            pocket += v.money;
+            morale_sum += morale;
+            health_sum += v.health;
             Some(json!({
                 "id": v.id, "name": v.name, "rank": v.rank, "classes": v.classes, "pos": v.pos,
+                "race": v.race, "race_name": race_name(&v.race),
+                "class_names": v.classes.iter().map(class_name).collect::<Vec<_>>(),
+                "health": v.health, "morale": morale, "mood": v.activity.as_ref().map(|a| a.mood.clone()),
+                "money": v.money,
                 "activity": v.activity.as_ref().map(|a| a.label.clone()),
                 "obedience": crate::player::obedience(&sim.world, e),
                 "champion": v.leader_of.as_deref() == Some(player.as_str()),
@@ -166,6 +186,31 @@ async fn ui_player(State(s): State<AppState>, Path(player): Path<String>) -> Api
             }))
         })
         .collect();
+    for e in crate::sorted_entities::<crate::buildings::Building>(&mut sim.world) {
+        let owned = sim.world.get::<crate::buildings::Building>(e).is_some_and(|b| b.owner == crate::buildings::Owner::Faction(p.faction.clone()));
+        if let (true, Some(stock)) = (owned, sim.world.get::<crate::inventory::Stock>(e)) {
+            for (item, n) in &stock.0 {
+                *stored.entry(item.clone()).or_default() += n;
+            }
+        }
+    }
+    let mut ids: Vec<&String> = carried.keys().chain(stored.keys()).collect();
+    ids.sort();
+    ids.dedup();
+    let inventory: Vec<Value> = ids
+        .into_iter()
+        .map(|i| {
+            let (c, s) = (carried.get(i).copied().unwrap_or(0), stored.get(i).copied().unwrap_or(0));
+            let category = content.items.get(i).map(|d| d.category.clone());
+            json!({ "id": i, "name": item_name(i), "category": category, "carried": c, "stored": s, "total": c + s })
+        })
+        .filter(|v| v["total"].as_u64().unwrap_or(0) > 0)
+        .collect();
+    let n = members.len().max(1) as f32;
+    let summary = json!({
+        "members": members.len(), "pocket_money": pocket,
+        "avg_morale": morale_sum / n, "avg_mood": crate::snapshot::mood_label(morale_sum / n), "avg_health": health_sum / n,
+    });
     let squads: Vec<Value> = sim
         .world
         .resource::<Squads>()
@@ -190,6 +235,7 @@ async fn ui_player(State(s): State<AppState>, Path(player): Path<String>) -> Api
     Ok(Json(json!({
         "player": p, "faction": p.faction, "treasury": state.treasury, "victory_points": state.victory_points,
         "champion": p.leader, "members": members, "squads": squads, "ranks": ranks, "work_types": work_types,
+        "summary": summary, "inventory": inventory,
     })))
 }
 
@@ -215,6 +261,8 @@ async fn ui_feed(State(s): State<AppState>, Query(q): Query<FeedQ>) -> ApiResult
     let faction = q.player.as_ref().and_then(|p| sim.world.resource::<Players>().players.get(p)).map(|p| p.faction.clone());
     let threshold = if content.press.important_threshold > 0.0 { content.press.important_threshold } else { 0.6 };
     let filter = q.filter.clone().unwrap_or_else(|| "important".into());
+    let params = sim.world.resource::<crate::params::Params>();
+    let (main_mine, main_world) = (params.get("press.main_mine_threshold", 0.5) as f32, params.get("press.main_world_threshold", 0.9) as f32);
     let mine = |a: &crate::press::Article| faction.as_ref().is_some_and(|f| a.concerns(f));
     let articles: Vec<Value> = feed
         .articles
@@ -223,6 +271,8 @@ async fn ui_feed(State(s): State<AppState>, Query(q): Query<FeedQ>) -> ApiResult
         .filter(|a| match filter.as_str() {
             "all" => true,
             "important" => a.importance >= threshold || mine(a),
+            // The pigeon's main channel: few messages, what touches the player plus the big world news.
+            "main" => (mine(a) && a.importance >= main_mine) || a.importance >= main_world,
             "mine" => mine(a),
             cat => a.category == cat,
         })
@@ -274,6 +324,67 @@ async fn ui_actions(State(s): State<AppState>, Path(id): Path<u64>) -> ApiResult
     out.push(json!({ "kind": "follow", "id": "follow", "name": "Segui", "needs_target": "entity" }));
     out.push(json!({ "kind": "stop", "id": "stop", "name": "Fermati", "needs_target": "none" }));
     Ok(Json(json!(out)))
+}
+
+#[derive(Deserialize)]
+struct StepBody {
+    player: String,
+    dx: i32,
+    dy: i32,
+}
+
+/// One step of the champion, applied at once: answers with where it stands now.
+async fn ui_step(State(s): State<AppState>, Json(b): Json<StepBody>) -> ApiResult {
+    let mut sim = s.sim.lock().unwrap();
+    let pos = crate::player::step(&mut sim.world, &b.player, b.dx, b.dy).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    Ok(Json(json!({ "pos": pos })))
+}
+
+/// State of the world's resources: price index and inflation, money in circulation, disruptions and
+/// circumstances in force, every good with its price and trend.
+async fn ui_economy(State(s): State<AppState>) -> ApiResult {
+    let mut sim = s.sim.lock().unwrap();
+    let content = sim.content().clone();
+    let tick = sim.tick_count();
+    let market = sim.world.resource::<crate::market::Market>().clone();
+    // Index = mean of price/base; inflation = mean change over the last day (24 ticks of history).
+    let (mut index, mut day, mut n, mut nd) = (0.0f64, 0.0f64, 0usize, 0usize);
+    let mut goods: Vec<Value> = Vec::new();
+    for (id, m) in &market.items {
+        index += m.price / m.base.max(0.01);
+        n += 1;
+        let ago = (m.history.len() > 24).then(|| m.history[m.history.len() - 25]);
+        if let Some(a) = ago.filter(|a| *a > 0.0) {
+            day += m.price / a - 1.0;
+            nd += 1;
+        }
+        let item = content.items.get(id);
+        goods.push(json!({
+            "id": id, "name": item.map_or(id.clone(), |d| d.name.clone()), "category": item.map(|d| d.category.clone()),
+            "price": m.price, "base": m.base, "day_change": ago.map(|a| if a > 0.0 { m.price / a - 1.0 } else { 0.0 }),
+            "supply": m.supply, "demand": m.demand, "shocks": m.shocks.iter().map(|s| s.source.clone()).collect::<Vec<_>>(),
+        }));
+    }
+    let wallets: f64 = sim.world.query::<&crate::stats::Wallet>().iter(&sim.world).map(|w| w.0).sum();
+    let treasuries: f64 = sim.world.resource::<Factions>().states.values().map(|f| f.treasury).sum();
+    let mods = sim.world.resource::<crate::buildings::GlobalModifiers>().clone();
+    let circumstances: Vec<Value> = mods
+        .active
+        .iter()
+        .map(|m| json!({ "id": m.id, "name": m.name, "ticks_left": m.until.saturating_sub(tick), "disruption": m.logistics_disruption, "morale": m.morale }))
+        .collect();
+    let supply = sim.world.resource::<crate::supply::SupplyStats>().clone();
+    let local: Vec<Value> = content
+        .supplies
+        .keys()
+        .filter_map(|k| supply.local_share(k).map(|v| json!({ "id": k, "item": content.supplies[k].item, "local_share": v })))
+        .collect();
+    Ok(Json(json!({
+        "tick": tick, "price_index": if n > 0 { index / n as f64 } else { 1.0 },
+        "inflation_day": if nd > 0 { day / nd as f64 } else { 0.0 },
+        "money": { "wallets": wallets, "treasuries": treasuries, "total": wallets + treasuries },
+        "disruption": market.disruption, "circumstances": circumstances, "local_production": local, "goods": goods,
+    })))
 }
 
 #[derive(Deserialize)]

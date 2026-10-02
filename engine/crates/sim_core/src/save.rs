@@ -65,7 +65,7 @@ use crate::inventory::{Inventory, Stock};
 use crate::jobs::{PersonalQueue, Task, WorkPriorities};
 use crate::map::Position;
 use crate::movement::Movement;
-use crate::player::{Controlled, Follow, KnockedOut, Transmuted};
+use crate::player::{Controlled, Follow, KnockedOut, ManualHold, Transmuted};
 use crate::press::Notebook;
 use crate::snapshot::ActivityState;
 use crate::stats::{Classes, Dead, DisplayName, Immortal, Needs, Pawn, Race, Stats, Tags, TemplateId, Virtual, Wallet};
@@ -75,7 +75,7 @@ components!(
     DisplayName, TemplateId, Race, Classes, Tags, Stats, Needs, StatusEffects, Inventory, Wallet, Dissent, Wanted,
     Detained, Brain, Task, PersonalQueue, WorkPriorities, ActivityState, Notebook, Movement, Pawn, Virtual, Position,
     Body, Immortal, Dead, FactionMember, Leader, Controlled, Follow, Disguise, Cover, StealthState, Tethered,
-    SpawnedBy, AbilityCooldowns, Building, Shop, Stock, Contaminated, KnockedOut, Transmuted,
+    SpawnedBy, AbilityCooldowns, Building, Shop, Stock, Contaminated, KnockedOut, Transmuted, ManualHold,
 );
 
 macro_rules! resources {
