@@ -20,11 +20,20 @@ I log finiscono in `logs/`. Chiudendo la finestra del client il server si ferma.
 Con il server acceso la console di amministrazione è su http://127.0.0.1:8787/admin/ (mappa, entità, oggetti,
 contenuti, sprite, parametri, fazioni e quartieri, eventi, comandi).
 
-Nel client tutti i comandi sono nel menu laterale a destra, che si può ridurre a una colonna di pulsanti (▸)
-o nascondere dietro "≡ Menu" (Tab). Trascinare la mappa sposta la vista, un clic seleziona; C torna al campione,
-F segue la pedina selezionata, M passa tra vista ravvicinata e panoramica; "Scava" e poi trascinare un rettangolo
-fa scavare la tua fazione (vale per un rettangolo). Esc annulla l'ordine o lo scavo in corso, altrimenti chiede
-se uscire (Invio conferma, anche Ctrl+Q). La freccia verde sopra la testa segna le pedine della tua fazione.
+Nel client, in alto al centro ci sono sempre i punti vittoria, il fondo di gilda e quanti siete nel team. A destra:
+Mappa (M, la panoramica del mondo con quanti dei tuoi ci sono in ogni area), Inventario (I, cosa ha raccolto il
+team), Team (T, il riepilogo del team e poi ogni membro con razza, classe, vita, umore, soldi e attività) e Opzioni
+(O: tempo, vista, scavo, salvataggi, nebbia, server, esci). A sinistra: il Piccione Viaggiatore (P, i canali delle
+notizie; il numero rosso conta le non lette del canale principale), la Classifica ufficiale (L), le Risorse mondiali
+(R: prezzi, inflazione, moneta, circostanze) e il Manuale (H). Il pulsante in alto a sinistra (o Tab) nasconde e fa
+ricomparire tutto.
+
+Il campione si muove a mano, una casella alla volta come in Pokémon: frecce o WASD (in panoramica spostano la
+vista); porte e scale si attraversano camminandoci sopra. Spazio (o E) apre la scheda di chi gli sta davanti con
+quello che il campione può fargli. Trascinare la mappa sposta la vista, un clic seleziona; C torna al campione,
+F segue la pedina selezionata; "Scava" (nelle Opzioni) e poi trascinare un rettangolo fa scavare la tua fazione.
+Esc chiude la finestra o la scheda aperta e annulla l'ordine o lo scavo in corso, altrimenti chiede se uscire
+(Invio conferma, anche Ctrl+Q). La freccia verde sopra la testa segna le pedine della tua fazione.
 
 ### Dal telefono (Android)
 
@@ -35,8 +44,9 @@ sudo ufw allow 8787:8788/tcp   # una volta sola: apre le porte del server e del 
 
 Lo script stampa l'indirizzo da cui il telefono scarica l'APK (`unity-client/Builds/Android/FidenzaClient.apk`;
 se il telefono è collegato via USB con il debug attivo lo installa da solo) e quello da inserire nell'app al
-primo avvio (resta salvato; il pulsante "Server" nel menu lo cambia). Sul telefono: un dito trascina la mappa,
-un tocco seleziona o sceglie il bersaglio di un ordine, una pressione lunga manda lì la tua pedina selezionata,
-due dita zoomano; il menu scorre col dito; il tasto indietro annulla ordine o scavo, altrimenti chiede se uscire.
+primo avvio (resta salvato; il pulsante "Server" nelle Opzioni lo cambia). Sul telefono: la croce in basso a
+sinistra muove il campione e il tasto A interagisce con chi ha davanti; un dito trascina la mappa, un tocco
+seleziona o sceglie il bersaglio di un ordine, una pressione lunga manda lì la tua pedina selezionata, due dita
+zoomano; finestre e schede scorrono col dito; il tasto indietro chiude o annulla, altrimenti chiede se uscire.
 
 Il codice è in [engine/](engine/) (vedi il suo README per comandi e struttura). Il client Unity 6 è in [unity-client/](unity-client/): avvia il server con `cd engine && cargo run --release -p fidenza_world -- --serve`, poi apri il progetto in Unity Hub e premi Play.

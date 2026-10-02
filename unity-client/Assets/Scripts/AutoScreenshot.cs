@@ -3,7 +3,9 @@ using UnityEngine;
 
 /// <summary>
 /// Command line helper for automated checks: <c>--screenshot=path.png [--shot-after=8]</c> saves a
-/// screenshot after some seconds and quits.
+/// screenshot after some seconds and quits. <c>--open=team</c> (or mappa, inventario, piccione, …) opens a
+/// HUD window first, <c>--walk=RRDDL</c> walks the champion (R, L, U, D: one step each),
+/// <c>--select-near</c> then opens the card of the pawn next to it.
 /// </summary>
 public class AutoScreenshot : MonoBehaviour
 {
@@ -39,7 +41,19 @@ public class AutoScreenshot : MonoBehaviour
                     view.Zoom = z;
         }
         foreach (var a in System.Environment.GetCommandLineArgs())
-            if (a == "--faction-tab") GetComponent<SimHud>()?.ShowFactionTab();
+            if (a.StartsWith("--walk=") && view != null)
+                foreach (char c in a.Substring(7).ToUpperInvariant())
+                {
+                    view.PadWalk = c switch { 'R' => Vector2Int.right, 'L' => Vector2Int.left, 'U' => Vector2Int.down, _ => Vector2Int.up };
+                    yield return new WaitForSecondsRealtime(0.15f);
+                    view.PadWalk = Vector2Int.zero;
+                    yield return new WaitForSecondsRealtime(0.25f);
+                }
+        foreach (var a in System.Environment.GetCommandLineArgs())
+        {
+            if (a.StartsWith("--open=")) GetComponent<SimHud>()?.OpenByName(a.Substring(7));
+            if (a == "--select-near" && view != null) view.Interact();
+        }
         foreach (var a in System.Environment.GetCommandLineArgs())
             if (a.StartsWith("--map=") && view != null)
             {

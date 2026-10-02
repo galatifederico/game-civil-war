@@ -129,6 +129,10 @@ impl SimPlugin for MioMondo {
 | `GET /api/compendium`, `/api/extensions` | compendium per la wiki, estensioni registrate |
 | `GET /api/ui/state?faction=`, `/api/ui/activity`, `/api/ui/map` | API per il client (con nebbia di guerra per fazione) |
 | `GET /api/ui/terrain?since=N` | caselle cambiate dopo la N-esima modifica (scavi, pittura) |
+| `GET /api/ui/player/{id}` | vista del giocatore: membri (razza, classe, salute, umore, soldi, attività, obbedienza), riepilogo e inventario del team, squadre, stipendi |
+| `GET /api/ui/feed?filter=&player=` | il Piccione: `main` (canale principale: notizie sulla fazione del giocatore e grandi fatti, soglie `press.main_*`), `mine`, `all`, una categoria |
+| `POST /api/ui/step` `{"player", "dx", "dy"}` | un passo del campione, subito (anche in pausa); risponde con la posizione |
+| `GET /api/ui/economy` | indice dei prezzi, inflazione delle ultime 24 ore, moneta in circolazione, circostanze, quota locale, merci |
 | `GET /admin/` | console di amministrazione |
 | `GET /api/content`, `/api/assets`, `/assets/{file}.png` | tutte le definizioni caricate, elenco e file delle immagini |
 | `GET /metrics` | metriche Prometheus |

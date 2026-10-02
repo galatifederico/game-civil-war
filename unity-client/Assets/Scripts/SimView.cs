@@ -66,9 +66,31 @@ public class SimView : MonoBehaviour
     readonly Dictionary<string, SpriteRenderer> quarterTint = new();
     int terrainSeen = -1;
     const float CloseZoom = 3f;
-    /// Feed filter: "important" (default), "mine", "all" or a category id.
-    public string FeedFilter { get; set; } = "important";
+    /// Pigeon channel shown: "main" (default: few messages, the ones that matter), "mine", "all" or a
+    /// category id.
+    public string FeedFilter { get; set; } = "main";
+    /// The channel shown in the pigeon window, and the main channel (polled always, for the unread count).
     public JObject Feed { get; private set; }
+    public JObject MainFeed { get; private set; }
+    /// Set by the HUD while the pigeon or the world-resources window is open: only then they are polled.
+    public bool PigeonOpen { get; set; }
+    public bool EconomyOpen { get; set; }
+    public JObject Economy { get; private set; }
+    float nextEconomy;
+
+    // Champion walked by hand, one cell per step as in Pokémon. Facing: the cell in front of it.
+    public Vector2Int Facing { get; private set; } = new(0, 1);
+    /// Direction held on the on-screen pad (set every frame by the HUD).
+    public Vector2Int PadWalk { get; set; }
+    public JArray ChampionActions { get; private set; }
+    const float StepSeconds = 0.17f;
+    bool stepInFlight;
+    float nextStepAt;
+    Vector2Int lastWalk;
+    JToken champOverride;
+    float champOverrideUntil;
+    /// The camera stays on the champion while it walks, even with another pawn selected.
+    bool walkFocus;
     bool fogChosen;
 
     Camera cam;
@@ -173,6 +195,7 @@ public class SimView : MonoBehaviour
             {
                 bool first = PlayerInfo == null;
                 yield return Api.Get("/api/ui/player/" + UnityEngine.Networking.UnityWebRequest.EscapeURL(PlayerId), j => PlayerInfo = (JObject)j, _ => { });
+                if (first) RefreshChampionActions();
                 // Start like a Pokémon game: close view on our champion.
                 if (first && ChampionId.HasValue && gos.ContainsKey(ChampionId.Value))
                 {
@@ -182,7 +205,18 @@ public class SimView : MonoBehaviour
                 }
             }
             var who = PlayerId == null ? "" : "&player=" + UnityEngine.Networking.UnityWebRequest.EscapeURL(PlayerId);
-            yield return Api.Get("/api/ui/feed?limit=12&filter=" + FeedFilter + who, j => Feed = (JObject)j, _ => { });
+            yield return Api.Get("/api/ui/feed?limit=40&filter=main" + who, j => MainFeed = (JObject)j, _ => { });
+            if (PigeonOpen && FeedFilter != "main")
+            {
+                var filter = FeedFilter;
+                yield return Api.Get("/api/ui/feed?limit=40&filter=" + filter + who, j => { if (FeedFilter == filter) Feed = (JObject)j; }, _ => { });
+            }
+            else Feed = MainFeed;
+            if (EconomyOpen && Time.time >= nextEconomy)
+            {
+                nextEconomy = Time.time + 2f;
+                yield return Api.Get("/api/ui/economy", j => Economy = (JObject)j, _ => { });
+            }
             if (Selected.HasValue)
             {
                 var id = Selected.Value;
@@ -230,10 +264,13 @@ public class SimView : MonoBehaviour
         j => LastCommandResult = (string)j["ok"] ?? j.ToString(), e => LastCommandResult = "Rifiutato: " + e));
 
     /// Who the camera follows: the selected pawn, otherwise our champion.
-    public long? FollowId => Selected.HasValue && gos.TryGetValue(Selected.Value, out var g) && !g.Building ? Selected : ChampionId;
+    public long? FollowId => !walkFocus && Selected.HasValue && gos.TryGetValue(Selected.Value, out var g) && !g.Building ? Selected : ChampionId;
 
-    public void Select(long? id)
+    /// <summary>Selects a pawn or building; <paramref name="byChampion"/>: picked by the walking champion
+    /// (the camera stays on the champion).</summary>
+    public void Select(long? id, bool byChampion = false)
     {
+        walkFocus = byChampion || (id.HasValue && id == ChampionId);
         // Selecting a pawn puts the camera on it (arrows or middle drag release it, F or "Segui" resume).
         if (id.HasValue && gos.TryGetValue(id.Value, out var picked) && !picked.Building)
         {
@@ -248,6 +285,107 @@ public class SimView : MonoBehaviour
         PendingAction = null;
         if (id.HasValue && IsMine(id.Value))
             StartCoroutine(Api.Get($"/api/ui/actions/{id.Value}", j => { if (Selected == id) SelectedActions = (JArray)j; }, _ => { }));
+        else if (id.HasValue) RefreshChampionActions();
+    }
+
+    /// What the champion can do to someone else (talk, attack, …): shown on the card of other pawns.
+    public void RefreshChampionActions()
+    {
+        if (ChampionId is long c)
+            StartCoroutine(Api.Get($"/api/ui/actions/{c}", j => ChampionActions = (JArray)j, _ => { }));
+    }
+
+    // ── Champion walked by hand ───────────────────────────────────────────────
+
+    /// One step of the champion per call while a direction is held, at walking pace.
+    void Walk(Vector2Int dir)
+    {
+        if (dir == Vector2Int.zero || !ChampionId.HasValue || PlayerId == null)
+        {
+            lastWalk = Vector2Int.zero;
+            return;
+        }
+        if (Zoom < 1f) Zoom = CloseZoom;
+        bool fresh = dir != lastWalk;
+        lastWalk = dir;
+        Facing = dir;
+        walkFocus = true;
+        FollowCamera = true;
+        if (gos.TryGetValue(ChampionId.Value, out var go)) go.Dir = DirIndex(dir);
+        if (stepInFlight || (!fresh && Time.time < nextStepAt)) return;
+        stepInFlight = true;
+        nextStepAt = Time.time + StepSeconds;
+        var body = new JObject { ["player"] = PlayerId, ["dx"] = dir.x, ["dy"] = dir.y };
+        StartCoroutine(Api.Post("/api/ui/step", body, j => { stepInFlight = false; ApplyChampionPos(j["pos"]); }, e => { stepInFlight = false; LastCommandResult = e; }));
+    }
+
+    static int DirIndex(Vector2Int d) => d.x < 0 ? 1 : d.x > 0 ? 2 : d.y < 0 ? 3 : 0;
+
+    /// Puts the champion where the server says it now is, without waiting for the next state poll.
+    void ApplyChampionPos(JToken pos)
+    {
+        if (pos == null || !ChampionId.HasValue) return;
+        long id = ChampionId.Value;
+        champOverride = pos.DeepClone();
+        champOverrideUntil = Time.time + 1.2f;
+        if (EntityById(id) is JObject e) e["pos"] = pos.DeepClone();
+        if (!gos.TryGetValue(id, out var go)) return;
+        go.Target = CellCenter(pos);
+        int layer = (int)pos["layer"];
+        if (layer != Layer)
+        {
+            // Through a door or down the stairs: appear there at once.
+            SetLayer(layer);
+            go.Root.transform.position = go.Target;
+            cam.transform.position = new Vector3(go.Target.x, go.Target.y, -10f);
+        }
+        go.Root.SetActive(true);
+    }
+
+    /// The pawn (or else the building) in front of the champion, or next to it: its card opens with what
+    /// the champion can do to it.
+    public void Interact()
+    {
+        if (!ChampionId.HasValue || EntityById(ChampionId.Value)?["pos"] is not JObject me) return;
+        int layer = (int)me["layer"], x = (int)me["x"], y = (int)me["y"];
+        int ax = x + Facing.x, ay = y + Facing.y;
+        long? best = null;
+        int bestScore = int.MaxValue;
+        foreach (var e in State["snapshot"]["entities"])
+        {
+            if (e["pos"] is not JObject p || (int)p["layer"] != layer || (long)e["id"] == ChampionId.Value) continue;
+            int px = (int)p["x"], py = (int)p["y"];
+            bool building = (string)e["kind"] == "building";
+            int score = px == ax && py == ay ? 0 : Mathf.Max(Mathf.Abs(px - x), Mathf.Abs(py - y)) <= 1 ? 1 : int.MaxValue;
+            if (score == int.MaxValue) continue;
+            score = score * 2 + (building ? 1 : 0);
+            if (score < bestScore)
+            {
+                bestScore = score;
+                best = (long)e["id"];
+            }
+        }
+        if (best.HasValue) Select(best, byChampion: true);
+        else LastCommandResult = "Non c'è nessuno davanti al campione";
+    }
+
+    /// The whole of a map seen from above (the world map), leaving the champion where it is.
+    public void ShowOverview(int layer)
+    {
+        FollowCamera = false;
+        walkFocus = false;
+        if (layer != Layer) SetLayer(layer);
+        var l = Layers[Layer];
+        FitCamera((int)l["width"], (int)l["height"]);
+    }
+
+    /// Back to the close view on the champion.
+    public void CloseView()
+    {
+        Zoom = CloseZoom;
+        walkFocus = true;
+        FollowCamera = ChampionId.HasValue;
+        if (ChampionId is long c) FocusOn(c);
     }
 
     public void ChooseFog(string faction)
@@ -449,6 +587,9 @@ public class SimView : MonoBehaviour
     void OnState()
     {
         if (State == null || Map == null) return;
+        // A state asked for before our last step must not pull the champion back.
+        if (champOverride != null && Time.time < champOverrideUntil && ChampionId.HasValue && EntityById(ChampionId.Value) is JObject ce)
+            ce["pos"] = champOverride.DeepClone();
         var seen = new HashSet<long>();
         foreach (var e in State["snapshot"]["entities"])
         {
@@ -773,9 +914,24 @@ public class SimView : MonoBehaviour
                 cam.transform.position += dragOrigin - cam.ScreenToWorldPoint(Input.mousePosition);
             click = LeftButton(overUi);
         }
-        var move = new Vector3(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"), 0);
-        if (move.sqrMagnitude > 0) FollowCamera = false;
-        cam.transform.position += move * cam.orthographicSize * Time.deltaTime * 1.5f;
+        // Arrows/WASD walk the champion in the close view and move the camera over the map overview.
+        bool keysFree = hud == null || !hud.Modal;
+        int kx = keysFree ? (Key(KeyCode.RightArrow, KeyCode.D) ? 1 : 0) - (Key(KeyCode.LeftArrow, KeyCode.A) ? 1 : 0) : 0;
+        int ky = keysFree ? (Key(KeyCode.DownArrow, KeyCode.S) ? 1 : 0) - (Key(KeyCode.UpArrow, KeyCode.W) ? 1 : 0) : 0;
+        bool walking = Zoom >= 1f && ChampionId.HasValue && PlayerId != null;
+        if (walking || PadWalk != Vector2Int.zero)
+        {
+            var dir = PadWalk != Vector2Int.zero ? PadWalk : new Vector2Int(kx, kx != 0 ? 0 : ky);
+            if (!walking && dir != Vector2Int.zero && ChampionId.HasValue) CloseView();
+            Walk(dir);
+            if (keysFree && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.E) || Input.GetKeyDown(KeyCode.Return))) Interact();
+        }
+        else
+        {
+            var move = new Vector3(kx, -ky, 0);
+            if (move.sqrMagnitude > 0) FollowCamera = false;
+            cam.transform.position += move * cam.orthographicSize * Time.deltaTime * 1.5f;
+        }
         if (Input.GetMouseButtonDown(2)) FollowCamera = false;
         if (Input.GetKeyDown(KeyCode.F)) FollowCamera = FollowId.HasValue;
         var fid = FollowCamera ? FollowId : null;
@@ -793,7 +949,6 @@ public class SimView : MonoBehaviour
             var cp2 = cam.transform.position;
             cam.transform.position = new Vector3(Mathf.Round(cp2.x / unit) * unit, Mathf.Round(cp2.y / unit) * unit, -10f);
         }
-        if (Input.GetKeyDown(KeyCode.M)) ToggleOverview();
         if (TouchUi)
         {
             TouchControls(hud);
@@ -950,6 +1105,8 @@ public class SimView : MonoBehaviour
             else Select(Pick(t.position));
         }
     }
+
+    static bool Key(KeyCode a, KeyCode b) => Input.GetKey(a) || Input.GetKey(b);
 
     Vector2Int MouseCell()
     {
