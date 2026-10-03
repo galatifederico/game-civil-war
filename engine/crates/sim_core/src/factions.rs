@@ -170,6 +170,12 @@ pub struct Titles {
     pub holders: BTreeMap<String, Option<SimId>>,
     /// Tick at which each title became vacant.
     pub vacant_since: BTreeMap<String, u64>,
+    /// Tick at which the current holder took each title (start of the mandate).
+    #[serde(default)]
+    pub since: BTreeMap<String, u64>,
+    /// Tick since which the holder no longer meets the title's requirements.
+    #[serde(default)]
+    pub failing: BTreeMap<String, u64>,
 }
 
 impl Titles {

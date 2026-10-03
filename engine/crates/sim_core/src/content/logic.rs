@@ -104,6 +104,13 @@ pub enum Effect {
     Teleport { zone: String },
     PostJob { job: String, #[serde(default)] priority: i32 },
     Log(String),
+    /// Takes a role (title) if the subject meets its requirements and it is vacant.
+    ClaimTitle(String),
+    /// The subject leaves a role it holds.
+    LeaveTitle(String),
+    /// The subject tries to take a role from its holder: `stat` plus luck against the holder's (allies of
+    /// each side within `allies_radius` add half of theirs: a coup). The winner keeps or takes the role.
+    ChallengeTitle { title: String, stat: String, #[serde(default)] allies_radius: i32 },
     /// Implemented by a plugin (`SimBuilder::register_effect`).
     Custom { id: String, #[serde(default)] params: serde_json::Value },
 }
@@ -159,6 +166,13 @@ pub enum Condition {
     FactionHoldsItems { faction: String, items: Vec<String> },
     VictoryPointsAtLeast(i64),
     ArticlesAtLeast(u32),
+    /// The subject holds this role (title).
+    HoldsTitle(String),
+    /// The subject holds any role.
+    HoldsAnyTitle,
+    IsSex(crate::stats::Sex),
+    /// At least `count` active statuses carrying `tag` (e.g. three illnesses at once).
+    StatusTagCount { tag: String, count: u32 },
     Custom { id: String, #[serde(default)] params: serde_json::Value },
 }
 

@@ -1,6 +1,6 @@
 //! Plain-language descriptions of effects and items for the player's screens.
 
-use crate::content::{Content, Effect, Scope};
+use crate::content::{Condition, Content, Effect, Scope};
 
 fn signed(v: f32) -> String {
     if v >= 0.0 { format!("+{v:.0}") } else { format!("{v:.0}") }
@@ -103,4 +103,71 @@ pub fn item_effects(c: &Content, id: &str) -> Vec<String> {
         out.push("Non ha effetti diretti: si scambia, si vende o serve per produrre altro".into());
     }
     out
+}
+
+fn num(v: f32) -> String {
+    if (v - v.round()).abs() < 0.05 { format!("{v:.0}") } else { format!("{v:.1}") }
+}
+
+/// A requirement in words ("Grasso almeno 80", "membro della Chiesa", "ha la classe Prete"…).
+pub fn condition(c: &Content, cond: &Condition) -> String {
+    let name = |m: &str| m.to_string();
+    match cond {
+        Condition::Always => "nessun requisito".into(),
+        Condition::Never => "impossibile".into(),
+        Condition::All(v) => v.iter().map(|x| condition(c, x)).collect::<Vec<_>>().join(" e "),
+        Condition::Any(v) => format!("({})", v.iter().map(|x| condition(c, x)).collect::<Vec<_>>().join(" oppure ")),
+        Condition::Not(inner) => match inner.as_ref() {
+            Condition::HasClass(k) => format!("non {}", c.classes.get(k).map_or(k.as_str(), |x| x.name.as_str())),
+            Condition::HasStatusTag(t) => format!("nessun malanno di tipo {t}"),
+            Condition::HasStatus(s) => format!("non {}", status(c, s)),
+            Condition::IsRace(r) => format!("non {}", c.races.get(r).map_or(r.as_str(), |x| x.name.as_str())),
+            Condition::MemberOf(f) => format!("non membro di {}", c.factions.get(f).map_or(f.as_str(), |x| x.name.as_str())),
+            Condition::WantedAtLeast(_) => "non ricercato".into(),
+            other => format!("non ({})", condition(c, other)),
+        },
+        Condition::StatAtLeast { stat: s, value } => format!("{} almeno {}", cap(&stat(c, s)), num(*value)),
+        Condition::StatBelow { stat: s, value } if *value <= 1.0 => format!("{} a zero", cap(&stat(c, s))),
+        Condition::StatBelow { stat: s, value } => format!("{} sotto {}", cap(&stat(c, s)), num(*value)),
+        Condition::NeedBelow { need: n, value } => format!("{} sotto il {:.0}%", cap(&need(c, n)), value * 100.0),
+        Condition::HasStatus(s) => format!("è {}", status(c, s)),
+        Condition::HasStatusTag(t) => format!("ha un malanno di tipo {t}"),
+        Condition::StatusTagCount { tag, count } => format!("almeno {count} status di tipo {tag} insieme"),
+        Condition::HasTag(t) => format!("è {}", t.replace('_', " ")),
+        Condition::HasItem { item: i, qty } if *qty > 1 => format!("possiede {qty}× {}", item(c, i)),
+        Condition::HasItem { item: i, .. } => format!("possiede {}", item(c, i)),
+        Condition::HasItemTag(t) => format!("possiede un oggetto di tipo {}", name(t).replace('_', " ")),
+        Condition::MoneyAtLeast(m) => format!("almeno {m:.0} €"),
+        Condition::InZone(z) => format!("si trova in {}", c.zone(z).map_or(z.as_str(), |x| x.name.as_str())),
+        Condition::MemberOf(f) => format!("membro di {}", c.factions.get(f).map_or(f.as_str(), |x| x.name.as_str())),
+        Condition::IsRace(r) => format!("razza {}", c.races.get(r).map_or(r.as_str(), |x| x.name.as_str())),
+        Condition::HasClass(k) => format!("è {}", c.classes.get(k).map_or(k.as_str(), |x| x.name.as_str())),
+        Condition::WantedAtLeast(v) => format!("ricercato almeno {}", num(*v)),
+        Condition::Detained => "in arresto".into(),
+        Condition::Disguised => "travestito".into(),
+        Condition::HoldsTitle(t) => format!("è {}", c.titles.get(t).map_or(t.as_str(), |x| x.name.as_str())),
+        Condition::HoldsAnyTitle => "ha un ruolo".into(),
+        Condition::IsSex(s) => match s {
+            crate::stats::Sex::Male => "uomo".into(),
+            crate::stats::Sex::Female => "donna".into(),
+            crate::stats::Sex::NonBinary => "non binario".into(),
+        },
+        Condition::TitleVacant(t) => format!("il posto di {} è vacante", c.titles.get(t).map_or(t.as_str(), |x| x.name.as_str())),
+        Condition::HpBelow(r) => format!("vita sotto il {:.0}%", r * 100.0),
+        _ => "condizione speciale".into(),
+    }
+}
+
+fn cap(s: &str) -> String {
+    let mut ch = s.chars();
+    ch.next().map_or(String::new(), |f| f.to_uppercase().collect::<String>() + ch.as_str())
+}
+
+/// A requirement split into its top-level parts (one line each in the UI).
+pub fn condition_parts(cond: &Condition) -> Vec<Condition> {
+    match cond {
+        Condition::All(v) => v.iter().flat_map(condition_parts).collect(),
+        Condition::Always => vec![],
+        other => vec![other.clone()],
+    }
 }

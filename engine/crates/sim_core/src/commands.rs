@@ -47,6 +47,10 @@ pub enum SimCommand {
     PlayerStep { player: String, dx: i32, dy: i32 },
     /// The champion talks to a pawn next to it: the answer is one of the content's stock phrases.
     PlayerTalk { player: String, target: SimId },
+    /// The player's champion takes one of the classes it meets the requirements of.
+    PlayerTakeClass { player: String, class: String },
+    /// The player's champion challenges the holder of a role (or claims it if vacant).
+    PlayerChallengeRole { player: String, title: String },
     /// Hands an item held by the team (members, then faction buildings) to one of its members.
     PlayerGiveItem { player: String, item: String, to: SimId, #[serde(default = "one")] qty: u32 },
     /// A member of the team uses an item (handed one by the team if it carries none).
@@ -376,6 +380,8 @@ pub fn apply(world: &mut World, cmd: SimCommand) -> Result<String, String> {
             Ok(format!("{} rimosso", id.0))
         }
         SimCommand::PlayerOrder { player, entity, order } => crate::player::give_order(world, &player, entity, order),
+        SimCommand::PlayerTakeClass { player, class } => crate::classes::accept(world, &player, &class),
+        SimCommand::PlayerChallengeRole { player, title } => crate::titles::player_challenge(world, &player, &title),
         SimCommand::PlayerTalk { player, target } => crate::player::talk(world, &player, target).map(|(n, l)| format!("{n}: «{l}»")),
         SimCommand::PlayerGiveItem { player, item, to, qty } => crate::player::give_item(world, &player, &item, to, qty.max(1)),
         SimCommand::PlayerUseItem { player, entity, item } => crate::player::use_item(world, &player, entity, &item),

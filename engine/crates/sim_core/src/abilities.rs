@@ -29,6 +29,11 @@ pub fn known(world: &World, e: Entity) -> Vec<String> {
             }
         }
     }
+    for t in crate::titles::held(world, e) {
+        if let Some(d) = c.titles.get(&t) {
+            v.extend(d.abilities.iter().cloned());
+        }
+    }
     v.sort();
     v.dedup();
     v

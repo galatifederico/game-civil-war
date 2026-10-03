@@ -89,6 +89,12 @@ pub const DEFAULTS: &[(&str, f64, &str)] = &[
     ("hygiene.network_flow", 0.1, "Quota di contaminazione che scorre lungo una rete per tick"),
     ("infiltration.suspicious_cover_loss", 10.0, "Copertura persa per azione sospetta vista"),
     ("infiltration.investigation_cover_loss", 25.0, "Copertura persa per inchiesta"),
+    ("classes.check_every", 12.0, "Ogni quanti tick si controllano i requisiti delle classi"),
+    ("classes.adopt_chance", 0.35, "Probabilità che una pedina che ha i requisiti di una classe la prenda a ogni controllo"),
+    ("classes.keep_ratio", 0.9, "Quota della soglia sotto cui si perde una classe acquisita (isteresi)"),
+    ("titles.check_every", 6.0, "Ogni quanti tick si controllano i ruoli (vacanze, mandati, requisiti)"),
+    ("titles.election_luck", 0.3, "Peso della fortuna nelle elezioni (quota del punteggio)"),
+    ("titles.challenge_luck", 0.5, "Peso della fortuna nelle sfide e nei colpi di stato"),
     ("stealth.detection_scale", 0.1, "Peso della differenza percezione-stealth nel rilevamento"),
 ];
 

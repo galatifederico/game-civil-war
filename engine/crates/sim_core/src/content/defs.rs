@@ -84,6 +84,10 @@ pub struct Bindings {
     /// Fluid spilled by bleeding body parts.
     pub blood_fluid: Option<Id>,
     pub currency_name: String,
+    /// Stat counting the crimes on a pawn's record (raised by one for every charge), if any.
+    pub crime_record: Option<Id>,
+    /// Class a pawn falls back to when it loses its last class.
+    pub default_class: Option<Id>,
 }
 
 impl Default for Bindings {
@@ -104,6 +108,8 @@ impl Default for Bindings {
             ingestible_tags: vec!["food".into(), "drink".into(), "water".into()],
             blood_fluid: Some("blood".into()),
             currency_name: "crediti".into(),
+            crime_record: None,
+            default_class: None,
         }
     }
 }
@@ -130,6 +136,15 @@ pub struct StatDef {
     /// Points per tick towards `rest_value`.
     #[serde(default)]
     pub recovery: f32,
+    /// Points added every in-game day (age, days without washing…), spread over the day's ticks.
+    #[serde(default)]
+    pub per_day: f32,
+    /// Section of the character sheet ("Fisiche", "Conoscenze", "Contatori"…).
+    #[serde(default)]
+    pub group: String,
+    /// New pawns get `default` ± a random amount up to this (unless their template sets the stat).
+    #[serde(default)]
+    pub spread: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -227,6 +242,25 @@ pub struct ClassDef {
     /// Races allowed to take this class (empty = all).
     #[serde(default)]
     pub races: Vec<Id>,
+    /// What a pawn needs to take the class on its own (see `classes`). `None`: only given by templates
+    /// and effects, never acquired.
+    #[serde(default)]
+    pub requires: Option<Condition>,
+    /// Comes with the race or the template and never changes (beasts, the undead…).
+    #[serde(default)]
+    pub innate: bool,
+    /// Classes kept together with this one (an exorcist is still a priest).
+    #[serde(default)]
+    pub includes: Vec<Id>,
+    /// Classes this one takes over even for pawns that would not otherwise change (a Jedi turning Sith).
+    #[serde(default)]
+    pub replaces: Vec<Id>,
+    /// Higher first when a pawn could take several classes.
+    #[serde(default)]
+    pub priority: i32,
+    /// Section of the class list in the UI.
+    #[serde(default)]
+    pub group: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -924,14 +958,58 @@ pub struct CollectionDef {
 pub struct TitleDef {
     pub id: Id,
     pub name: String,
+    pub description: String,
+    /// Faction the role belongs to (empty: a role of the whole world, like a mayor).
     pub faction: Id,
-    /// Zone of the throne: when vacant, the first eligible pawn standing here claims it.
+    /// How the role changes hands.
+    pub mode: TitleMode,
+    /// Zone of the throne (`Seat`): when vacant, the first eligible pawn standing here claims it.
     pub seat_zone: Id,
+    /// Requirements to hold the role (to claim it, to be a candidate, to win a challenge).
     pub claim_requires: Condition,
+    /// Only members of `faction` can hold it.
+    pub members_only: bool,
+    /// Candidate score: stat → weight (the key "money" weighs the wallet). Empty: the requirements' stats.
+    pub score: BTreeMap<Id, f32>,
+    /// Ticks a vacancy lasts before the role is assigned (campaign, mourning…). Not for `Seat`.
+    pub vacancy_ticks: u64,
+    /// Ticks of a mandate: at the end a new election (or appointment) is held. 0 = for life.
+    pub term: u64,
+    /// Ticks a holder may stay below the requirements before losing the role. 0 = never loses it that way.
+    pub grace: u64,
+    /// Stat compared in a challenge or a coup (`Challenge`, `Coup`).
+    pub challenge_stat: Id,
+    /// Supporters within this radius add half their stat (a coup needs friends).
+    pub challenge_allies: i32,
+    /// Powers of whoever holds it.
+    pub stats: BTreeMap<Id, f32>,
+    pub tags: Vec<String>,
+    pub abilities: Vec<Id>,
+    pub actions: Vec<Id>,
     pub victory_points: i64,
     /// A player whose leader claims the title takes control of `faction`.
     pub grants_faction_control: bool,
     pub news: f32,
+}
+
+/// How a role (title) is obtained when vacant, and how it can be taken from its holder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum TitleMode {
+    /// Whoever sits on the seat while it is vacant.
+    #[default]
+    Seat,
+    /// The best eligible member of the faction inherits it.
+    Succession,
+    /// Members vote: score plus luck; held again at the end of every term.
+    Election,
+    /// Chosen by the faction's higher-ups among the eligible: the best score.
+    Appointment,
+    /// Taken by beating the holder (a duel, a drinking contest…); when vacant, the best score.
+    Challenge,
+    /// Taken by a plot with enough supporters; when vacant, the best score.
+    Coup,
+    /// Bought: the richest eligible.
+    Purchase,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

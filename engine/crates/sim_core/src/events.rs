@@ -47,6 +47,11 @@ pub mod kind {
     pub const RELEASED: &str = "tether_released";
     pub const COMMAND: &str = "command";
     pub const ABILITY: &str = "ability";
+    pub const CLASS_GAINED: &str = "class_gained";
+    pub const CLASS_LOST: &str = "class_lost";
+    pub const CLASS_OFFER: &str = "class_offer";
+    pub const ROLE_CHALLENGE: &str = "role_challenge";
+    pub const ROLE_LOST: &str = "role_lost";
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

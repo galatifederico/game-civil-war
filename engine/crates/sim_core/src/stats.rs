@@ -109,14 +109,31 @@ impl Needs {
 /// Recomputes effective stats and tags from race, classes, statuses and carried items.
 pub fn recompute_stats(
     content: Res<Content>,
+    titles: Res<crate::factions::Titles>,
     mut q: Query<
-        (&Race, &Classes, &StatusEffects, Option<&Inventory>, Option<&crate::factions::FactionMember>, &mut Stats, &mut Tags),
+        (
+            &Race,
+            &Classes,
+            &StatusEffects,
+            Option<&Inventory>,
+            Option<&crate::factions::FactionMember>,
+            Option<&crate::ids::SimId>,
+            &mut Stats,
+            &mut Tags,
+        ),
         Without<Dead>,
     >,
 ) {
     let police = &content.bindings.police_tag;
     let press = &content.bindings.press_tag;
-    for (race, classes, statuses, inv, member, mut stats, mut tags) in &mut q {
+    // Roles held, by holder.
+    let mut roles: BTreeMap<crate::ids::SimId, Vec<&crate::content::TitleDef>> = BTreeMap::new();
+    for (t, h) in &titles.holders {
+        if let (Some(h), Some(d)) = (h, content.titles.get(t)) {
+            roles.entry(*h).or_default().push(d);
+        }
+    }
+    for (race, classes, statuses, inv, member, sid, mut stats, mut tags) in &mut q {
         let mut eff = stats.base.clone();
         let mut t: BTreeSet<String> = tags.base.clone();
         let add = |m: &BTreeMap<String, f32>, eff: &mut BTreeMap<String, f32>| {
@@ -167,6 +184,11 @@ pub fn recompute_stats(
                 }
                 t.extend(f.tags.iter().cloned());
             }
+        for d in sid.and_then(|id| roles.get(id)).into_iter().flatten() {
+            add(&d.stats, &mut eff);
+            t.extend(d.tags.iter().cloned());
+            t.insert(format!("title:{}", d.id));
+        }
         for (k, v) in eff.iter_mut() {
             let (lo, hi) = content.stat_bounds(k);
             *v = v.clamp(lo, hi);
@@ -177,13 +199,20 @@ pub fn recompute_stats(
 }
 
 /// Stats with a rest value drift back towards it (morale recovers, anger fades).
-pub fn stat_recovery(content: Res<Content>, mut q: Query<&mut Stats, (With<Pawn>, Without<Dead>)>) {
+pub fn stat_recovery(content: Res<Content>, params: Res<crate::params::Params>, mut q: Query<&mut Stats, (With<Pawn>, Without<Dead>)>) {
     let drifting: Vec<(&String, f32, f32)> =
         content.stats.values().filter_map(|s| s.rest_value.filter(|_| s.recovery > 0.0).map(|r| (&s.id, r, s.recovery))).collect();
-    if drifting.is_empty() {
+    let tpd = params.get("time.ticks_per_day", 24.0).max(1.0) as f32;
+    let daily: Vec<(&String, f32, (f32, f32))> =
+        content.stats.values().filter(|s| s.per_day != 0.0).map(|s| (&s.id, s.per_day / tpd, (s.min, s.max))).collect();
+    if drifting.is_empty() && daily.is_empty() {
         return;
     }
     for mut stats in &mut q {
+        for (id, step, bounds) in &daily {
+            let v = stats.base.get(*id).copied().unwrap_or(0.0);
+            stats.base.insert((*id).clone(), (v + step).clamp(bounds.0, bounds.1));
+        }
         for (id, rest, rate) in &drifting {
             let v = stats.base.get(*id).copied().unwrap_or(*rest);
             let nv = if v < *rest { (v + rate).min(*rest) } else { (v - rate).max(*rest) };

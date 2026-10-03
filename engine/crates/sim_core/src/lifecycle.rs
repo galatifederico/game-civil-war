@@ -61,6 +61,11 @@ pub fn spawn_template(world: &mut World, template: &str, pos: Option<Position>, 
         if t.unique { t.name.clone() } else { format!("{} {}", t.name, id.0) }
     });
     let mut base: BTreeMap<String, f32> = content.stats.values().map(|s| (s.id.clone(), s.default)).collect();
+    // Everybody is a bit different: stats with a spread vary around their default.
+    for s in content.stats.values().filter(|s| s.spread > 0.0 && !t.stats.contains_key(&s.id)) {
+        let r = world.resource_mut::<crate::rng::SimRng>().next_f32();
+        base.insert(s.id.clone(), (s.default + (r * 2.0 - 1.0) * s.spread).clamp(s.min, s.max).round());
+    }
     for (k, v) in &t.stats {
         base.insert(k.clone(), *v);
     }
@@ -186,6 +191,11 @@ pub fn refresh_role(world: &mut World, e: Entity) {
     }
     if let Some(t) = template {
         actions.extend(t.actions.iter().cloned());
+    }
+    for t in crate::titles::held(world, e) {
+        if let Some(d) = content.titles.get(&t) {
+            actions.extend(d.actions.iter().cloned());
+        }
     }
     actions.sort();
     actions.dedup();

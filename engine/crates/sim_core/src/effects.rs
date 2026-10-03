@@ -400,6 +400,26 @@ pub fn apply_effect(world: &mut World, ctx: &EffectCtx, effect: &Effect) {
             let msg = substitute(world, msg, subj, ctx.target);
             world.resource_mut::<EventLog>().push(tick, EventBuilder::new("log", msg));
         }
+        Effect::ClaimTitle(t) => {
+            if let Some(e) = subj
+                && world.resource::<Titles>().holder(t).is_none()
+                && let Some(def) = world.resource::<Content>().titles.get(t).cloned()
+                && crate::titles::eligible(world, e, &def)
+            {
+                crate::titles::assign(world, t, e, "si prende il posto vacante");
+            }
+        }
+        Effect::LeaveTitle(t) => {
+            let id = subj.and_then(|e| world.get::<SimId>(e).copied());
+            if id.is_some() && world.resource::<Titles>().holder(t) == id {
+                crate::titles::vacate(world, t, "si dimette");
+            }
+        }
+        Effect::ChallengeTitle { title, stat, allies_radius } => {
+            if let Some(e) = subj {
+                crate::titles::challenge(world, e, title, stat, *allies_radius);
+            }
+        }
         Effect::Custom { id, params } => {
             let f = world.resource::<crate::extensions::Extensions>().effects.get(id).cloned();
             match f {
@@ -528,6 +548,19 @@ pub fn eval_condition(world: &mut World, ctx: &EffectCtx, cond: &Condition) -> b
             .and_then(|f| world.resource::<Factions>().states.get(&f).map(|s| s.victory_points))
             .is_some_and(|x| x >= *v),
         Condition::ArticlesAtLeast(n) => world.resource::<crate::press::Feed>().articles.len() as u32 >= *n,
+        Condition::HoldsTitle(t) => {
+            let id = subj.and_then(|e| world.get::<SimId>(e).copied());
+            id.is_some() && world.resource::<Titles>().holder(t) == id
+        }
+        Condition::HoldsAnyTitle => subj.is_some_and(|e| !crate::titles::held(world, e).is_empty()),
+        Condition::IsSex(s) => subj.and_then(|e| world.get::<crate::stats::Sex>(e)).is_some_and(|x| x == s),
+        Condition::StatusTagCount { tag, count } => {
+            let content = world.resource::<Content>();
+            let n = subj.and_then(|e| world.get::<StatusEffects>(e)).map_or(0, |s| {
+                s.active.keys().filter(|id| content.statuses.get(*id).is_some_and(|d| d.tags.contains(tag))).count()
+            });
+            n as u32 >= *count
+        }
         Condition::Custom { id, params } => {
             let f = world.resource::<crate::extensions::Extensions>().conditions.get(id).cloned();
             match f {

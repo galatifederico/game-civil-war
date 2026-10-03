@@ -253,6 +253,18 @@ impl Validator<'_> {
             for r in &cl.races {
                 self.check(&c.races, "razza", r, &ctx);
             }
+            for x in cl.includes.iter().chain(&cl.replaces) {
+                self.check(&c.classes, "classe", x, &ctx);
+            }
+            if let Some(req) = &cl.requires {
+                self.cond(req, &ctx);
+            }
+        }
+        if let Some(s) = &c.bindings.crime_record {
+            self.stat(s, "bindings");
+        }
+        if let Some(cl) = &c.bindings.default_class {
+            self.check(&c.classes, "classe", cl, "bindings");
         }
         for s in c.statuses.values() {
             let ctx = format!("status {}", s.id);
@@ -505,9 +517,25 @@ impl Validator<'_> {
         }
         for t in c.titles.values() {
             let ctx = format!("titolo {}", t.id);
-            self.check(&c.factions, "fazione", &t.faction, &ctx);
-            self.zone(&t.seat_zone, &ctx);
+            if !t.faction.is_empty() {
+                self.check(&c.factions, "fazione", &t.faction, &ctx);
+            }
+            if t.mode == super::defs::TitleMode::Seat || !t.seat_zone.is_empty() {
+                self.zone(&t.seat_zone, &ctx);
+            }
             self.cond(&t.claim_requires, &ctx);
+            if !t.challenge_stat.is_empty() {
+                self.stat(&t.challenge_stat, &ctx);
+            }
+            for s in t.stats.keys().chain(t.score.keys().filter(|k| *k != "money")) {
+                self.stat(s, &ctx);
+            }
+            for a in &t.abilities {
+                self.check(&c.abilities, "abilità", a, &ctx);
+            }
+            for a in &t.actions {
+                self.check(&c.actions, "azione", a, &ctx);
+            }
         }
         for n in c.news_sources.values() {
             if let Some(a) = &n.author {
@@ -622,6 +650,11 @@ impl Validator<'_> {
             Effect::Spill { fluid, .. } => self.check(&c.fluids, "fluido", fluid, ctx),
             Effect::Teleport { zone } => self.zone(zone, ctx),
             Effect::PostJob { job, .. } => self.check(&c.jobs, "job", job, ctx),
+            Effect::ClaimTitle(t) | Effect::LeaveTitle(t) => self.check(&c.titles, "titolo", t, ctx),
+            Effect::ChallengeTitle { title, stat, .. } => {
+                self.check(&c.titles, "titolo", title, ctx);
+                self.stat(stat, ctx);
+            }
             _ => {}
         }
     }
@@ -653,7 +686,7 @@ impl Validator<'_> {
                     self.check(&c.factions, "fazione", f, ctx);
                 }
             }
-            Condition::TitleVacant(t) => self.check(&c.titles, "titolo", t, ctx),
+            Condition::TitleVacant(t) | Condition::HoldsTitle(t) => self.check(&c.titles, "titolo", t, ctx),
             Condition::PopulationBelow { faction, template, .. } => {
                 if let Some(f) = faction {
                     self.check(&c.factions, "fazione", f, ctx);

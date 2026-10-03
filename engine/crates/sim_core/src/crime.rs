@@ -48,6 +48,14 @@ pub fn add_wanted(world: &mut World, e: Entity, amount: f32, crime: &str, victim
             w.charges.push(Charge { crime: crime.to_string(), tick, severity: amount, victim });
         }
     }
+    if amount > 0.0
+        && let Some(stat) = world.resource::<crate::content::Content>().bindings.crime_record.clone()
+    {
+        let bounds = world.resource::<crate::content::Content>().stat_bounds(&stat);
+        if let Some(mut s) = world.get_mut::<crate::stats::Stats>(e) {
+            s.add_base(&stat, 1.0, bounds);
+        }
+    }
 }
 
 pub fn clear_wanted(world: &mut World, e: Entity) {

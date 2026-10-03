@@ -104,6 +104,10 @@ fn router_inner(state: AppState) -> Router {
         .route("/api/ui/item/{item}", get(ui_item))
         .route("/api/ui/collections", get(ui_collections))
         .route("/api/ui/economy", get(ui_economy))
+        .route("/api/ui/classes/{player}", get(ui_classes))
+        .route("/api/ui/class", post(ui_take_class))
+        .route("/api/ui/roles", get(ui_roles))
+        .route("/api/ui/role", post(ui_challenge_role))
         .route("/api/save", post(save_game))
         .route("/api/load", post(load_game))
         .route("/mcp", post(mcp_http))
@@ -424,6 +428,107 @@ async fn ui_interactions(State(s): State<AppState>, Path((player, target)): Path
     }
     let name = crate::infiltration::apparent_name(&sim.world, t);
     Ok(Json(json!({ "target": target, "name": name, "building": building, "distance": distance, "actions": out })))
+}
+
+/// A requirement split in lines, each with whether `who` meets it.
+fn requirement_lines(sim: &mut Simulation, who: Option<Entity>, cond: &crate::content::Condition) -> Vec<Value> {
+    let content = sim.content().clone();
+    crate::describe::condition_parts(cond)
+        .iter()
+        .map(|p| {
+            let ok = who.is_some_and(|e| crate::effects::eval_condition(&mut sim.world, &crate::effects::EffectCtx::new(Some(e), None, "ui"), p));
+            json!({ "text": crate::describe::condition(&content, p), "ok": ok })
+        })
+        .collect()
+}
+
+fn ability_and_action_names(content: &crate::content::Content, abilities: &[String], actions: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = abilities.iter().filter_map(|a| content.abilities.get(a).map(|d| d.name.clone())).collect();
+    for a in actions.iter().filter_map(|a| content.actions.get(a)) {
+        let n = match &a.kind {
+            crate::content::ActionKind::Job { job, .. } => content.jobs.get(job).map_or(a.name.clone(), |j| j.name.clone()),
+            _ => a.name.clone(),
+        };
+        if !out.contains(&n) {
+            out.push(n);
+        }
+    }
+    out
+}
+
+/// Every class that can be acquired, with its requirements checked on the player's champion.
+async fn ui_classes(State(s): State<AppState>, Path(player): Path<String>) -> ApiResult {
+    let mut sim = s.sim.lock().unwrap();
+    let p = sim.world.resource::<Players>().players.get(&player).cloned().ok_or_else(|| not_found(&player))?;
+    let me = p.leader.and_then(|id| sim.entity(id));
+    let content = sim.content().clone();
+    let held = me.and_then(|e| sim.world.get::<crate::stats::Classes>(e)).map(|c| c.0.clone()).unwrap_or_default();
+    let mut out = Vec::new();
+    for d in content.classes.values() {
+        let Some(req) = &d.requires else { continue };
+        let lines = requirement_lines(&mut sim, me, req);
+        let eligible = me.is_some_and(|e| crate::classes::meets(&mut sim.world, e, &d.id));
+        out.push(json!({
+            "id": d.id, "name": d.name, "description": d.description, "group": d.group, "priority": d.priority,
+            "held": held.contains(&d.id), "eligible": eligible, "requirements": lines,
+            "powers": ability_and_action_names(&content, &d.abilities, &d.actions),
+        }));
+    }
+    let names: Vec<String> = held.iter().map(|c| content.classes.get(c).map_or(c.clone(), |d| d.name.clone())).collect();
+    Ok(Json(json!({ "current": names, "classes": out })))
+}
+
+#[derive(Deserialize)]
+struct ClassBody {
+    player: String,
+    class: String,
+}
+
+async fn ui_take_class(State(s): State<AppState>, Json(b): Json<ClassBody>) -> ApiResult {
+    let mut sim = s.sim.lock().unwrap();
+    let msg = crate::classes::accept(&mut sim.world, &b.player, &b.class).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    Ok(Json(json!({ "ok": msg })))
+}
+
+/// The roles of the world: who holds them, how they are won, their powers and (with `player`) whether the
+/// champion meets the requirements.
+async fn ui_roles(State(s): State<AppState>, Query(q): Query<ItemQ>) -> ApiResult {
+    let mut sim = s.sim.lock().unwrap();
+    let me = q.player.as_ref().and_then(|p| sim.world.resource::<Players>().players.get(p).cloned()).and_then(|p| p.leader).and_then(|id| sim.entity(id));
+    let content = sim.content().clone();
+    let mut out = Vec::new();
+    for t in content.titles.values() {
+        let holder = crate::titles::holder_entity(&sim.world, &t.id);
+        let holder_json = holder.map(|h| json!({ "id": sim.world.get::<SimId>(h), "name": crate::infiltration::apparent_name(&sim.world, h) }));
+        let lines = requirement_lines(&mut sim, me, &t.claim_requires);
+        let eligible = me.is_some_and(|e| crate::titles::eligible(&mut sim.world, e, t));
+        let mine = me.is_some() && holder == me;
+        let mode = format!("{:?}", t.mode);
+        let can_act = eligible && !mine && (holder.is_none() || matches!(t.mode, crate::content::TitleMode::Challenge | crate::content::TitleMode::Coup));
+        let mut powers = ability_and_action_names(&content, &t.abilities, &t.actions);
+        powers.extend(t.stats.iter().map(|(k, v)| format!("{} {:+.0}", content.stats.get(k).map_or(k.as_str(), |s| s.name.as_str()), v)));
+        out.push(json!({
+            "id": t.id, "name": t.name, "description": t.description,
+            "faction": content.factions.get(&t.faction).map(|f| f.name.clone()),
+            "mode": mode, "holder": holder_json, "mine": mine, "eligible": eligible, "can_act": can_act,
+            "requirements": lines, "powers": powers, "victory_points": t.victory_points,
+        }));
+    }
+    Ok(Json(json!(out)))
+}
+
+#[derive(Deserialize)]
+struct RoleBody {
+    player: String,
+    title: String,
+}
+
+async fn ui_challenge_role(State(s): State<AppState>, Json(b): Json<RoleBody>) -> ApiResult {
+    let mut sim = s.sim.lock().unwrap();
+    match crate::titles::player_challenge(&mut sim.world, &b.player, &b.title) {
+        Ok(m) => Ok(Json(json!({ "ok": m }))),
+        Err(e) => Ok(Json(json!({ "error": e }))),
+    }
 }
 
 #[derive(Deserialize)]

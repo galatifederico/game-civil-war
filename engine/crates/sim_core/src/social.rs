@@ -5,7 +5,7 @@ use bevy_ecs::prelude::*;
 use crate::content::{Content, FactionRole, JobDef};
 use crate::effects::{eval_condition, EffectCtx};
 use crate::events::{kind, EventBuilder, EventLog};
-use crate::factions::{Dissent, FactionMember, Factions, Leader, Players, Titles};
+use crate::factions::{Dissent, FactionMember, Factions, Leader, Titles};
 use crate::ids::SimId;
 use crate::map::{Position, WorldMap};
 use crate::params::Params;
@@ -224,10 +224,9 @@ pub fn vacate_title(world: &mut World, title: &str) {
 
 /// Vacant titles are claimed by the first eligible pawn sitting on the seat (player leaders first).
 pub fn succession(world: &mut World) {
-    let tick = world.resource::<SimClock>().tick;
     let content = world.resource::<Content>().clone();
     let map = world.resource::<WorldMap>().clone();
-    for t in content.titles.values() {
+    for t in content.titles.values().filter(|t| t.mode == crate::content::TitleMode::Seat) {
         if world.resource::<Titles>().holder(&t.id).is_some() {
             continue;
         }
@@ -249,41 +248,7 @@ pub fn succession(world: &mut World) {
             claimants.push((world.get::<Leader>(e).is_none(), *world.get::<SimId>(e).unwrap(), e));
         }
         claimants.sort();
-        let Some((_, id, e)) = claimants.first().copied() else { continue };
-        world.resource_mut::<Titles>().holders.insert(t.id.clone(), Some(id));
-        let name = crate::effects::name_of(world, e);
-        let player = world.get::<Leader>(e).map(|l| l.player.clone());
-        let mut msg = format!("{name} sale sul trono: nuovo {}", t.name);
-        if let Some(p) = &player {
-            let pf = world.resource::<Players>().players.get(p).map(|x| x.faction.clone());
-            if let Some(pf) = pf {
-                if let Some(s) = world.resource_mut::<Factions>().states.get_mut(&pf) {
-                    s.victory_points += t.victory_points;
-                }
-                msg += &format!(" (+{} punti vittoria)", t.victory_points);
-            }
-            let owned_by_other = world.resource::<Factions>().states.get(&t.faction).and_then(|s| s.controlled_by.clone()).is_some_and(|o| &o != p);
-            if t.grants_faction_control && !owned_by_other {
-                if let Some(s) = world.resource_mut::<Factions>().states.get_mut(&t.faction) {
-                    s.controlled_by = Some(p.clone());
-                }
-                msg += &format!("; il giocatore {p} controlla ora {}", content.factions.get(&t.faction).map_or("", |f| f.name.as_str()));
-            }
-        } else {
-            let rank = content.factions.get(&t.faction).and_then(|f| f.ranks.iter().filter(|r| r.unique).max_by_key(|r| r.level)).map(|r| r.id.clone());
-            if let Some(rank) = rank {
-                world.entity_mut(e).insert(FactionMember { faction: t.faction.clone(), rank, joined: tick });
-            }
-        }
-        let pos = world.get::<Position>(e).copied();
-        world.resource_mut::<EventLog>().push(
-            tick,
-            EventBuilder::new(kind::SUCCESSION, msg)
-                .actor(Some(id))
-                .faction(Some(t.faction.clone()))
-                .pos(pos)
-                .news(t.news.max(0.9))
-                .tags(["succession", "politics", t.id.as_str()]),
-        );
+        let Some((_, _, e)) = claimants.first().copied() else { continue };
+        crate::titles::assign(world, &t.id, e, "");
     }
 }

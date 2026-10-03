@@ -9,6 +9,7 @@ pub mod abilities;
 pub mod ai;
 pub mod anatomy;
 pub mod buildings;
+pub mod classes;
 pub mod commands;
 pub mod compendium;
 pub mod content;
@@ -49,6 +50,7 @@ pub mod targeting;
 pub mod telemetry;
 pub mod territory;
 pub mod time;
+pub mod titles;
 pub mod victory;
 
 #[cfg(feature = "server")]
