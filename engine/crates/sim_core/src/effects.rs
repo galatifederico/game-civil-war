@@ -400,6 +400,39 @@ pub fn apply_effect(world: &mut World, ctx: &EffectCtx, effect: &Effect) {
             let msg = substitute(world, msg, subj, ctx.target);
             world.resource_mut::<EventLog>().push(tick, EventBuilder::new("log", msg));
         }
+        Effect::ModBond { friendship, attraction } => {
+            if let (Some(a), Some(b)) = (subj, ctx.target)
+                && a != b
+            {
+                let (ia, ib) = (world.get::<SimId>(a).copied(), world.get::<SimId>(b).copied());
+                if let (Some(ia), Some(ib)) = (ia, ib) {
+                    for (e, other, attr) in [(a, ib, 0.0), (b, ia, *attraction)] {
+                        if world.get::<crate::stats::Bonds>(e).is_none() {
+                            world.entity_mut(e).insert(crate::stats::Bonds::default());
+                        }
+                        let mut bonds = world.get_mut::<crate::stats::Bonds>(e).unwrap();
+                        let bond = bonds.0.entry(other).or_default();
+                        bond.friendship = (bond.friendship + friendship).clamp(0.0, 100.0);
+                        bond.attraction = (bond.attraction + attr).clamp(0.0, 100.0);
+                    }
+                }
+            }
+        }
+        Effect::TransmuteFor { race, ticks } => {
+            if let Some(e) = subj {
+                let old = world.get::<Race>(e).map(|r| r.0.clone()).unwrap_or_default();
+                if old != *race && world.get::<crate::player::Transmuted>(e).is_none() {
+                    crate::status::transmute(world, e, race);
+                    world.entity_mut(e).insert(crate::player::Transmuted { original: old, until: tick + ticks });
+                }
+            }
+        }
+        Effect::Note(text) => {
+            if let Some(e) = subj {
+                let text = substitute(world, text, subj, ctx.target);
+                crate::stats::write_journal(world, e, text);
+            }
+        }
         Effect::ClaimTitle(t) => {
             if let Some(e) = subj
                 && world.resource::<Titles>().holder(t).is_none()
@@ -548,6 +581,22 @@ pub fn eval_condition(world: &mut World, ctx: &EffectCtx, cond: &Condition) -> b
             .and_then(|f| world.resource::<Factions>().states.get(&f).map(|s| s.victory_points))
             .is_some_and(|x| x >= *v),
         Condition::ArticlesAtLeast(n) => world.resource::<crate::press::Feed>().articles.len() as u32 >= *n,
+        Condition::BondAtLeast { friendship, attraction } => {
+            let other = ctx.target.and_then(|t| world.get::<SimId>(t).copied());
+            let b = subj.zip(other).and_then(|(e, o)| world.get::<crate::stats::Bonds>(e).map(|b| b.get(o))).unwrap_or_default();
+            b.friendship >= *friendship && b.attraction >= *attraction
+        }
+        Condition::Contest { stat, luck } => {
+            let (Some(a), Some(b)) = (subj, ctx.target) else { return false };
+            let luck = luck.unwrap_or(0.5).clamp(0.0, 1.0);
+            let sa = world.get::<Stats>(a).map_or(0.0, |s| s.get(stat)).max(1.0);
+            let sb = world.get::<Stats>(b).map_or(0.0, |s| s.get(stat)).max(1.0);
+            let (ra, rb) = {
+                let mut rng = world.resource_mut::<SimRng>();
+                (rng.next_f32(), rng.next_f32())
+            };
+            sa * (1.0 - luck / 2.0 + luck * ra) > sb * (1.0 - luck / 2.0 + luck * rb)
+        }
         Condition::HoldsTitle(t) => {
             let id = subj.and_then(|e| world.get::<SimId>(e).copied());
             id.is_some() && world.resource::<Titles>().holder(t) == id

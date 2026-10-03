@@ -245,3 +245,42 @@ pub fn decay_needs(content: Res<Content>, mut q: Query<(&mut Needs, &StatusEffec
         }
     }
 }
+
+/// Ties of one pawn to others: friendship (grows with things done together) and attraction, 0..100.
+#[derive(Component, Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Bonds(pub BTreeMap<crate::ids::SimId, Bond>);
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+pub struct Bond {
+    pub friendship: f32,
+    pub attraction: f32,
+}
+
+impl Bonds {
+    pub fn get(&self, other: crate::ids::SimId) -> Bond {
+        self.0.get(&other).copied().unwrap_or_default()
+    }
+}
+
+/// What a pawn found out (investigations, prophecies…), newest last; shown to its player.
+#[derive(Component, Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Journal(pub Vec<JournalEntry>);
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct JournalEntry {
+    pub tick: u64,
+    pub text: String,
+}
+
+/// Writes a line in a pawn's journal (the oldest go after 30).
+pub fn write_journal(world: &mut World, e: Entity, text: String) {
+    let tick = world.resource::<crate::time::SimClock>().tick;
+    if world.get::<Journal>(e).is_none() {
+        world.entity_mut(e).insert(Journal::default());
+    }
+    let mut j = world.get_mut::<Journal>(e).unwrap();
+    j.0.push(JournalEntry { tick, text });
+    if j.0.len() > 30 {
+        j.0.remove(0);
+    }
+}

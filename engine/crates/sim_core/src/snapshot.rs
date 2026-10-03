@@ -149,6 +149,12 @@ pub struct EntityView {
     pub building: Option<BuildingView>,
     pub leader_of: Option<String>,
     pub dead: bool,
+    /// Last findings of the pawn (investigations…), newest first.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub journal: Vec<crate::stats::JournalEntry>,
+    /// Roles held.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub titles: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -320,6 +326,8 @@ pub fn entity_view(world: &World, e: Entity, truth: bool) -> Option<EntityView> 
         building,
         leader_of: world.get::<Leader>(e).map(|l| l.player.clone()),
         dead: world.get::<Dead>(e).is_some(),
+        journal: world.get::<crate::stats::Journal>(e).map(|j| j.0.iter().rev().take(10).cloned().collect()).unwrap_or_default(),
+        titles: crate::titles::held(world, e).iter().filter_map(|t| content.titles.get(t).map(|d| d.name.clone())).collect(),
     })
 }
 

@@ -104,6 +104,12 @@ pub enum Effect {
     Teleport { zone: String },
     PostJob { job: String, #[serde(default)] priority: i32 },
     Log(String),
+    /// Friendship between subject and target (both ways) and the target's attraction to the subject.
+    ModBond { #[serde(default)] friendship: f32, #[serde(default)] attraction: f32 },
+    /// Turns the subject into another race for a while, then back.
+    TransmuteFor { race: String, ticks: u64 },
+    /// A line in the subject's journal ({subject} and {target} are replaced).
+    Note(String),
     /// Takes a role (title) if the subject meets its requirements and it is vacant.
     ClaimTitle(String),
     /// The subject leaves a role it holds.
@@ -166,6 +172,10 @@ pub enum Condition {
     FactionHoldsItems { faction: String, items: Vec<String> },
     VictoryPointsAtLeast(i64),
     ArticlesAtLeast(u32),
+    /// Bond of the subject towards the target: friendship and attraction at least these values.
+    BondAtLeast { #[serde(default)] friendship: f32, #[serde(default)] attraction: f32 },
+    /// `stat` of the subject plus luck beats the target's (a brawl, a duel). `luck` 0..1, default 0.5.
+    Contest { stat: String, #[serde(default)] luck: Option<f32> },
     /// The subject holds this role (title).
     HoldsTitle(String),
     /// The subject holds any role.

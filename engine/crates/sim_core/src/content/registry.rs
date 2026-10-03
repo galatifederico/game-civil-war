@@ -650,6 +650,7 @@ impl Validator<'_> {
             Effect::Spill { fluid, .. } => self.check(&c.fluids, "fluido", fluid, ctx),
             Effect::Teleport { zone } => self.zone(zone, ctx),
             Effect::PostJob { job, .. } => self.check(&c.jobs, "job", job, ctx),
+            Effect::TransmuteFor { race, .. } => self.check(&c.races, "razza", race, ctx),
             Effect::ClaimTitle(t) | Effect::LeaveTitle(t) => self.check(&c.titles, "titolo", t, ctx),
             Effect::ChallengeTitle { title, stat, .. } => {
                 self.check(&c.titles, "titolo", title, ctx);
@@ -686,6 +687,7 @@ impl Validator<'_> {
                     self.check(&c.factions, "fazione", f, ctx);
                 }
             }
+            Condition::Contest { stat, .. } => self.stat(stat, ctx),
             Condition::TitleVacant(t) | Condition::HoldsTitle(t) => self.check(&c.titles, "titolo", t, ctx),
             Condition::PopulationBelow { faction, template, .. } => {
                 if let Some(f) = faction {

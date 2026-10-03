@@ -7,7 +7,11 @@
 //! - effect `oracle_reveal`: the Oracle reveals a map secret (a disguised infiltrator or where a relic is);
 //! - effect `borgazzi_masterpiece`: Gerolamo Borgazzi paints the next of his unique artworks;
 //! - condition `intruders`: pawns of other factions inside a zone (dungeon exit conditions);
-//! - job handler `hack`: a hacker takes control of a robot or drone.
+//! - job handler `hack`: a hacker takes control of a robot or drone;
+//! - effect `indaga`: the Investigator finds out something specific (where a relic is, the way to a place,
+//!   who is in disguise nearby, who is wanted, who holds the roles) and writes it in its journal;
+//! - condition `fertile_coppia` and effect `concepisci`: who can have children with whom (Rettiliani among
+//!   themselves, Salsesi, Fidentini and Nani with each other, everybody else within their race) and the birth.
 
 use std::path::{Path, PathBuf};
 
@@ -50,6 +54,9 @@ impl SimPlugin for FidenzaPlugin {
         b.register_effect("dig_frontier", dig_frontier);
         b.register_condition("near", near);
         b.register_job_handler("hack", hack);
+        b.register_effect("concepisci", conceive);
+        b.register_effect("indaga", investigate);
+        b.register_condition("fertile_coppia", fertile_couple);
         Ok(())
     }
 }
@@ -293,4 +300,206 @@ pub fn sprites_dir() -> Option<std::path::PathBuf> {
 
 pub fn client_html() -> &'static str {
     include_str!("../client/index.html")
+}
+
+/// Races that can have children together (besides each race with itself).
+const MIXED_RACES: &[&str] = &["fidentino", "salsese", "nano"];
+
+/// Whether subject and target can conceive: Rettiliani are asexual and breed with any Rettiliano; Salsesi,
+/// Fidentini and Nani breed with each other; the others within their race. Outside the Rettiliani it takes
+/// a man and a woman; machines never.
+fn can_conceive(world: &World, a: Entity, b: Entity) -> bool {
+    use sim_core::stats::{Race, Sex};
+    let (Some(ra), Some(rb)) = (world.get::<Race>(a), world.get::<Race>(b)) else { return false };
+    let content = world.resource::<Content>();
+    let sexless = |r: &str| content.races.get(r).is_none_or(|d| d.sexless);
+    if sexless(&ra.0) || sexless(&rb.0) {
+        return false;
+    }
+    if ra.0 == "rettiliano" || rb.0 == "rettiliano" {
+        return ra.0 == rb.0;
+    }
+    let races_ok = ra.0 == rb.0 || (MIXED_RACES.contains(&ra.0.as_str()) && MIXED_RACES.contains(&rb.0.as_str()));
+    let sexes = (world.get::<Sex>(a).copied(), world.get::<Sex>(b).copied());
+    races_ok && matches!(sexes, (Some(Sex::Male), Some(Sex::Female)) | (Some(Sex::Female), Some(Sex::Male)))
+}
+
+fn fertile_couple(world: &mut World, ctx: &EffectCtx, _p: &serde_json::Value) -> bool {
+    match (ctx.subject, ctx.target) {
+        (Some(a), Some(b)) => can_conceive(world, a, b),
+        _ => false,
+    }
+}
+
+/// After sex: maybe a child is born (fertility of both; a condom makes it rare). It takes the mother's race
+/// (or the subject's, for Rettiliani) and faction.
+fn conceive(world: &mut World, ctx: &EffectCtx, _p: &serde_json::Value) {
+    use sim_core::stats::{Race, Sex};
+    let (Some(a), Some(b)) = (ctx.subject, ctx.target) else { return };
+    if !can_conceive(world, a, b) {
+        return;
+    }
+    let fert = |e: Entity| world.get::<Stats>(e).map_or(50.0, |s| s.get("fertilita"));
+    let mut chance = (fert(a) + fert(b)) / 200.0 * 0.15;
+    for e in [a, b] {
+        if sim_core::inventory_ops::count(world, e, "preservativo") > 0 {
+            sim_core::inventory_ops::take(world, e, "preservativo", 1);
+            chance *= 0.05;
+            break;
+        }
+    }
+    if !world.resource_mut::<SimRng>().chance(chance) {
+        return;
+    }
+    let mother = if world.get::<Sex>(b).copied() == Some(Sex::Female) { b } else { a };
+    let race = world.get::<Race>(mother).map(|r| r.0.clone()).unwrap_or_default();
+    let content = world.resource::<Content>().clone();
+    let Some(t) = content
+        .templates
+        .values()
+        .filter(|t| t.race == race && !t.unique && !t.virtual_entity)
+        .min_by_key(|t| (t.classes != ["normie"], t.id.clone()))
+        .map(|t| t.id.clone())
+    else {
+        return;
+    };
+    let pos = world.get::<Position>(mother).copied();
+    let faction = world.get::<FactionMember>(mother).map(|m| m.faction.clone());
+    let mname = sim_core::effects::name_of(world, mother);
+    let ov = sim_core::lifecycle::SpawnOverrides { name: Some(format!("Figlio di {mname}")), faction, ..Default::default() };
+    if let Some(child) = sim_core::lifecycle::spawn_template(world, &t, pos, &ov) {
+        let bounds = content.stat_bounds("eta");
+        if let Some(mut s) = world.get_mut::<Stats>(child) {
+            s.set_base("eta", 0.0, bounds);
+            s.set_base("verginita", 1.0, (0.0, 1.0));
+        }
+        let tick = world.resource::<SimClock>().tick;
+        let id = world.get::<SimId>(child).copied();
+        world.resource_mut::<EventLog>().push(
+            tick,
+            EventBuilder::new("birth", format!("Fiocco azzurro e rosa: è nato il figlio di {mname}")).target(id).pos(pos).news(0.6).tags(["nascita"]),
+        );
+    }
+}
+
+/// Where an item is: the pawn or building holding it and the zone it is in.
+fn locate_item(world: &mut World, item: &str) -> Option<(String, Option<String>)> {
+    let map = world.resource::<WorldMap>().clone();
+    let mut found = None;
+    for e in sim_core::sorted_entities::<SimId>(world) {
+        if world.get::<Dead>(e).is_some() || sim_core::inventory_ops::count(world, e, item) == 0 {
+            continue;
+        }
+        let who = sim_core::infiltration::apparent_name(world, e);
+        let zone = world.get::<Position>(e).and_then(|p| map.zone_name_at(p).map(String::from));
+        found = Some((who, zone));
+        break;
+    }
+    found
+}
+
+/// The passages (doors, stairs, manholes) along the way from `from` to a zone, and how many steps.
+fn route(world: &World, from: Position, zone: &str) -> Option<(Vec<String>, usize)> {
+    let map = world.resource::<WorldMap>();
+    let z = map.zone(zone)?;
+    let goal = z.center();
+    let max = world.resource::<Params>().get("move.max_path_nodes", 20000.0) as usize * 4;
+    let path = map.find_path(from, goal, (z.w.min(z.h) / 2).max(0), &|_| true, max)?;
+    let mut doors = Vec::new();
+    let mut prev = from;
+    for p in &path {
+        if p.layer != prev.layer
+            && let Some(portal) = map.portals.iter().find(|x| (x.a == prev && x.b == *p) || (x.b == prev && x.a == *p))
+        {
+            doors.push(portal.name.clone());
+        }
+        prev = *p;
+    }
+    Some((doors, path.len()))
+}
+
+/// `{"topic": "reliquia" | "strada" | "infiltrati" | "ricercati" | "ruoli", "item": id, "tag": tag, "zone": id}`:
+/// the subject investigates and writes what it found in its journal. Perception helps.
+fn investigate(world: &mut World, ctx: &EffectCtx, p: &serde_json::Value) {
+    let Some(me) = ctx.subject else { return };
+    let topic = p.get("topic").and_then(|v| v.as_str()).unwrap_or("reliquia");
+    let content = world.resource::<Content>().clone();
+    let perception = world.get::<Stats>(me).map_or(10.0, |s| s.get("percezione"));
+    let text = match topic {
+        "reliquia" => {
+            let tag = p.get("tag").and_then(|v| v.as_str()).unwrap_or("reliquia_maggiore");
+            let items: Vec<String> = match p.get("item").and_then(|v| v.as_str()) {
+                Some(i) => vec![i.to_string()],
+                None => content.items.values().filter(|i| i.tags.iter().any(|t| t == tag)).map(|i| i.id.clone()).collect(),
+            };
+            let Some(item) = world.resource_mut::<SimRng>().pick(&items).cloned() else { return };
+            let name = content.items.get(&item).map_or(item.clone(), |d| d.name.clone());
+            match locate_item(world, &item) {
+                Some((who, Some(zone))) => format!("Indagine: {name} ce l'ha {who}, in {zone}"),
+                Some((who, None)) => format!("Indagine: {name} ce l'ha {who}"),
+                None => format!("Indagine: di {name} non c'è traccia, forse è andata perduta"),
+            }
+        }
+        "strada" => {
+            let zone = p.get("zone").and_then(|v| v.as_str()).unwrap_or("gallerie");
+            let zname = content.zone(zone).map_or(zone.to_string(), |z| z.name.clone());
+            let Some(from) = world.get::<Position>(me).copied() else { return };
+            match route(world, from, zone) {
+                Some((doors, _)) if doors.is_empty() => format!("Indagine: per {zname} non servono passaggi, basta camminare"),
+                Some((doors, steps)) => format!("Indagine: per arrivare a {zname} passa da {} (circa {steps} passi)", doors.join(", poi ")),
+                None => format!("Indagine: nessuna strada nota per {zname}; forse bisogna scavare"),
+            }
+        }
+        "infiltrati" => {
+            let Some(pos) = world.get::<Position>(me).copied() else { return };
+            let radius = 6 + (perception / 3.0) as i32;
+            let found: Vec<Entity> = sim_core::sorted_entities::<Disguise>(world)
+                .into_iter()
+                .filter(|e| world.get::<Dead>(*e).is_none() && world.get::<Position>(*e).is_some_and(|p| p.within(&pos, radius)))
+                .collect();
+            if found.is_empty() {
+                "Indagine: qui intorno nessuno sembra travestito".to_string()
+            } else {
+                let names: Vec<String> = found
+                    .iter()
+                    .map(|e| {
+                        let real = sim_core::effects::name_of(world, *e);
+                        let shown = sim_core::infiltration::apparent_name(world, *e);
+                        format!("{shown} è in realtà {real}")
+                    })
+                    .collect();
+                format!("Indagine: {}", names.join("; "))
+            }
+        }
+        "ricercati" => {
+            let mut wanted: Vec<(f32, String)> = Vec::new();
+            for e in sim_core::sorted_entities::<Wanted>(world) {
+                let lvl = world.get::<Wanted>(e).map_or(0.0, |w| w.level);
+                if lvl >= 1.0 && world.get::<Dead>(e).is_none() {
+                    wanted.push((lvl, sim_core::infiltration::apparent_name(world, e)));
+                }
+            }
+            wanted.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+            if wanted.is_empty() {
+                "Indagine: al momento nessuno è ricercato".to_string()
+            } else {
+                let list: Vec<String> = wanted.iter().take(5).map(|(l, n)| format!("{n} ({l:.0})")).collect();
+                format!("Indagine: i più ricercati sono {}", list.join(", "))
+            }
+        }
+        "ruoli" => {
+            let mut parts = Vec::new();
+            for t in content.titles.values() {
+                let who = sim_core::titles::holder_entity(world, &t.id).map(|h| sim_core::infiltration::apparent_name(world, h));
+                parts.push(format!("{}: {}", t.name, who.unwrap_or_else(|| "vacante".into())));
+            }
+            format!("Indagine sui ruoli: {}", parts.join("; "))
+        }
+        _ => return,
+    };
+    sim_core::stats::write_journal(world, me, text.clone());
+    let tick = world.resource::<SimClock>().tick;
+    let (id, pos) = (world.get::<SimId>(me).copied(), world.get::<Position>(me).copied());
+    let faction = world.get::<FactionMember>(me).map(|m| m.faction.clone());
+    world.resource_mut::<EventLog>().push(tick, EventBuilder::new("investigation", text).actor(id).pos(pos).faction(faction).tags(["indagine"]));
 }

@@ -74,6 +74,9 @@ pub fn effect(c: &Content, e: &Effect) -> String {
         Effect::Expose => "smaschera".into(),
         Effect::Clean(_) => "pulisce intorno".into(),
         Effect::Teleport { .. } => "teletrasporta".into(),
+        Effect::ModBond { friendship, .. } if *friendship != 0.0 => format!("amicizia {}", signed(*friendship)),
+        Effect::ModBond { attraction, .. } => format!("attrazione {}", signed(*attraction)),
+        Effect::TransmuteFor { race, ticks } => format!("trasforma in {} per {ticks} ore", c.races.get(race).map_or(race.as_str(), |x| x.name.as_str())),
         _ => "effetto speciale".into(),
     }
 }
@@ -147,6 +150,9 @@ pub fn condition(c: &Content, cond: &Condition) -> String {
         Condition::Disguised => "travestito".into(),
         Condition::HoldsTitle(t) => format!("è {}", c.titles.get(t).map_or(t.as_str(), |x| x.name.as_str())),
         Condition::HoldsAnyTitle => "ha un ruolo".into(),
+        Condition::BondAtLeast { attraction, .. } if *attraction > 0.0 => format!("attrazione almeno {}", num(*attraction)),
+        Condition::BondAtLeast { friendship, .. } => format!("amicizia almeno {}", num(*friendship)),
+        Condition::Contest { stat: s, .. } => format!("vince il confronto di {}", stat(c, s)),
         Condition::IsSex(s) => match s {
             crate::stats::Sex::Male => "uomo".into(),
             crate::stats::Sex::Female => "donna".into(),
