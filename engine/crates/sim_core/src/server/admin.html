@@ -357,8 +357,8 @@ const L = {};
 function rebuildIndexes() {
   const pawns = living();
   const count = (f) => { const m = {}; for (const e of pawns) for (const k of [].concat(f(e) ?? [])) m[k] = (m[k] ?? 0) + 1; return m; };
-  L.byRace = count((e) => e.truth?.race ?? e.race);
   L.byClass = count((e) => e.classes);
+  L.byRace = count((e) => e.truth?.race ?? e.race);
   L.byTemplate = count((e) => e.template);
   L.byFaction = count((e) => e.faction);
   L.byAction = count((e) => e.activity?.action);
@@ -394,19 +394,24 @@ const D = (k, id) => S.describe?.[k]?.[id] ?? {};
 const bar = (v, max) => `<span class="bar"><i style="width:${Math.max(0, Math.min(100, (v / (max || 1)) * 100))}%"></i></span>`;
 const CATALOG = {
   templates: { title: "Personaggi (NPC)", group: "Catalogo", sprite: true,
+    facets: [["Razza", (d) => d.race, (v) => name("races", v)], ["Fazione", (d) => d.faction, factionName], ["Classe", (d) => d.classes, (v) => name("classes", v)]],
     cols: [["Nome", (d) => esc(d.name || d.id)], ["Razza", (d) => esc(name("races", d.race))], ["Classi", (d) => chips(d.classes?.map((c) => name("classes", c)))],
       ["Fazione", (d) => esc(factionName(d.faction))], ["Unico", (d) => (d.unique ? "sì" : "")], ["Ruoli", (d) => chips(d.titles?.map((t) => name("titles", t)))],
       ["In gioco", (d) => L.byTemplate[d.id] ?? 0, true]] },
   races: { title: "Razze", group: "Catalogo", sprite: true,
+    facets: [["Corpo", (d) => d.body_plan], ["Tag", (d) => d.tags]],
     cols: [["Nome", (d) => esc(d.name)], ["Corpo", (d) => esc(d.body_plan)], ["Abilità", (d) => chips(d.abilities?.map((a) => name("abilities", a)))],
       ["Tag", (d) => chips(d.tags)], ["In gioco", (d) => L.byRace[d.id] ?? 0, true]] },
   classes: { title: "Classi", group: "Catalogo", sprite: true,
+    facets: [["Gruppo", (d) => d.group]],
     cols: [["Nome", (d) => esc(d.name)], ["Gruppo", (d) => esc(d.group)], ["Requisiti", (d) => (d.requires ? esc(D("classes", d.id).requires) : '<span class="muted">non si acquisisce</span>')],
       ["Poteri", (d) => chips([...(d.abilities ?? []).map((a) => name("abilities", a))])], ["Priorità", (d) => d.priority ?? 0, true], ["In gioco", (d) => L.byClass[d.id] ?? 0, true]] },
   titles: { title: "Ruoli", group: "Catalogo", sprite: true,
+    facets: [["Fazione", (d) => d.faction, factionName], ["Come si ottiene", (d) => d.mode, (v) => MODES[v] ?? v]],
     cols: [["Ruolo", (d) => esc(d.name)], ["Fazione", (d) => esc(d.faction ? factionName(d.faction) : "—")], ["Come si ottiene", (d) => esc(MODES[d.mode] ?? d.mode)],
       ["Titolare", (d) => { const h = holderOf(d.id); return h ? elink(h) : '<span class="muted">vacante</span>'; }], ["Requisiti", (d) => esc(D("titles", d.id).requires || "—")]] },
   stats: { title: "Caratteristiche", group: "Catalogo",
+    facets: [["Gruppo", (d) => d.group]],
     cols: [["Nome", (d) => esc(d.name)], ["Gruppo", (d) => esc(d.group)], ["Intervallo", (d) => `${fmt(d.min)} – ${fmt(d.max)}`], ["Iniziale", (d) => `${fmt(d.default)}${d.spread ? " ± " + fmt(d.spread) : ""}`],
       ["Media nel mondo", (d) => { const a = agg(L.stats[d.id]); return a.avg == null ? "—" : `${bar(a.avg - (d.min ?? 0), (d.max > 1000 ? a.max : d.max) - (d.min ?? 0))} ${fmt(a.avg)}`; }],
       ["Min", (d) => fmt(agg(L.stats[d.id]).min), true], ["Max", (d) => fmt(agg(L.stats[d.id]).max), true]] },
@@ -414,24 +419,30 @@ const CATALOG = {
     cols: [["Nome", (d) => esc(d.name)], ["Calo per tick", (d) => fmt(d.decay, 3), true], ["Soglia bassa", (d) => fmt(d.low_threshold, 2), true],
       ["Media nel mondo", (d) => { const a = agg(L.needs[d.id]); return a.avg == null ? "—" : `${bar(a.avg, 1)} ${fmt(a.avg * 100, 0)}%`; }]] },
   actions: { title: "Azioni (scelte dell'AI)", group: "Catalogo",
+    facets: [["Fa", (d) => actionKindName(d)], ["Per tutti", (d) => (d.universal ? "sì" : "no")]],
     cols: [["Nome", (d) => esc(d.name)], ["Fa", (d) => actionKind(d)], ["Per tutti", (d) => (d.universal ? "sì" : "")], ["Peso", (d) => fmt(d.weight, 2), true],
       ["Attesa", (d) => d.cooldown || "", true], ["Requisiti", (d) => esc(D("actions", d.id).requires || "")], ["Ora in corso", (d) => L.byAction[d.id] ?? 0, true]] },
   jobs: { title: "Lavori ed effetti", group: "Catalogo",
+    facets: [["Gestore", (d) => d.handler || "effetti"]],
     cols: [["Nome", (d) => esc(d.name)], ["Gestore", (d) => esc(d.handler || "effetti")], ["Durata", (d) => fmt(d.duration), true],
       ["Effetti", (d) => esc(D("jobs", d.id).effects || "")], ["Reato", (d) => esc(d.crime?.id ?? "")], ["Ora in corso", (d) => L.byJob[d.id] ?? 0, true]] },
   abilities: { title: "Abilità", group: "Catalogo",
     cols: [["Nome", (d) => esc(d.name)], ["Attesa", (d) => d.cooldown || "", true], ["Raggio", (d) => d.range || "", true], ["Effetti", (d) => esc(D("abilities", d.id).effects)],
       ["Chi ce l'ha", (d) => L.abilityUsers[d.id] ?? 0, true]] },
   statuses: { title: "Stati e malattie", group: "Catalogo",
+    facets: [["Tipo", (d) => d.kind], ["Tag", (d) => d.tags]],
     cols: [["Nome", (d) => esc(d.name)], ["Tipo", (d) => esc(d.kind)], ["Durata", (d) => d.duration || (d.progression ? "progressiva" : "—")], ["Tag", (d) => chips(d.tags)],
       ["Effetti", (d) => esc(Object.entries(d.stats ?? {}).map(([k, v]) => `${name("stats", k)} ${v > 0 ? "+" : ""}${v}`).join(", "))], ["Colpiti ora", (d) => L.byStatus[d.id] ?? 0, true]] },
   items: { title: "Oggetti", group: "Catalogo", sprite: true,
+    facets: [["Categoria", (d) => d.category], ["Tipo", (d) => d.types]],
     cols: [["Nome", (d) => esc(d.name)], ["Categoria", (d) => esc(d.category)], ["Tipo", (d) => chips(d.types)], ["Prezzo", (d) => fmt(d.base_price), true],
       ["Peso", (d) => (d.weight ? fmt(d.weight) : ""), true], ["Danni", (d) => (d.damage ? fmt(d.damage) : ""), true], ["Nel mondo", (d) => L.items[d.id]?.total ?? 0, true]] },
   buildings: { title: "Edifici", group: "Catalogo", sprite: true,
+    facets: [["Tag", (d) => d.tags]],
     cols: [["Nome", (d) => esc(d.name)], ["Tag", (d) => chips(d.tags)], ["Vende", (d) => chips(Object.keys(d.sells ?? {}).map((i) => name("items", i)))],
       ["Ricette", (d) => (d.recipes ?? []).length || "", true], ["In gioco", (d) => L.byBuilding[d.id] ?? 0, true]] },
   factions: { title: "Fazioni", group: "Catalogo", sprite: true,
+    facets: [["Giocabile", (d) => (d.playable ? "sì" : "no")]],
     cols: [["Nome", (d) => esc(d.name)], ["Giocabile", (d) => (d.playable ? "sì" : "")], ["Ideologia", (d) => chips(Object.entries(d.ideology ?? {}).map(([k, v]) => `${k} ${v}`))],
       ["Membri", (d) => L.byFaction[d.id] ?? 0, true], ["Tesoro", (d) => fmt(S.state?.factions?.find((f) => f.id === d.id)?.treasury, 0), true],
       ["Punti", (d) => S.state?.scores?.[d.id] ?? "", true]] },
@@ -445,6 +456,10 @@ const CATALOG = {
   fluids: { title: "Fluidi", group: "Catalogo", cols: [["Nome", (d) => esc(d.name)], ["Sporcizia", (d) => d.dirtiness, true], ["Porta", (d) => esc(d.carries ?? "")]] },
 };
 const MODES = { Seat: "trono", Succession: "successione", Election: "elezione", Appointment: "nomina", Challenge: "sfida", Coup: "colpo di stato", Purchase: "acquisto" };
+function actionKindName(d) {
+  const k = d.kind;
+  return k === "Work" || k?.Work !== undefined ? "lavoro" : k === "Idle" ? "niente" : k?.Job ? "job" : k?.Ability ? "abilità" : "altro";
+}
 function actionKind(d) {
   const k = d.kind;
   if (k === "Work" || k?.Work !== undefined) return "lavoro dalla bacheca";
@@ -471,10 +486,12 @@ function usersOf(kind, id) {
 // ── Live sections (the world as it is) ───────────────────────────────────────
 const WORLD = {
   pawns: { title: "Pedine", group: "Mondo", sprite: true, rows: () => entities().filter((e) => e.kind !== "building" && (filters.dead || !e.dead)),
+    facets: [["Razza", (e) => e.truth?.race ?? e.race, (v) => name("races", v)], ["Fazione", (e) => e.faction, factionName], ["Classe", (e) => e.classes, (v) => name("classes", v)]],
     cols: [["Nome", (e) => esc(e.name) + (e.dead ? " †" : "")], ["Razza", (e) => esc(name("races", e.truth?.race ?? e.race))], ["Classi", (e) => chips(e.classes?.map((c) => name("classes", c)))],
       ["Fazione", (e) => esc(factionName(e.faction))], ["Salute", (e) => `${bar(e.health, 1)} ${fmt(e.health * 100, 0)}%`], ["Soldi", (e) => fmt(e.money, 0), true],
       ["Attività", (e) => esc(e.activity?.label ?? "")], ["Dove", (e) => posText(e.pos)]] },
   bld: { title: "Edifici in gioco", group: "Mondo", sprite: true, rows: () => entities().filter((e) => e.kind === "building" && (filters.dead || !e.dead)),
+    facets: [["Tipo", (e) => e.building?.def, (v) => name("buildings", v)], ["Proprietario", (e) => e.building?.owner?.Faction, factionName]],
     cols: [["Nome", (e) => esc(e.name)], ["Tipo", (e) => link("buildings", e.building?.def)], ["Proprietario", (e) => esc(factionName(e.building?.owner?.Faction))],
       ["Integrità", (e) => `${bar(e.building.hp, e.building.max_hp)} ${fmt(e.building.hp, 0)}/${fmt(e.building.max_hp, 0)}`],
       ["Scorte", (e) => Object.values(e.building?.stock ?? {}).reduce((a, b) => a + b, 0), true], ["Dove", (e) => posText(e.pos)]] },
@@ -546,7 +563,7 @@ function renderOverview() {
 }
 
 // ── Generic list ─────────────────────────────────────────────────────────────
-const filters = { q: {}, dead: false, sort: {} };
+const filters = { q: {}, dead: false, sort: {}, facet: {} };
 function listSpec() { return route.src === "cat" ? CATALOG[route.kind] : WORLD[route.kind]; }
 function listRows() {
   const spec = listSpec();
@@ -558,8 +575,17 @@ function renderList() {
   $("lTitle").textContent = spec.title;
   $("lExtra").innerHTML = route.src === "world" ? `<label><input type="checkbox" id="lDead" ${filters.dead ? "checked" : ""}> anche i morti/distrutti</label>` : "";
   if ($("lDead")) $("lDead").onchange = () => { filters.dead = $("lDead").checked; renderList(); };
+  const fsel = (filters.facet[route.kind] ??= {});
+  (spec.facets ?? []).forEach(([label, fv, fl = (v) => v], i) => {
+    const vals = [...new Set(listRows().flatMap((d) => [].concat(fv(d) ?? [])).filter((v) => v !== "").map(String))]
+      .sort((a, b) => String(fl(a)).localeCompare(String(fl(b))));
+    $("lExtra").insertAdjacentHTML("beforeend", ` <label>${esc(label)} <select data-facet="${i}"><option value="">tutti</option>` +
+      vals.map((v) => `<option value="${esc(v)}" ${v === fsel[i] ? "selected" : ""}>${esc(fl(v))}</option>`).join("") + "</select></label>");
+  });
+  for (const sel of $("lExtra").querySelectorAll("select[data-facet]")) sel.onchange = () => { fsel[sel.dataset.facet] = sel.value; renderList(); };
   const q = (filters.q[route.kind] ?? "").toLowerCase();
   let rows = listRows();
+  (spec.facets ?? []).forEach(([, fv], i) => { const v = fsel[i]; if (v) rows = rows.filter((d) => [].concat(fv(d) ?? []).map(String).includes(v)); });
   if (q) rows = rows.filter((d) => JSON.stringify(d).toLowerCase().includes(q) || spec.cols.some(([, f]) => String(f(d)).toLowerCase().includes(q)));
   const sort = filters.sort[route.kind];
   if (sort) {
