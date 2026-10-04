@@ -88,15 +88,19 @@ input.num { width: 76px; text-align: right; }
 .card { overflow-x: auto; }
 .card .kv > div { min-width: 0; }
 .card .kv input:not([type=checkbox]), .card .kv textarea, .card .kv select { max-width: 100%; }
-.picker input { min-width: 0; }
 button.x { padding: 0 6px; line-height: 18px; color: var(--warn); border-color: transparent; background: transparent; }
 button.x:hover { border-color: var(--warn); }
 .chip button.x { padding: 0 3px; line-height: 14px; }
-.picker { display: inline-flex; gap: 4px; margin-top: 4px; }
 .scrollbox { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; margin-top: 6px; }
 .card.wide { grid-column: 1 / -1; }
 textarea.json { width: 100%; font: 12px/1.35 ui-monospace, monospace; margin-bottom: 4px; }
 h3.group { margin: 18px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+.modal { position: fixed; inset: 0; background: #0008; display: none; align-items: center; justify-content: center; z-index: 25; padding: 16px; }
+.modalbox { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; width: min(980px, 100%); max-height: 90vh; display: flex; flex-direction: column; }
+.picktable tbody tr { cursor: pointer; }
+.picktable tr.on { background: var(--chip); }
+.picktable td:first-child, .picktable th:first-child { width: 28px; }
+.addbtn { margin-top: 2px; }
 #toast { position: fixed; right: 12px; bottom: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; display: none; max-width: 420px; z-index: 30; }
 @media (max-width: 900px) { body { grid-template-columns: 1fr; } aside { position: static; height: auto; max-height: 40vh; } .split { grid-template-columns: 1fr; } #mapwrap { height: 60vh; } }
 </style>
@@ -235,6 +239,13 @@ h3.group { margin: 18px 0 8px; font-size: 13px; text-transform: uppercase; lette
   </section>
 </main>
 <div id="lightbox"><img id="lbImg" alt=""><div id="lbCap"></div><div class="muted">clic per chiudere</div></div>
+<div id="pickdlg" class="modal"><div class="modalbox">
+  <div class="row" style="justify-content:space-between"><h3 id="pkTitle" style="margin:0"></h3><button id="pkCancel">Chiudi</button></div>
+  <div class="row" style="margin:8px 0"><input id="pkSearch" placeholder="cerca per nome, id o effetto…" size="34"> <span id="pkFilters"></span></div>
+  <div class="row" id="pkNew" style="margin-bottom:8px"><input id="pkNewVal" placeholder="nuovo valore…" size="24"> <button id="pkNewAdd">Aggiungi alla selezione</button></div>
+  <div class="tablewrap" style="max-height:55vh"><table class="picktable"><thead id="pkHead"></thead><tbody id="pkBody"></tbody></table></div>
+  <div class="row" style="margin-top:8px;justify-content:space-between"><span id="pkCount" class="muted"></span><button id="pkOk" class="primary">Aggiungi</button></div>
+</div></div>
 <div id="toast"></div>
 
 <script>
@@ -679,11 +690,11 @@ async function saveDraft() {
 }
 const P = (p) => esc(JSON.stringify(p));
 const del = (p, v) => `<button class="x" title="Togli" data-act="${v === undefined ? "delkey" : "rm"}" data-p="${P(p)}"${v === undefined ? "" : ` data-v="${esc(v)}"`}>×</button>`;
-/** A text box with the available values and a + button. op: push (into a list), rm (from a list), key (new map key). */
-function picker(path, cands, { op = "push", free = false, value = 0, ph = "aggiungi…" } = {}) {
-  const i = pickers.push({ path, cands, op, free, value }) - 1;
-  if (!cands.length && !free) return '<span class="muted">niente altro da aggiungere</span>';
-  return `<span class="picker"><input list="pk${i}" placeholder="${esc(ph)}" size="22"><datalist id="pk${i}">${cands.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</datalist><button data-act="pick" data-i="${i}">+ Aggiungi</button></span>`;
+/** A button opening the selection dialog. op: push (into a list), rm (from a list), key (new map key). */
+function picker(path, cands, { op = "push", free = false, value = 0, kind = null, title = "" } = {}) {
+  const i = pickers.push({ path, cands, op, free, value, kind, title }) - 1;
+  if (!cands.length && !free) return '<div class="muted" style="margin-top:4px">niente altro da aggiungere</div>';
+  return `<div style="margin-top:4px"><button class="addbtn" data-act="pick" data-i="${i}">+ Aggiungi…</button></div>`;
 }
 const candsOf = (kind, except = []) => Object.values(C(kind)).filter((d) => !except.includes(d.id)).map((d) => [d.id, d.name || d.id]).sort((a, b) => String(a[1]).localeCompare(String(b[1])));
 /** Values a field takes across all definitions of a kind (for suggestions and enums). */
@@ -720,7 +731,7 @@ function refTable(kind, path, list, refKind, { op, label = "Nome", pickOp = "pus
   if (!STAT_KINDS.includes(refKind)) {
     const rows = (list ?? []).map((id) => `<tr><td>${link(refKind, id)}</td><td class="muted">${esc(C(refKind)[id]?.description || D(refKind, id).requires || "")}</td><td class="num">${op ? op(id) : del(path, id)}</td></tr>`).join("");
     return `<table class="ed"><thead><tr><th>${esc(label)}</th><th>Descrizione</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="muted">nessuna</td></tr>`}</tbody></table>` +
-      picker(path, pickCands ?? candsOf(refKind, list ?? []), { op: pickOp });
+      picker(path, pickCands ?? candsOf(refKind, list ?? []), { op: pickOp, kind: refKind, title: label });
   }
   const rows = (list ?? []).map((id) => {
     const rd = C(refKind)[id], fx = rd ? statEffects(refKind, rd) : [];
@@ -730,19 +741,19 @@ function refTable(kind, path, list, refKind, { op, label = "Nome", pickOp = "pus
     return `<tr><td>${link(refKind, id)}</td>${cells}<td class="num">${op ? op(id) : del(path, id)}</td></tr>`;
   }).join("");
   return `<table class="ed"><thead><tr><th>${esc(label)}</th><th>Caratteristica</th><th class="num">Modificatore</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="muted">nessuna</td></tr>`}</tbody></table>` +
-    picker(path, pickCands ?? candsOf(refKind, list ?? []), { op: pickOp });
+    picker(path, pickCands ?? candsOf(refKind, list ?? []), { op: pickOp, kind: refKind, title: label });
 }
 /** Editable map id → number (stats, items, needs…). */
 function mapTable(path, m, keyKind, { keyLabel = "Voce", valLabel = "Valore", value = 0 } = {}) {
   const rows = Object.entries(m ?? {}).map(([k, v]) => `<tr><td>${keyKind ? link(keyKind, k) : esc(k)}</td><td class="num">${typeof v === "number" || v == null ? numInput([...path, k], v, "", "num") : `<code>${esc(JSON.stringify(v))}</code>`}</td><td class="num">${del([...path, k])}</td></tr>`).join("");
   const cands = keyKind ? candsOf(keyKind, Object.keys(m ?? {})) : [];
   return `<table class="ed"><thead><tr><th>${esc(keyLabel)}</th><th class="num">${esc(valLabel)}</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="muted">nessuna</td></tr>`}</tbody></table>` +
-    picker(path, cands, { op: "key", free: !keyKind, value });
+    picker(path, cands, { op: "key", free: !keyKind, value, kind: keyKind, title: keyLabel });
 }
 /** Free-text values (tags…) as chips, with the values used elsewhere as suggestions. */
 function tagList(kind, path, list, f) {
   const sugg = peerValues(kind, f).filter((v) => !(list ?? []).includes(v)).map((v) => [v, v]);
-  return `<div>${(list ?? []).map((t) => `<span class="chip">${esc(t)} ${del(path, t)}</span>`).join("") || '<span class="muted">nessuno</span>'}</div>` + picker(path, sugg, { free: true });
+  return `<div>${(list ?? []).map((t) => `<span class="chip">${esc(t)} ${del(path, t)}</span>`).join("") || '<span class="muted">nessuno</span>'}</div>` + picker(path, sugg, { free: true, title: "Valori" });
 }
 function jsonBox(path, v, text) {
   return (text ? `<div class="muted" style="margin-bottom:4px">${esc(text)}</div>` : "") +
@@ -783,7 +794,7 @@ function fieldEditor(kind, d, f) {
   const sample = v ?? peers.find((x) => x != null);
   if (LOGIC.has(f) || (kind === "actions" && f === "kind")) return ["logic", jsonBox([f], v, typeof D(kind, d.id)[LOGIC_TEXT[f]] === "string" ? D(kind, d.id)[LOGIC_TEXT[f]] : "")];
   if (ZONES.has(f)) {
-    if (Array.isArray(v)) return ["list", `<div>${v.map((z) => `<span class="chip">${esc(z)} ${del([f], z)}</span>`).join("") || '<span class="muted">nessuna</span>'}</div>` + picker([f], zoneIds().filter(([z]) => !v.includes(z)), { free: true })];
+    if (Array.isArray(v)) return ["list", `<div>${v.map((z) => `<span class="chip">${esc(z)} ${del([f], z)}</span>`).join("") || '<span class="muted">nessuna</span>'}</div>` + picker([f], zoneIds().filter(([z]) => !v.includes(z)), { free: true, title: "Zone" })];
     return ["value", `<input data-set="${P([f])}" data-t="str" list="zones-dl" value="${esc(v ?? "")}" size="24">`];
   }
   if (Array.isArray(sample) && (sample.length === 0 || typeof sample[0] === "string") && Array.isArray(v ?? [])) {
@@ -838,7 +849,7 @@ function raceSections(d) {
     (has.map((n) => `<tr><td>${link("needs", n.id)}</td><td class="num">${fmt(n.decay, 4)}</td><td class="num">${numInput(["need_rates", n.id], rates[n.id], "0")}</td>` +
       `<td class="num">${fmt(n.decay * Math.max(0, 1 + (rates[n.id] ?? 0)), 4)}</td><td class="num"><button class="x" title="La razza non ha questo bisogno" data-act="push" data-p="${P(["needs_exempt"])}" data-v="${esc(n.id)}">×</button></td></tr>`).join("") ||
       `<tr><td colspan="5" class="muted">nessun bisogno</td></tr>`) + `</tbody></table>` +
-    picker(["needs_exempt"], exempt.map((n) => [n, name("needs", n)]), { op: "rm", ph: "dai un bisogno…" }) +
+    picker(["needs_exempt"], exempt.map((n) => [n, name("needs", n)]), { op: "rm", kind: "needs", title: "Bisogni" }) +
     `<div class="muted">Variazione: +0,5 = consuma il 50% più in fretta, −0,5 = la metà.</div>`));
   const plan = C("body_plans")[d.body_plan];
   out.push(card("Corpo", `<div class="row"><select data-set="${P(["body_plan"])}" data-t="str">${candsOf("body_plans").map(([id]) => `<option ${id === d.body_plan ? "selected" : ""}>${esc(id)}</option>`).join("")}</select> ${link("body_plans", d.body_plan, "▸ apri")}</div>` +
@@ -846,7 +857,7 @@ function raceSections(d) {
     (plan?.parts ?? []).map((p) => `<tr><td>${esc(p.name)}</td><td class="muted">${esc(plan.parts.find((q) => q.id === p.parent)?.name ?? "")}</td><td class="num">${fmt(p.hp)}</td><td class="num">${fmt(p.coverage, 2)}</td><td>${p.vital ? "sì" : ""}</td></tr>`).join("") + `</tbody></table>`));
   const sexes = d.sexes ?? [];
   out.push(card("Sessi", `<table class="ed"><tbody>${sexes.map((s) => `<tr><td>${esc(SEX[s] ?? s)}</td><td class="num">${del(["sexes"], s)}</td></tr>`).join("") || '<tr><td class="muted">nessuno: la razza è senza sesso e non si riproduce</td></tr>'}</tbody></table>` +
-    picker(["sexes"], Object.entries(SEX).filter(([k]) => !sexes.includes(k)), { ph: "aggiungi un sesso…" })));
+    picker(["sexes"], Object.entries(SEX).filter(([k]) => !sexes.includes(k)), { title: "Sessi" })));
   return { sections: out, used: ["stats", "stat_ranges", "abilities", "immunities", "needs_exempt", "need_rates", "body_plan", "sexes"] };
 }
 
@@ -960,15 +971,7 @@ $("dBody").addEventListener("input", (ev) => {
 $("dBody").addEventListener("click", (ev) => {
   const el = ev.target.closest("button[data-act]"); if (!el || !draft) return;
   const a = el.dataset.act, def = draft.def;
-  if (a === "pick") {
-    const pk = pickers[Number(el.dataset.i)], raw = el.parentElement.querySelector("input").value.trim();
-    if (!raw) return;
-    const hit = pk.cands.find(([v]) => v === raw) ?? pk.cands.find(([, l]) => String(l).toLowerCase() === raw.toLowerCase());
-    if (!hit && !pk.free) { toast(`«${raw}» non è tra i valori disponibili`, true); return; }
-    const v = hit ? hit[0] : raw, list = getAt(def, pk.path);
-    if (pk.op === "key") setAt(def, [...pk.path, v], pk.value);
-    else if (pk.op === "rm") setAt(def, pk.path, (list ?? []).filter((x) => x !== v));
-    else setAt(def, pk.path, [...(list ?? []).filter((x) => x !== v), v]);
+  if (a === "pick") { openPicker(pickers[Number(el.dataset.i)]); return;
   } else {
     const p = JSON.parse(el.dataset.p);
     if (a === "rm") setAt(def, p, (getAt(def, p) ?? []).filter((x) => x !== el.dataset.v));
@@ -983,6 +986,86 @@ $("dBody").addEventListener("click", (ev) => {
   }
   saveDraft();
 });
+
+// ── Selection dialog: every available value in a table, with search, filters and multiple choice ──
+const pickState = { pk: null, sel: new Set(), rows: [] };
+function pickFacets(kind) {
+  const f = [...(CATALOG[kind]?.facets ?? [])];
+  if (kind && !f.some(([l]) => l === "Tag") && Object.values(C(kind)).some((d) => d.tags?.length)) f.push(["Tag", (d) => d.tags]);
+  return f;
+}
+function openPicker(pk) {
+  pickState.pk = pk; pickState.sel = new Set();
+  const kind = pk.kind, facets = pickFacets(kind);
+  pickState.rows = pk.cands.map(([id, label]) => {
+    const d = kind ? C(kind)[id] : null;
+    const fx = d && STAT_KINDS.includes(kind) ? statEffects(kind, d).map(([s, m]) => `${name("stats", s)} ${m}`).join(", ") : "";
+    const what = fx || (d ? d.description || D(kind, id).effects || D(kind, id).requires || "" : "");
+    const fv = facets.map(([, f]) => (d ? [].concat(f(d) ?? []).map(String) : []));
+    return { id, label: String(label), what, fv, text: `${label} ${id} ${what}`.toLowerCase() };
+  });
+  $("pkTitle").textContent = "Aggiungi" + (pk.title ? ": " + pk.title : "");
+  $("pkFilters").innerHTML = facets.map(([l], i) => {
+    const vals = [...new Set(pickState.rows.flatMap((r) => r.fv[i]))].filter((v) => v !== "").sort();
+    return vals.length > 1 ? `<label>${esc(l)} <select data-fi="${i}"><option value="">tutti</option>${vals.map((v) => `<option value="${esc(v)}">${esc(kind && l !== "Tag" ? facetLabel(kind, i, v) : v)}</option>`).join("")}</select></label>` : "";
+  }).join(" ");
+  $("pkHead").innerHTML = `<tr><th><input type="checkbox" id="pkAll" title="Seleziona tutti quelli visibili"></th><th>Nome</th><th>Id</th><th>${kind && STAT_KINDS.includes(kind) ? "Effetto" : "Descrizione"}</th>${facets.map(([l]) => `<th>${esc(l)}</th>`).join("")}</tr>`;
+  $("pkNew").style.display = pk.free ? "" : "none";
+  $("pkSearch").value = ""; $("pkNewVal").value = "";
+  $("pickdlg").style.display = "flex";
+  renderPickRows();
+  $("pkSearch").focus();
+}
+function facetLabel(kind, i, v) { const fl = pickFacets(kind)[i]?.[2]; return fl ? fl(v) : v; }
+function visiblePickRows() {
+  const q = $("pkSearch").value.trim().toLowerCase();
+  const fs = [...$("pkFilters").querySelectorAll("select")].map((s) => [Number(s.dataset.fi), s.value]).filter(([, v]) => v);
+  return pickState.rows.filter((r) => (!q || r.text.includes(q)) && fs.every(([i, v]) => r.fv[i].includes(v)));
+}
+function renderPickRows() {
+  const rows = visiblePickRows();
+  $("pkBody").innerHTML = rows.map((r) => `<tr data-id="${esc(r.id)}" class="${pickState.sel.has(r.id) ? "on" : ""}"><td><input type="checkbox" ${pickState.sel.has(r.id) ? "checked" : ""}></td>` +
+    `<td>${esc(r.label)}</td><td><code>${esc(r.id)}</code></td><td class="muted">${esc(r.what)}</td>${r.fv.map((v) => `<td>${v.map((x) => `<span class="chip">${esc(x)}</span>`).join("")}</td>`).join("")}</tr>`).join("") ||
+    `<tr><td colspan="9" class="muted">nessun risultato</td></tr>`;
+  $("pkAll").checked = rows.length > 0 && rows.every((r) => pickState.sel.has(r.id));
+  $("pkCount").textContent = `${rows.length} di ${pickState.rows.length} · ${pickState.sel.size} selezionati`;
+  $("pkOk").disabled = !pickState.sel.size;
+  $("pkOk").textContent = pickState.sel.size ? `Aggiungi ${pickState.sel.size}` : "Aggiungi";
+}
+function closePicker() { $("pickdlg").style.display = "none"; pickState.pk = null; }
+$("pkSearch").oninput = renderPickRows;
+$("pkFilters").onchange = renderPickRows;
+$("pkHead").onchange = (ev) => {
+  if (ev.target.id !== "pkAll") return;
+  for (const r of visiblePickRows()) ev.target.checked ? pickState.sel.add(r.id) : pickState.sel.delete(r.id);
+  renderPickRows();
+};
+$("pkBody").onclick = (ev) => {
+  const tr = ev.target.closest("tr[data-id]"); if (!tr) return;
+  const id = tr.dataset.id; pickState.sel.has(id) ? pickState.sel.delete(id) : pickState.sel.add(id);
+  renderPickRows();
+};
+$("pkBody").ondblclick = (ev) => { const tr = ev.target.closest("tr[data-id]"); if (tr) { pickState.sel = new Set([tr.dataset.id]); applyPick(); } };
+$("pkNewAdd").onclick = () => {
+  const v = $("pkNewVal").value.trim(); if (!v) return;
+  if (!pickState.rows.some((r) => r.id === v)) pickState.rows.unshift({ id: v, label: v, what: "nuovo", fv: pickState.rows[0]?.fv.map(() => []) ?? [], text: v.toLowerCase() });
+  pickState.sel.add(v); $("pkNewVal").value = ""; renderPickRows();
+};
+$("pkNewVal").onkeydown = (ev) => { if (ev.key === "Enter") $("pkNewAdd").click(); };
+$("pkCancel").onclick = closePicker;
+$("pickdlg").onclick = (ev) => { if (ev.target.id === "pickdlg") closePicker(); };
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && pickState.pk) closePicker(); });
+function applyPick() {
+  const pk = pickState.pk, vals = [...pickState.sel], def = draft.def;
+  if (!pk || !vals.length) return;
+  const list = getAt(def, pk.path) ?? [];
+  if (pk.op === "key") for (const v of vals) setAt(def, [...pk.path, v], pk.value);
+  else if (pk.op === "rm") setAt(def, pk.path, list.filter((x) => !vals.includes(x)));
+  else setAt(def, pk.path, [...list.filter((x) => !vals.includes(x)), ...vals]);
+  closePicker();
+  saveDraft();
+}
+$("pkOk").onclick = applyPick;
 
 async function entityPage(id) {
   $("dCrumb").textContent = "Entità #" + id;
