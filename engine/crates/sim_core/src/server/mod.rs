@@ -108,6 +108,7 @@ fn router_inner(state: AppState) -> Router {
         .route("/api/ui/class", post(ui_take_class))
         .route("/api/ui/roles", get(ui_roles))
         .route("/api/ui/stats", get(ui_stats))
+        .route("/api/admin/describe", get(admin_describe))
         .route("/api/ui/role", post(ui_challenge_role))
         .route("/api/save", post(save_game))
         .route("/api/load", post(load_game))
@@ -455,6 +456,29 @@ fn ability_and_action_names(content: &crate::content::Content, abilities: &[Stri
         }
     }
     out
+}
+
+/// Requirements and effects of every definition in plain words, for the admin console's catalog.
+async fn admin_describe(State(s): State<AppState>) -> ApiResult {
+    let sim = s.sim.lock().unwrap();
+    let c = sim.content();
+    let cond = |x: &crate::content::Condition| if matches!(x, crate::content::Condition::Always) { String::new() } else { crate::describe::condition(c, x) };
+    let effs = |v: &[crate::content::Effect]| v.iter().map(|e| crate::describe::effect(c, e)).collect::<Vec<_>>().join(", ");
+    let classes: serde_json::Map<String, Value> =
+        c.classes.values().map(|d| (d.id.clone(), json!({ "requires": d.requires.as_ref().map(&cond).unwrap_or_default() }))).collect();
+    let titles: serde_json::Map<String, Value> = c.titles.values().map(|d| (d.id.clone(), json!({ "requires": cond(&d.claim_requires) }))).collect();
+    let items: serde_json::Map<String, Value> =
+        c.items.keys().map(|id| (id.clone(), json!({ "lines": crate::describe::item_effects(c, id), "requires": cond(&c.items[id].requires) }))).collect();
+    let abilities: serde_json::Map<String, Value> =
+        c.abilities.values().map(|d| (d.id.clone(), json!({ "effects": effs(&d.effects), "requires": cond(&d.requires) }))).collect();
+    let jobs: serde_json::Map<String, Value> = c.jobs.values().map(|d| (d.id.clone(), json!({ "effects": effs(&d.effects), "requires": cond(&d.requires) }))).collect();
+    let actions: serde_json::Map<String, Value> = c.actions.values().map(|d| (d.id.clone(), json!({ "requires": cond(&d.requires) }))).collect();
+    let statuses: serde_json::Map<String, Value> = c
+        .statuses
+        .values()
+        .map(|d| (d.id.clone(), json!({ "on_apply": effs(&d.on_apply), "per_tick": effs(&d.per_tick) })))
+        .collect();
+    Ok(Json(json!({ "classes": classes, "titles": titles, "items": items, "abilities": abilities, "jobs": jobs, "actions": actions, "statuses": statuses })))
 }
 
 /// The characteristics of the pawns, in content order: id, name, section of the card and range.

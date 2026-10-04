@@ -3,7 +3,8 @@
 use crate::content::{Condition, Content, Effect, Scope};
 
 fn signed(v: f32) -> String {
-    if v >= 0.0 { format!("+{v:.0}") } else { format!("{v:.0}") }
+    let n = if (v - v.round()).abs() < 0.05 { format!("{v:.0}") } else { format!("{v:.1}") };
+    if v >= 0.0 { format!("+{n}") } else { n }
 }
 
 fn need(c: &Content, id: &str) -> String {
@@ -156,6 +157,12 @@ pub fn condition(c: &Content, cond: &Condition) -> String {
             Condition::IsRace(r) => format!("non {}", c.races.get(r).map_or(r.as_str(), |x| x.name.as_str())),
             Condition::MemberOf(f) => format!("non membro di {}", c.factions.get(f).map_or(f.as_str(), |x| x.name.as_str())),
             Condition::WantedAtLeast(_) => "non ricercato".into(),
+            Condition::MoneyAtLeast(m) => format!("meno di {m:.0} €"),
+            Condition::StatAtLeast { stat: s, value } => format!("{} sotto {}", cap(&stat(c, s)), num(*value)),
+            Condition::HasItem { item: i, .. } => format!("senza {}", item(c, i)),
+            Condition::HasTag(t) => format!("non è {}", t.replace('_', " ")),
+            Condition::IsSex(s) => format!("non {}", condition(c, &Condition::IsSex(*s))),
+            Condition::HoldsAnyTitle => "senza ruoli".into(),
             other => format!("non ({})", condition(c, other)),
         },
         Condition::StatAtLeast { stat: s, value } => format!("{} almeno {}", cap(&stat(c, s)), num(*value)),

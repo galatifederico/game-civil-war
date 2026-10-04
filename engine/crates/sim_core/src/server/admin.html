@@ -3,40 +3,73 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Console di amministrazione</title>
+<title>Console del mondo</title>
 <style>
 :root {
-  --bg: #f4f5f7; --panel: #ffffff; --ink: #1f2430; --muted: #6b7280; --line: #d9dde3;
-  --accent: #2f5fb3; --accent-ink: #ffffff; --warn: #b42318; --ok: #1f7a3d; --chip: #eef2f8;
+  --bg: #f4f5f7; --panel: #ffffff; --ink: #1f2430; --muted: #6b7280; --line: #d9dde3; --side: #eceef2;
+  --accent: #2f5fb3; --accent-ink: #ffffff; --warn: #b42318; --ok: #1f7a3d; --chip: #eef2f8; --bar: #2f5fb3;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #15171c; --panel: #1d2027; --ink: #e6e8ec; --muted: #9aa1ad; --line: #2e333d;
-          --accent: #6b9cf0; --accent-ink: #0b1020; --warn: #f2786b; --ok: #6fcf8f; --chip: #262a33; }
+  :root { --bg: #15171c; --panel: #1d2027; --ink: #e6e8ec; --muted: #9aa1ad; --line: #2e333d; --side: #191b21;
+          --accent: #6b9cf0; --accent-ink: #0b1020; --warn: #f2786b; --ok: #6fcf8f; --chip: #262a33; --bar: #6b9cf0; }
 }
 * { box-sizing: border-box; }
-body { margin: 0; font: 13px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--ink); }
-header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+html, body { height: 100%; }
+body { margin: 0; font: 13px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--ink); display: grid; grid-template-rows: auto 1fr; grid-template-columns: 220px minmax(0, 1fr); }
+header { grid-column: 1 / 3; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
 header h1 { font-size: 15px; margin: 0 12px 0 0; }
-nav { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
-nav button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+aside { background: var(--side); border-right: 1px solid var(--line); overflow: auto; padding: 8px 6px 24px; height: calc(100vh - 45px); position: sticky; top: 45px; }
+aside h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 8px 4px; }
+aside a { display: flex; justify-content: space-between; gap: 6px; padding: 4px 8px; border-radius: 6px; color: inherit; text-decoration: none; }
+aside a:hover { background: var(--chip); }
+aside a.on { background: var(--accent); color: var(--accent-ink); }
+aside a .n { color: var(--muted); font-size: 11px; }
+aside a.on .n { color: inherit; opacity: .8; }
 button, select, input, textarea { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
 button { cursor: pointer; }
 button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 button.danger { color: var(--warn); }
-main { padding: 12px; }
+main { padding: 12px 16px 40px; min-width: 0; }
 section { display: none; }
 section.on { display: block; }
+h2 { font-size: 18px; margin: 4px 0 10px; }
+h4 { margin: 14px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .muted { color: var(--muted); }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 table { border-collapse: collapse; width: 100%; background: var(--panel); }
-th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { position: sticky; top: 0; background: var(--panel); font-weight: 600; }
-tr.click:hover { background: var(--chip); cursor: pointer; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { position: sticky; top: 0; background: var(--panel); font-weight: 600; cursor: pointer; white-space: nowrap; z-index: 1; }
+th.nosort { cursor: default; }
+tr.sel { background: var(--chip); outline: 2px solid var(--accent); outline-offset: -2px; }
+tbody tr:hover { background: var(--chip); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
 pre { white-space: pre-wrap; word-break: break-word; margin: 0; font: 12px/1.35 ui-monospace, monospace; }
 .split { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 12px; }
 .scroll { max-height: calc(100vh - 170px); overflow: auto; }
-#mapwrap { position: relative; height: calc(100vh - 130px); background: #0d0f12; border-radius: 8px; overflow: hidden; }
+.tablewrap { max-height: calc(100vh - 160px); overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.chip { display: inline-block; background: var(--chip); border-radius: 10px; padding: 0 7px; margin: 1px; font-size: 11px; }
+a.chip { color: inherit; text-decoration: none; }
+a.chip:hover { outline: 1px solid var(--accent); }
+.ok { color: var(--ok); } .bad { color: var(--warn); }
+.spr { width: 32px; height: 40px; image-rendering: pixelated; object-fit: contain; cursor: zoom-in; vertical-align: middle; background: repeating-conic-gradient(#8882 0 25%, #0000 0 50%) 0 0 / 8px 8px; border-radius: 4px; }
+.spr.none { display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; cursor: default; }
+.bigspr { width: 96px; height: 120px; image-rendering: pixelated; object-fit: contain; cursor: zoom-in; background: repeating-conic-gradient(#8882 0 25%, #0000 0 50%) 0 0 / 12px 12px; border-radius: 8px; }
+.kv { display: grid; grid-template-columns: minmax(140px, max-content) 1fr; gap: 3px 14px; }
+.kv > div:nth-child(odd) { color: var(--muted); }
+.detailhead { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 8px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; }
+.bar { display: inline-block; width: 120px; height: 8px; background: var(--chip); border-radius: 4px; vertical-align: middle; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--bar); }
+.hist { display: flex; align-items: flex-end; gap: 2px; height: 60px; }
+.hist > i { flex: 1; background: var(--bar); min-height: 1px; border-radius: 2px 2px 0 0; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.tile b { display: block; font-size: 20px; }
+#lightbox { position: fixed; inset: 0; background: #000b; display: none; align-items: center; justify-content: center; z-index: 20; flex-direction: column; gap: 10px; color: #fff; }
+#lightbox img { image-rendering: pixelated; max-width: 90vw; max-height: 80vh; min-width: 192px; background: repeating-conic-gradient(#fff2 0 25%, #0000 0 50%) 0 0 / 16px 16px; }
+#mapwrap { position: relative; height: calc(100vh - 110px); background: #0d0f12; border-radius: 8px; overflow: hidden; }
 #map { width: 100%; height: 100%; display: block; image-rendering: pixelated; cursor: crosshair; }
 .palette { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 4px; max-height: 220px; overflow: auto; }
 .palette button { padding: 2px; display: flex; flex-direction: column; align-items: center; font-size: 10px; }
@@ -44,19 +77,15 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 0; font: 12px/1.35 
 .palette img, .tileimg { width: 32px; height: 32px; image-rendering: pixelated; }
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
 .gallery figure { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px; text-align: center; }
-.gallery img { max-width: 100%; max-height: 96px; image-rendering: pixelated; background: repeating-conic-gradient(#8883 0 25%, #0000 0 50%) 0 0 / 12px 12px; }
+.gallery img { max-width: 100%; max-height: 96px; image-rendering: pixelated; cursor: zoom-in; background: repeating-conic-gradient(#8883 0 25%, #0000 0 50%) 0 0 / 12px 12px; }
 .gallery figcaption { font-size: 11px; word-break: break-all; }
-.chip { display: inline-block; background: var(--chip); border-radius: 10px; padding: 0 6px; margin: 1px; font-size: 11px; }
-.list { max-height: calc(100vh - 210px); overflow: auto; }
-.list div { padding: 3px 6px; border-radius: 4px; cursor: pointer; }
-.list div:hover, .list div.on { background: var(--chip); }
-#toast { position: fixed; right: 12px; bottom: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; display: none; max-width: 420px; z-index: 9; }
-@media (max-width: 900px) { .split { grid-template-columns: 1fr; } #mapwrap { height: 60vh; } }
+#toast { position: fixed; right: 12px; bottom: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; display: none; max-width: 420px; z-index: 30; }
+@media (max-width: 900px) { body { grid-template-columns: 1fr; } aside { position: static; height: auto; max-height: 40vh; } .split { grid-template-columns: 1fr; } #mapwrap { height: 60vh; } }
 </style>
 </head>
 <body>
 <header>
-  <h1>Console di amministrazione</h1>
+  <h1>Console del mondo</h1>
   <span id="tick" class="muted">…</span>
   <button id="pause">Pausa</button>
   <button id="step">+1 tick</button>
@@ -66,9 +95,42 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 0; font: 12px/1.35 
   <input id="token" placeholder="token (se richiesto)" size="16">
   <a href="/ui/" class="muted">client web</a>
 </header>
-<nav id="tabs"></nav>
+<aside id="side"></aside>
 <main>
-  <section id="t-map">
+  <!-- Panoramica -->
+  <section id="s-overview">
+    <h2>Panoramica del mondo</h2>
+    <div class="tiles" id="ovTiles"></div>
+    <div class="grid2" style="margin-top:10px">
+      <div class="card"><h4>Classi più diffuse</h4><div id="ovClasses"></div></div>
+      <div class="card"><h4>Cosa stanno facendo</h4><div id="ovActivity"></div></div>
+      <div class="card"><h4>Ruoli</h4><div id="ovRoles"></div></div>
+      <div class="card"><h4>Fazioni</h4><div id="ovFactions"></div></div>
+    </div>
+  </section>
+
+  <!-- Elenco generico (catalogo e mondo) -->
+  <section id="s-list">
+    <h2 id="lTitle"></h2>
+    <div class="row">
+      <input id="lFilter" placeholder="cerca…" size="30">
+      <span id="lExtra"></span>
+      <span id="lCount" class="muted"></span>
+      <span style="flex:1"></span>
+      <button id="lOpen" class="primary" disabled>Apri il dettaglio ▸</button>
+    </div>
+    <div class="tablewrap"><table id="lTable"></table></div>
+    <div class="muted" style="margin-top:6px">Clic su una riga per selezionarla, doppio clic o «Apri il dettaglio» per la scheda; clic sullo sprite per ingrandirlo.</div>
+  </section>
+
+  <!-- Dettaglio generico -->
+  <section id="s-detail">
+    <div class="row"><button id="dBack">◂ Torna all'elenco</button> <span id="dCrumb" class="muted"></span></div>
+    <div id="dBody"></div>
+  </section>
+
+  <!-- Mappa -->
+  <section id="s-map">
     <div class="split">
       <div id="mapwrap"><canvas id="map"></canvas></div>
       <div class="scroll">
@@ -110,36 +172,8 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 0; font: 12px/1.35 
     </div>
   </section>
 
-  <section id="t-entities">
-    <div class="row">
-      <input id="eFilter" placeholder="cerca nome, template, fazione…" size="30">
-      <select id="eKind"><option value="">tutti</option><option>pawn</option><option>building</option><option>virtual</option></select>
-      <label><input type="checkbox" id="eDead"> anche i morti</label>
-      <span id="eCount" class="muted"></span>
-    </div>
-    <div class="split">
-      <div class="scroll"><table id="eTable"></table></div>
-      <div class="card scroll"><div id="eDetail" class="muted">Scegli un'entità.</div></div>
-    </div>
-  </section>
-
-  <section id="t-items">
-    <div class="row"><input id="iFilter" placeholder="cerca oggetto…" size="30"> <span class="muted">Dove si trovano gli oggetti: inventari delle pedine e scorte degli edifici.</span></div>
-    <div class="split">
-      <div class="scroll"><table id="iTable"></table></div>
-      <div class="card scroll"><div id="iDetail" class="muted">Scegli un oggetto.</div></div>
-    </div>
-  </section>
-
-  <section id="t-content">
-    <div class="row"><select id="cCat"></select> <input id="cFilter" placeholder="cerca…"> <span class="muted">Definizioni caricate dai pacchetti dati (file .ron). Per cambiarle modifica i file e riavvia.</span></div>
-    <div class="split" style="grid-template-columns: 280px minmax(0,1fr)">
-      <div class="card list" id="cList"></div>
-      <div class="card scroll"><pre id="cDetail" class="muted">Scegli una voce.</pre></div>
-    </div>
-  </section>
-
-  <section id="t-sprites">
+  <section id="s-sprites">
+    <h2>Sprite</h2>
     <div class="card">
       <b>Mappatura grafica</b> <span class="muted">chiave (race:…, class:…, building:…, faction:…) → foglio sprite e colori. Le modifiche valgono subito per i client.</span>
       <div class="row" style="margin-top:6px"><input id="spFilter" placeholder="cerca chiave…"></div>
@@ -151,22 +185,20 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 0; font: 12px/1.35 
     </div>
   </section>
 
-  <section id="t-params">
+  <section id="s-params">
+    <h2>Parametri</h2>
     <div class="row"><input id="pFilter" placeholder="cerca parametro…" size="30"> <span class="muted">Valori di bilanciamento modificabili mentre la simulazione gira.</span></div>
-    <div class="scroll"><table id="pTable"></table></div>
+    <div class="tablewrap"><table id="pTable"></table></div>
   </section>
 
-  <section id="t-factions">
-    <div class="card"><b>Fazioni</b><div class="scroll" style="max-height:40vh"><table id="fTable"></table></div></div>
-    <div class="card"><b>Quartieri</b><div class="scroll" style="max-height:40vh"><table id="qTable"></table></div></div>
+  <section id="s-events">
+    <h2>Eventi</h2>
+    <div class="row"><input id="evKind" placeholder="tipo (es. territory, death, class_gained)"> <input id="evText" placeholder="testo…"> <button id="evRefresh">Aggiorna</button></div>
+    <div class="tablewrap"><table id="evTable"></table></div>
   </section>
 
-  <section id="t-events">
-    <div class="row"><input id="evKind" placeholder="tipo (es. territory, death, supply)"> <input id="evText" placeholder="testo…"> <button id="evRefresh">Aggiorna</button></div>
-    <div class="scroll"><table id="evTable"></table></div>
-  </section>
-
-  <section id="t-commands">
+  <section id="s-commands">
+    <h2>Comandi</h2>
     <div class="split">
       <div class="card">
         <div class="row"><b>Comando</b> <select id="cmdTpl"></select></div>
@@ -176,13 +208,24 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 0; font: 12px/1.35 
       <div class="card scroll"><b>Risposta</b><pre id="cmdOut" class="muted">—</pre></div>
     </div>
   </section>
+
+  <section id="s-raw">
+    <h2>Contenuti grezzi</h2>
+    <div class="row"><select id="cCat"></select> <input id="cFilter" placeholder="cerca…"> <span class="muted">Le definizioni così come sono caricate dai file .ron.</span></div>
+    <div class="split" style="grid-template-columns: 280px minmax(0,1fr)">
+      <div class="card scroll" id="cList"></div>
+      <div class="card scroll"><pre id="cDetail" class="muted">Scegli una voce.</pre></div>
+    </div>
+  </section>
 </main>
+<div id="lightbox"><img id="lbImg" alt=""><div id="lbCap"></div><div class="muted">clic per chiudere</div></div>
 <div id="toast"></div>
 
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (v, d = 1) => (v == null || Number.isNaN(v) ? "—" : Number(v).toLocaleString("it-IT", { maximumFractionDigits: d }));
 let tokenValue = "";
 try { tokenValue = localStorage.getItem("adminToken") || ""; } catch (e) {}
 $("token").value = tokenValue;
@@ -208,26 +251,485 @@ async function command(cmd) {
   catch (e) { toast("Rifiutato: " + e.message, true); throw e; }
 }
 
-// ── State shared by the tabs ──────────────────────────────────────────────────
-const S = { map: null, content: null, state: null, sprites: {}, assets: new Set(), terrainSeen: -1 };
-const tabs = [["map", "Mappa"], ["entities", "Entità"], ["items", "Oggetti"], ["content", "Contenuti"], ["sprites", "Sprite"],
-              ["params", "Parametri"], ["factions", "Fazioni e quartieri"], ["events", "Eventi"], ["commands", "Comandi"]];
-let current = "map";
-for (const [id, name] of tabs) {
-  const b = document.createElement("button"); b.textContent = name; b.id = "tab-" + id;
-  b.onclick = () => show(id); $("tabs").appendChild(b);
+// ── Shared state ─────────────────────────────────────────────────────────────
+const S = { map: null, content: null, state: null, sprites: {}, assets: new Set(), terrainSeen: -1, describe: {} };
+const C = (k) => S.content?.[k] ?? {};
+const name = (k, id) => C(k)[id]?.name || id || "—";
+const factionName = (id) => (id ? name("factions", id) : "—");
+const layerName = (i) => S.map?.layers[i]?.name ?? i;
+const posText = (p) => (p ? `${esc(layerName(p.layer))} (${p.x}, ${p.y})` : "—");
+const entities = () => S.state?.entities ?? [];
+const living = () => entities().filter((e) => e.kind === "pawn" && !e.dead);
+const link = (kind, id, label) => `<a class="chip" href="#cat/${kind}/${encodeURIComponent(id)}">${esc(label ?? name(kind, id))}</a>`;
+const elink = (e) => `<a class="chip" href="#ent/${e.id}">${esc(e.name)}</a>`;
+const chips = (list, kind) => (list ?? []).map((x) => (kind ? link(kind, x) : `<span class="chip">${esc(x)}</span>`)).join("") || '<span class="muted">—</span>';
+function hashColor(s) { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) | 0; return `hsl(${Math.abs(h) % 360} 40% 50%)`; }
+
+// ── Sprites: images from the asset folder, composed on a canvas when needed ───
+const imgCache = {}, composed = {};
+function loadImg(file) {
+  if (!S.assets.has(file)) return Promise.resolve(null);
+  return (imgCache[file] ??= new Promise((ok) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = "/assets/" + file; }));
 }
-function show(id) {
-  current = id;
-  for (const [t] of tabs) { $("t-" + t).classList.toggle("on", t === id); $("tab-" + t).classList.toggle("on", t === id); }
-  try { localStorage.setItem("adminTab", id); } catch (e) {}
-  ({ entities: renderEntities, items: renderItems, content: renderContentList, sprites: renderSprites, params: loadParams,
-     factions: renderFactions, events: loadEvents, map: resize })[id]?.();
+const sheetOf = (key) => S.sprites[key]?.sheet;
+/** Layers for a pawn-like thing: race sheet (sex variant), cloth tinted by faction, class accessory. */
+function pawnLayers(race, cls, faction, sex) {
+  let base = sheetOf("race:" + race);
+  if (!base) return null;
+  if (sex === "Female" && S.assets.has(base + "_f.png")) base += "_f";
+  else if (sex === "NonBinary" && S.assets.has(base + "_nb.png")) base += "_nb";
+  const out = [{ file: base + ".png" }];
+  const raceSheet = sheetOf("race:" + race);
+  if (S.assets.has(raceSheet + "_cloth.png")) out.push({ file: raceSheet + "_cloth.png", tint: S.sprites["faction:" + faction]?.outline || "#8a8f99" });
+  const acc = (cls ?? []).map((c) => sheetOf("class:" + c)).find(Boolean);
+  if (acc) out.push({ file: acc + ".png" });
+  return out;
+}
+/** Data URL of the first frame of the layers (16×20 for sheets, the whole image otherwise). */
+async function compose(layers, whole) {
+  const key = JSON.stringify(layers) + (whole ? "w" : "");
+  if (composed[key]) return composed[key];
+  const ims = await Promise.all(layers.map((l) => loadImg(l.file)));
+  if (!ims[0]) return null;
+  const sheet = ims[0].width === 48 && ims[0].height === 80;
+  const [w, h] = sheet && !whole ? [16, 20] : [ims[0].width, ims[0].height];
+  const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+  const g = cv.getContext("2d"); g.imageSmoothingEnabled = false;
+  layers.forEach((l, i) => {
+    const im = ims[i]; if (!im) return;
+    if (l.tint) {
+      const t = document.createElement("canvas"); t.width = w; t.height = h; const tg = t.getContext("2d");
+      tg.drawImage(im, 0, 0, w, h, 0, 0, w, h); tg.globalCompositeOperation = "multiply"; tg.fillStyle = l.tint; tg.fillRect(0, 0, w, h);
+      tg.globalCompositeOperation = "destination-in"; tg.drawImage(im, 0, 0, w, h, 0, 0, w, h); g.drawImage(t, 0, 0);
+    } else g.drawImage(im, 0, 0, w, h, 0, 0, w, h);
+  });
+  return (composed[key] = cv.toDataURL());
+}
+/** What to draw for a row: layers (or a single file) and a fallback letter/colour. */
+function spriteSpec(kind, d) {
+  switch (kind) {
+    case "templates": return { layers: pawnLayers(d.race, d.classes, d.faction, d.sex), label: d.name };
+    case "races": return { layers: pawnLayers(d.id, [], null, null), label: d.name };
+    case "classes": {
+      const acc = sheetOf("class:" + d.id);
+      return { layers: acc ? [{ file: (sheetOf("race:fidentino") ?? "chibi_fidentino") + ".png" }, { file: acc + ".png" }] : null, label: d.name };
+    }
+    case "buildings": return { layers: sheetOf("building:" + d.id) ? [{ file: sheetOf("building:" + d.id) + ".png" }] : null, label: d.name };
+    case "items": {
+      const f = ["item_" + d.id, "item_" + d.category, "item_varie"].find((x) => S.assets.has(x + ".png"));
+      return { layers: f ? [{ file: f + ".png" }] : null, label: d.name };
+    }
+    case "factions": return { color: S.sprites["faction:" + d.id]?.outline || hashColor(d.id), label: d.name };
+    case "titles": {
+      const h = holderOf(d.id);
+      return h ? { layers: pawnLayers(h.race, h.classes, h.faction, h.sex), label: d.name } : { color: "#777", label: d.name };
+    }
+    case "pawns": return { layers: pawnLayers(d.race, d.classes, d.faction, d.sex), label: d.name };
+    case "bld": return { layers: sheetOf("building:" + d.building?.def) ? [{ file: sheetOf("building:" + d.building.def) + ".png" }] : null, label: d.name };
+    default: return { color: hashColor(kind + (d.id ?? "")), label: d.name ?? d.id };
+  }
+}
+let sprSeq = 0;
+/** An <img> placeholder filled asynchronously; clicking it opens the lightbox. */
+function spriteHtml(kind, d, big) {
+  const spec = spriteSpec(kind, d);
+  if (!spec.layers) {
+    const letter = esc(String(spec.label ?? "?").slice(0, 2));
+    return `<span class="spr none ${big ? "bigspr" : ""}" style="background:${esc(spec.color ?? "#777")}">${letter}</span>`;
+  }
+  const id = "spr" + ++sprSeq;
+  compose(spec.layers).then((url) => { const el = $(id); if (el && url) el.src = url; });
+  return `<img id="${id}" class="${big ? "bigspr" : "spr"}" alt="" data-layers='${esc(JSON.stringify(spec.layers))}' data-label="${esc(spec.label ?? "")}">`;
+}
+document.addEventListener("click", async (ev) => {
+  const im = ev.target.closest?.("img[data-layers]");
+  if (!im) return;
+  ev.stopPropagation();
+  const layers = JSON.parse(im.dataset.layers);
+  $("lbImg").src = (await compose(layers, true)) ?? im.src;
+  $("lbImg").style.width = Math.min(innerWidth * 0.9, 480) + "px";
+  $("lbCap").textContent = im.dataset.label + " · " + layers.map((l) => l.file).join(" + ");
+  $("lightbox").style.display = "flex";
+}, true);
+$("lightbox").onclick = () => ($("lightbox").style.display = "none");
+
+// ── Live indexes (what the world looks like right now) ────────────────────────
+const L = {};
+function rebuildIndexes() {
+  const pawns = living();
+  const count = (f) => { const m = {}; for (const e of pawns) for (const k of [].concat(f(e) ?? [])) m[k] = (m[k] ?? 0) + 1; return m; };
+  L.byRace = count((e) => e.truth?.race ?? e.race);
+  L.byClass = count((e) => e.classes);
+  L.byTemplate = count((e) => e.template);
+  L.byFaction = count((e) => e.faction);
+  L.byAction = count((e) => e.activity?.action);
+  L.byJob = count((e) => e.activity?.job);
+  L.byStatus = count((e) => (e.statuses ?? []).map((s) => s.id));
+  L.byBuilding = {}; for (const e of entities()) if (e.kind === "building" && !e.dead) L.byBuilding[e.building.def] = (L.byBuilding[e.building.def] ?? 0) + 1;
+  L.items = {};
+  for (const e of entities()) {
+    if (e.dead) continue;
+    for (const [i, n] of e.inventory ?? []) (L.items[i] ??= { total: 0, holders: [] }), (L.items[i].total += n), L.items[i].holders.push({ n, e, where: "inventario" });
+    for (const [i, n] of Object.entries(e.building?.stock ?? {})) if (n > 0) (L.items[i] ??= { total: 0, holders: [] }), (L.items[i].total += n), L.items[i].holders.push({ n, e, where: "scorte" });
+  }
+  L.stats = {};
+  for (const e of pawns) for (const [k, v] of Object.entries(e.stats ?? {})) (L.stats[k] ??= []).push(v);
+  L.needs = {};
+  for (const e of pawns) for (const [k, v] of Object.entries(e.needs ?? {})) (L.needs[k] ??= []).push(v);
+  L.abilityUsers = {};
+  for (const e of pawns) {
+    const abil = new Set([...(C("races")[e.race]?.abilities ?? []), ...(e.classes ?? []).flatMap((c) => C("classes")[c]?.abilities ?? [])]);
+    for (const a of abil) L.abilityUsers[a] = (L.abilityUsers[a] ?? 0) + 1;
+  }
+}
+const agg = (arr) => {
+  if (!arr?.length) return { avg: null, min: null, max: null };
+  let s = 0, mn = Infinity, mx = -Infinity; for (const v of arr) { s += v; mn = Math.min(mn, v); mx = Math.max(mx, v); }
+  return { avg: s / arr.length, min: mn, max: mx };
+};
+const byId = (id) => entities().find((e) => e.id === id);
+const holderOf = (title) => { const h = S.state?.titles?.[title]; return h == null ? null : byId(h); };
+
+// ── Catalog: what is configured, with how it is doing in the world ────────────
+const D = (k, id) => S.describe?.[k]?.[id] ?? {};
+const bar = (v, max) => `<span class="bar"><i style="width:${Math.max(0, Math.min(100, (v / (max || 1)) * 100))}%"></i></span>`;
+const CATALOG = {
+  templates: { title: "Personaggi (NPC)", group: "Catalogo", sprite: true,
+    cols: [["Nome", (d) => esc(d.name || d.id)], ["Razza", (d) => esc(name("races", d.race))], ["Classi", (d) => chips(d.classes?.map((c) => name("classes", c)))],
+      ["Fazione", (d) => esc(factionName(d.faction))], ["Unico", (d) => (d.unique ? "sì" : "")], ["Ruoli", (d) => chips(d.titles?.map((t) => name("titles", t)))],
+      ["In gioco", (d) => L.byTemplate[d.id] ?? 0, true]] },
+  races: { title: "Razze", group: "Catalogo", sprite: true,
+    cols: [["Nome", (d) => esc(d.name)], ["Corpo", (d) => esc(d.body_plan)], ["Abilità", (d) => chips(d.abilities?.map((a) => name("abilities", a)))],
+      ["Tag", (d) => chips(d.tags)], ["In gioco", (d) => L.byRace[d.id] ?? 0, true]] },
+  classes: { title: "Classi", group: "Catalogo", sprite: true,
+    cols: [["Nome", (d) => esc(d.name)], ["Gruppo", (d) => esc(d.group)], ["Requisiti", (d) => (d.requires ? esc(D("classes", d.id).requires) : '<span class="muted">non si acquisisce</span>')],
+      ["Poteri", (d) => chips([...(d.abilities ?? []).map((a) => name("abilities", a))])], ["Priorità", (d) => d.priority ?? 0, true], ["In gioco", (d) => L.byClass[d.id] ?? 0, true]] },
+  titles: { title: "Ruoli", group: "Catalogo", sprite: true,
+    cols: [["Ruolo", (d) => esc(d.name)], ["Fazione", (d) => esc(d.faction ? factionName(d.faction) : "—")], ["Come si ottiene", (d) => esc(MODES[d.mode] ?? d.mode)],
+      ["Titolare", (d) => { const h = holderOf(d.id); return h ? elink(h) : '<span class="muted">vacante</span>'; }], ["Requisiti", (d) => esc(D("titles", d.id).requires || "—")]] },
+  stats: { title: "Caratteristiche", group: "Catalogo",
+    cols: [["Nome", (d) => esc(d.name)], ["Gruppo", (d) => esc(d.group)], ["Intervallo", (d) => `${fmt(d.min)} – ${fmt(d.max)}`], ["Iniziale", (d) => `${fmt(d.default)}${d.spread ? " ± " + fmt(d.spread) : ""}`],
+      ["Media nel mondo", (d) => { const a = agg(L.stats[d.id]); return a.avg == null ? "—" : `${bar(a.avg - (d.min ?? 0), (d.max > 1000 ? a.max : d.max) - (d.min ?? 0))} ${fmt(a.avg)}`; }],
+      ["Min", (d) => fmt(agg(L.stats[d.id]).min), true], ["Max", (d) => fmt(agg(L.stats[d.id]).max), true]] },
+  needs: { title: "Bisogni", group: "Catalogo",
+    cols: [["Nome", (d) => esc(d.name)], ["Calo per tick", (d) => fmt(d.decay, 3), true], ["Soglia bassa", (d) => fmt(d.low_threshold, 2), true],
+      ["Media nel mondo", (d) => { const a = agg(L.needs[d.id]); return a.avg == null ? "—" : `${bar(a.avg, 1)} ${fmt(a.avg * 100, 0)}%`; }]] },
+  actions: { title: "Azioni (scelte dell'AI)", group: "Catalogo",
+    cols: [["Nome", (d) => esc(d.name)], ["Fa", (d) => actionKind(d)], ["Per tutti", (d) => (d.universal ? "sì" : "")], ["Peso", (d) => fmt(d.weight, 2), true],
+      ["Attesa", (d) => d.cooldown || "", true], ["Requisiti", (d) => esc(D("actions", d.id).requires || "")], ["Ora in corso", (d) => L.byAction[d.id] ?? 0, true]] },
+  jobs: { title: "Lavori ed effetti", group: "Catalogo",
+    cols: [["Nome", (d) => esc(d.name)], ["Gestore", (d) => esc(d.handler || "effetti")], ["Durata", (d) => fmt(d.duration), true],
+      ["Effetti", (d) => esc(D("jobs", d.id).effects || "")], ["Reato", (d) => esc(d.crime?.id ?? "")], ["Ora in corso", (d) => L.byJob[d.id] ?? 0, true]] },
+  abilities: { title: "Abilità", group: "Catalogo",
+    cols: [["Nome", (d) => esc(d.name)], ["Attesa", (d) => d.cooldown || "", true], ["Raggio", (d) => d.range || "", true], ["Effetti", (d) => esc(D("abilities", d.id).effects)],
+      ["Chi ce l'ha", (d) => L.abilityUsers[d.id] ?? 0, true]] },
+  statuses: { title: "Stati e malattie", group: "Catalogo",
+    cols: [["Nome", (d) => esc(d.name)], ["Tipo", (d) => esc(d.kind)], ["Durata", (d) => d.duration || (d.progression ? "progressiva" : "—")], ["Tag", (d) => chips(d.tags)],
+      ["Effetti", (d) => esc(Object.entries(d.stats ?? {}).map(([k, v]) => `${name("stats", k)} ${v > 0 ? "+" : ""}${v}`).join(", "))], ["Colpiti ora", (d) => L.byStatus[d.id] ?? 0, true]] },
+  items: { title: "Oggetti", group: "Catalogo", sprite: true,
+    cols: [["Nome", (d) => esc(d.name)], ["Categoria", (d) => esc(d.category)], ["Tipo", (d) => chips(d.types)], ["Prezzo", (d) => fmt(d.base_price), true],
+      ["Peso", (d) => (d.weight ? fmt(d.weight) : ""), true], ["Danni", (d) => (d.damage ? fmt(d.damage) : ""), true], ["Nel mondo", (d) => L.items[d.id]?.total ?? 0, true]] },
+  buildings: { title: "Edifici", group: "Catalogo", sprite: true,
+    cols: [["Nome", (d) => esc(d.name)], ["Tag", (d) => chips(d.tags)], ["Vende", (d) => chips(Object.keys(d.sells ?? {}).map((i) => name("items", i)))],
+      ["Ricette", (d) => (d.recipes ?? []).length || "", true], ["In gioco", (d) => L.byBuilding[d.id] ?? 0, true]] },
+  factions: { title: "Fazioni", group: "Catalogo", sprite: true,
+    cols: [["Nome", (d) => esc(d.name)], ["Giocabile", (d) => (d.playable ? "sì" : "")], ["Ideologia", (d) => chips(Object.entries(d.ideology ?? {}).map(([k, v]) => `${k} ${v}`))],
+      ["Membri", (d) => L.byFaction[d.id] ?? 0, true], ["Tesoro", (d) => fmt(S.state?.factions?.find((f) => f.id === d.id)?.treasury, 0), true],
+      ["Punti", (d) => S.state?.scores?.[d.id] ?? "", true]] },
+  collections: { title: "Collezioni", group: "Catalogo", cols: [["Nome", (d) => esc(d.name)], ["Pezzi", (d) => (d.items ?? []).length || d.count, true], ["Punti", (d) => d.victory_points, true]] },
+  spawners: { title: "Generatori", group: "Catalogo", cols: [["Id", (d) => esc(d.id)], ["Template", (d) => link("templates", d.template)], ["Zona", (d) => esc(d.zone)], ["Ogni", (d) => d.interval, true], ["Max", (d) => d.max_alive, true]] },
+  triggers: { title: "Eventi a condizione", group: "Catalogo", cols: [["Nome", (d) => esc(d.name || d.id)], ["Ripetibile", (d) => (d.repeat ? "sì" : "")], ["Attesa", (d) => d.cooldown || "", true]] },
+  supplies: { title: "Rifornimenti", group: "Catalogo", cols: [["Nome", (d) => esc(d.name)], ["Oggetto", (d) => link("items", d.item)], ["Al giorno max", (d) => d.max_per_day, true]] },
+  global_modifiers: { title: "Circostanze globali", group: "Catalogo", cols: [["Nome", (d) => esc(d.name)], ["Morale", (d) => d.morale ?? "", true]] },
+  news_sources: { title: "Fonti di notizie", group: "Catalogo", cols: [["Id", (d) => esc(d.id)], ["Autore", (d) => esc(d.author ?? "")], ["Titoli", (d) => (d.headlines ?? []).length, true]] },
+  body_plans: { title: "Corpi", group: "Catalogo", cols: [["Id", (d) => esc(d.id)], ["Parti", (d) => chips(d.parts?.map((p) => p.name))]] },
+  fluids: { title: "Fluidi", group: "Catalogo", cols: [["Nome", (d) => esc(d.name)], ["Sporcizia", (d) => d.dirtiness, true], ["Porta", (d) => esc(d.carries ?? "")]] },
+};
+const MODES = { Seat: "trono", Succession: "successione", Election: "elezione", Appointment: "nomina", Challenge: "sfida", Coup: "colpo di stato", Purchase: "acquisto" };
+function actionKind(d) {
+  const k = d.kind;
+  if (k === "Work" || k?.Work !== undefined) return "lavoro dalla bacheca";
+  if (k === "Idle") return "niente";
+  if (k?.Job) return "job " + link("jobs", k.Job.job);
+  if (k?.Ability) return "abilità " + link("abilities", k.Ability.ability);
+  return esc(JSON.stringify(k));
+}
+// Who uses an action/ability/class: definitions that list it.
+function usersOf(kind, id) {
+  const out = [];
+  const scan = (k, f) => Object.values(C(k)).forEach((d) => f(d) && out.push(link(k, d.id)));
+  if (kind === "actions") { scan("classes", (d) => d.actions?.includes(id)); scan("templates", (d) => d.actions?.includes(id)); scan("titles", (d) => d.actions?.includes(id)); }
+  if (kind === "abilities") { scan("classes", (d) => d.abilities?.includes(id)); scan("races", (d) => d.abilities?.includes(id)); scan("titles", (d) => d.abilities?.includes(id)); }
+  if (kind === "jobs") scan("actions", (d) => d.kind?.Job?.job === id);
+  if (kind === "races") scan("templates", (d) => d.race === id);
+  if (kind === "classes") scan("templates", (d) => d.classes?.includes(id));
+  if (kind === "items") { scan("templates", (d) => d.items && id in d.items); scan("buildings", (d) => (d.sells && id in d.sells) || (d.recipes ?? []).some((r) => id in (r.outputs ?? {}))); }
+  if (kind === "statuses") scan("items", (d) => JSON.stringify(d.on_use ?? []).includes(`"${id}"`));
+  if (kind === "factions") scan("templates", (d) => d.faction === id);
+  return out;
 }
 
-const layerName = (i) => S.map?.layers[i]?.name ?? i;
-const posText = (p) => p ? `${esc(layerName(p.layer))} (${p.x}, ${p.y})` : "—";
-const factionName = (id) => S.content?.factions?.[id]?.name ?? id ?? "—";
+// ── Live sections (the world as it is) ───────────────────────────────────────
+const WORLD = {
+  pawns: { title: "Pedine", group: "Mondo", sprite: true, rows: () => entities().filter((e) => e.kind !== "building" && (filters.dead || !e.dead)),
+    cols: [["Nome", (e) => esc(e.name) + (e.dead ? " †" : "")], ["Razza", (e) => esc(name("races", e.truth?.race ?? e.race))], ["Classi", (e) => chips(e.classes?.map((c) => name("classes", c)))],
+      ["Fazione", (e) => esc(factionName(e.faction))], ["Salute", (e) => `${bar(e.health, 1)} ${fmt(e.health * 100, 0)}%`], ["Soldi", (e) => fmt(e.money, 0), true],
+      ["Attività", (e) => esc(e.activity?.label ?? "")], ["Dove", (e) => posText(e.pos)]] },
+  bld: { title: "Edifici in gioco", group: "Mondo", sprite: true, rows: () => entities().filter((e) => e.kind === "building" && (filters.dead || !e.dead)),
+    cols: [["Nome", (e) => esc(e.name)], ["Tipo", (e) => link("buildings", e.building?.def)], ["Proprietario", (e) => esc(factionName(e.building?.owner?.Faction))],
+      ["Integrità", (e) => `${bar(e.building.hp, e.building.max_hp)} ${fmt(e.building.hp, 0)}/${fmt(e.building.max_hp, 0)}`],
+      ["Scorte", (e) => Object.values(e.building?.stock ?? {}).reduce((a, b) => a + b, 0), true], ["Dove", (e) => posText(e.pos)]] },
+};
+
+// ── Sidebar and routing ───────────────────────────────────────────────────────
+const SIDE = [
+  ["Mondo", [["overview", "Panoramica"], ["map", "Mappa"], ["list/pawns", "Pedine"], ["list/bld", "Edifici in gioco"], ["events", "Eventi"]]],
+  ["Catalogo", Object.entries(CATALOG).map(([k, v]) => ["cat/" + k, v.title, k])],
+  ["Strumenti", [["sprites", "Sprite"], ["params", "Parametri"], ["commands", "Comandi"], ["raw", "Contenuti grezzi"]]],
+];
+function renderSide() {
+  $("side").innerHTML = SIDE.map(([g, items]) => `<h3>${esc(g)}</h3>` + items.map(([route, label, k]) => {
+    const n = k ? Object.keys(C(k)).length : route === "list/pawns" ? living().length : route === "list/bld" ? entities().filter((e) => e.kind === "building" && !e.dead).length : "";
+    return `<a href="#${route}" data-route="${route}">${esc(label)} <span class="n">${n}</span></a>`;
+  }).join("")).join("");
+  markSide();
+}
+function markSide() {
+  const r = location.hash.slice(1) || "overview";
+  for (const a of $("side").querySelectorAll("a")) a.classList.toggle("on", r === a.dataset.route || r.startsWith(a.dataset.route + "/"));
+}
+let route = { view: "overview" };
+function show(view) { for (const s of document.querySelectorAll("main > section")) s.classList.toggle("on", s.id === "s-" + view); }
+function navigate() {
+  const parts = (location.hash.slice(1) || "overview").split("/").map(decodeURIComponent);
+  try { localStorage.setItem("adminRoute", location.hash); } catch (e) {}
+  markSide();
+  const [a, b, c] = parts;
+  if (a === "cat" && c != null) route = { view: "detail", kind: b, id: c };
+  else if (a === "cat") route = { view: "list", src: "cat", kind: b };
+  else if (a === "list") route = { view: "list", src: "world", kind: b };
+  else if (a === "ent") route = { view: "detail", kind: "ent", id: Number(b) };
+  else route = { view: a };
+  render();
+}
+window.addEventListener("hashchange", navigate);
+function render() {
+  const v = route.view;
+  show(v);
+  if (v === "overview") renderOverview();
+  else if (v === "list") { selectedRow = null; $("lFilter").value = filters.q[route.kind] ?? ""; renderList(); }
+  else if (v === "detail") renderDetail();
+  else if (v === "map") resize();
+  else if (v === "sprites") renderSprites();
+  else if (v === "params") loadParams();
+  else if (v === "events") loadEvents();
+  else if (v === "raw") renderContentList();
+}
+
+// ── Overview ─────────────────────────────────────────────────────────────────
+function renderOverview() {
+  const st = S.state; if (!st) return;
+  const pawns = living(), dead = entities().filter((e) => e.kind === "pawn" && e.dead).length;
+  const tile = (label, val, sub = "") => `<div class="tile"><span class="muted">${esc(label)}</span><b>${val}</b><span class="muted">${sub}</span></div>`;
+  const avgHealth = agg(pawns.map((e) => e.health)).avg;
+  const roles = Object.keys(C("titles")), held = roles.filter((t) => st.titles?.[t] != null).length;
+  $("ovTiles").innerHTML = tile("Pedine vive", pawns.length, `${dead} morte`) + tile("Salute media", fmt((avgHealth ?? 0) * 100, 0) + "%") +
+    tile("Classi in gioco", Object.keys(L.byClass).length, `su ${Object.keys(C("classes")).length} configurate`) + tile("Ruoli assegnati", `${held}/${roles.length}`) +
+    tile("Edifici", entities().filter((e) => e.kind === "building" && !e.dead).length) + tile("Ricercati", pawns.filter((e) => e.wanted >= 5).length, "ricercato ≥ 5") +
+    tile("Malati", pawns.filter((e) => (e.statuses ?? []).some((s) => C("statuses")[s.id]?.tags?.includes("malattia"))).length) +
+    tile("Notizie", (st.feed ?? []).length);
+  const top = (m, kind, n = 12) => Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, n)
+    .map(([k, v]) => `<div class="row" style="margin:0">${bar(v, Math.max(...Object.values(m)))} <b>${v}</b> ${kind ? link(kind, k) : esc(k)}</div>`).join("") || '<span class="muted">—</span>';
+  $("ovClasses").innerHTML = top(L.byClass, "classes");
+  $("ovActivity").innerHTML = top(Object.fromEntries(Object.entries(L.byJob).map(([k, v]) => [name("jobs", k), v])), null);
+  $("ovRoles").innerHTML = Object.values(C("titles")).map((t) => { const h = holderOf(t.id); return `<div>${link("titles", t.id)} ${h ? elink(h) : '<span class="muted">vacante</span>'}</div>`; }).join("");
+  $("ovFactions").innerHTML = (st.factions ?? []).map((f) => `<div class="row" style="margin:0">${link("factions", f.id, f.name)} <span class="muted">${f.members} membri · ${fmt(f.treasury, 0)} € · ${st.scores?.[f.id] ?? f.victory_points} punti</span></div>`).join("");
+}
+
+// ── Generic list ─────────────────────────────────────────────────────────────
+const filters = { q: {}, dead: false, sort: {} };
+let selectedRow = null;
+function listSpec() { return route.src === "cat" ? CATALOG[route.kind] : WORLD[route.kind]; }
+function listRows() {
+  const spec = listSpec();
+  if (route.src === "cat") return Object.values(C(route.kind)).map((d) => (d.id ? d : { ...d, id: d.name }));
+  return spec.rows();
+}
+function renderList() {
+  const spec = listSpec(); if (!spec) return;
+  $("lTitle").textContent = spec.title;
+  $("lExtra").innerHTML = route.src === "world" ? `<label><input type="checkbox" id="lDead" ${filters.dead ? "checked" : ""}> anche i morti/distrutti</label>` : "";
+  if ($("lDead")) $("lDead").onchange = () => { filters.dead = $("lDead").checked; renderList(); };
+  const q = (filters.q[route.kind] ?? "").toLowerCase();
+  let rows = listRows();
+  if (q) rows = rows.filter((d) => JSON.stringify(d).toLowerCase().includes(q) || spec.cols.some(([, f]) => String(f(d)).toLowerCase().includes(q)));
+  const sort = filters.sort[route.kind];
+  if (sort) {
+    const [i, dir] = sort, f = spec.cols[i][1];
+    const val = (d) => { const v = f(d); const n = typeof v === "number" ? v : Number(String(v).replace(/<[^>]*>/g, "").replace(/\./g, "").replace(",", ".")); return Number.isNaN(n) ? String(v).replace(/<[^>]*>/g, "") : n; };
+    rows = rows.slice().sort((a, b) => { const x = val(a), y = val(b); return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y))) * dir; });
+  }
+  $("lCount").textContent = `${rows.length} voci`;
+  const head = `<thead><tr>${spec.sprite ? '<th class="nosort"></th>' : ""}${spec.cols.map(([h], i) => `<th data-i="${i}">${esc(h)}${sort?.[0] === i ? (sort[1] > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead>`;
+  const body = rows.slice(0, 1000).map((d) => `<tr data-id="${esc(d.id)}" class="${String(d.id) === String(selectedRow) ? "sel" : ""}">${spec.sprite ? `<td>${spriteHtml(route.src === "cat" ? route.kind : route.kind, d)}</td>` : ""}` +
+    spec.cols.map(([, f, num]) => `<td class="${num ? "num" : ""}">${f(d)}</td>`).join("") + "</tr>").join("");
+  $("lTable").innerHTML = head + "<tbody>" + body + "</tbody>";
+  $("lOpen").disabled = selectedRow == null;
+  for (const th of $("lTable").querySelectorAll("th[data-i]")) th.onclick = () => {
+    const i = Number(th.dataset.i), cur = filters.sort[route.kind];
+    filters.sort[route.kind] = cur?.[0] === i ? [i, -cur[1]] : [i, 1]; renderList();
+  };
+  for (const tr of $("lTable").querySelectorAll("tbody tr")) {
+    tr.onclick = (ev) => { if (ev.target.closest("a")) return; selectedRow = tr.dataset.id; for (const o of $("lTable").querySelectorAll("tr.sel")) o.classList.remove("sel"); tr.classList.add("sel"); $("lOpen").disabled = false; };
+    tr.ondblclick = () => openDetail(tr.dataset.id);
+  }
+}
+function openDetail(id) {
+  if (route.src === "cat") location.hash = `#cat/${route.kind}/${encodeURIComponent(id)}`;
+  else location.hash = `#ent/${id}`;
+}
+$("lOpen").onclick = () => selectedRow != null && openDetail(selectedRow);
+$("lFilter").oninput = () => { filters.q[route.kind] = $("lFilter").value; renderList(); };
+$("dBack").onclick = () => { if (route.kind === "ent") history.back(); else location.hash = "#cat/" + route.kind; };
+
+// ── Detail pages ─────────────────────────────────────────────────────────────
+function kv(obj) {
+  return `<div class="kv">${Object.entries(obj).filter(([, v]) => v !== undefined && v !== null && v !== "").map(([k, v]) => `<div>${esc(k)}</div><div>${v}</div>`).join("")}</div>`;
+}
+const FIELD = { default: "valore iniziale", group: "gruppo", max: "massimo", min: "minimo", per_day: "al giorno", recovery: "ritorno per tick", rest_value: "valore di riposo",
+  spread: "variazione alla nascita", visible: "visibile", faction: "fazione", race: "razza", money: "soldi", unique: "unico", immortal: "immortale", virtual_entity: "senza corpo",
+  category: "categoria", stack_max: "per slot", base_price: "prezzo base", reusable: "riutilizzabile", victory_points: "punti vittoria", durability: "vita", weight: "peso",
+  hands: "mani", damage: "danni", range: "gittata", wear_slot: "si indossa su", cooldown: "attesa (tick)", suspicious: "sospetta", weight_: "peso", universal: "per tutti",
+  label: "etichetta", handler: "gestore", duration: "durata", work_type: "tipo di lavoro", skill: "abilità che velocizza", news: "notiziabilità", priority: "priorità",
+  innate: "di razza", mode: "modo", term: "mandato", grace: "tolleranza", vacancy_ticks: "vacanza (tick)", members_only: "solo membri", challenge_stat: "si sfida con",
+  challenge_allies: "raggio degli alleati", seat_zone: "trono", grants_faction_control: "dà il controllo della fazione", kind: "tipo", stacking: "accumulo",
+  progression: "progressione", hidden: "nascosto", body_plan: "corpo", shapeshifter: "mutaforma", sexless: "senza sesso", sex: "sesso", playable: "giocabile",
+  neutral: "neutrale", role: "ruolo", treasury: "tesoro iniziale", decay: "calo per tick", low_threshold: "soglia bassa", interval: "intervallo", max_alive: "massimo vivi",
+  zone: "zona", template: "template", footprint: "ingombro", hp: "integrità", income: "incasso", markup: "ricarico" };
+function scalarFields(d) {
+  const o = {};
+  for (const [k, v] of Object.entries(d)) if (v !== null && typeof v !== "object" && k !== "name" && k !== "id" && k !== "description") o[FIELD[k] ?? k] = esc(v === true ? "sì" : v === false ? "no" : v);
+  return o;
+}
+function statMap(m) { return chips(Object.entries(m ?? {}).map(([k, v]) => `${name("stats", k)} ${v > 0 ? "+" : ""}${v}`)); }
+function pawnsWhere(f) {
+  const list = living().filter(f);
+  return list.length ? list.slice(0, 200).map(elink).join("") + (list.length > 200 ? ` <span class="muted">e altri ${list.length - 200}</span>` : "") : '<span class="muted">nessuno</span>';
+}
+function renderDetail() {
+  if (route.kind === "ent") return entityPage(route.id);
+  const kind = route.kind, d = C(kind)[route.id] ?? Object.values(C(kind)).find((x) => x.name === route.id);
+  const spec = CATALOG[kind];
+  $("dCrumb").textContent = `${spec?.title ?? kind} › ${d?.name ?? route.id}`;
+  if (!d) { $("dBody").innerHTML = `<div class="card">Voce non trovata.</div>`; return; }
+  const cards = [];
+  const extra = {};
+  if (kind === "classes") {
+    extra["Requisiti"] = esc(D("classes", d.id).requires || "non si acquisisce (data dal template o dalla razza)");
+    extra["Bonus"] = statMap(d.stats); extra["Abilità"] = chips(d.abilities, "abilities"); extra["Azioni"] = chips(d.actions, "actions");
+    extra["Comprende"] = chips(d.includes, "classes"); extra["Sostituisce"] = chips(d.replaces, "classes"); extra["Lavori (priorità)"] = chips(Object.entries(d.work ?? {}).map(([k, v]) => `${k} ${v}`));
+    cards.push(["Chi è di questa classe", pawnsWhere((e) => e.classes?.includes(d.id))]);
+    cards.push(["Chi ha i requisiti ma non è di questa classe", '<span class="muted">vedi la finestra Classi del client per il campione; per le altre pedine conta il controllo periodico</span>']);
+  } else if (kind === "races") {
+    extra["Bonus"] = statMap(d.stats); extra["Abilità"] = chips(d.abilities, "abilities"); extra["Immunità"] = chips(d.immunities, "statuses"); extra["Senza bisogni"] = chips(d.needs_exempt);
+    cards.push(["In gioco", pawnsWhere((e) => (e.truth?.race ?? e.race) === d.id)]);
+  } else if (kind === "templates") {
+    extra["Razza"] = link("races", d.race); extra["Classi"] = chips(d.classes, "classes"); extra["Fazione"] = d.faction ? link("factions", d.faction) : "—";
+    extra["Ruoli"] = chips(d.titles, "titles"); extra["Statistiche"] = statMap(d.stats); extra["Oggetti"] = chips(Object.entries(d.items ?? {}).map(([i, n]) => `${n}× ${name("items", i)}`));
+    extra["Azioni in più"] = chips(d.actions, "actions");
+    cards.push(["In gioco", pawnsWhere((e) => e.template === d.id)]);
+  } else if (kind === "titles") {
+    const h = holderOf(d.id);
+    extra["Titolare"] = h ? elink(h) : "vacante"; extra["Come si ottiene"] = esc(MODES[d.mode] ?? d.mode); extra["Requisiti"] = esc(D("titles", d.id).requires || "nessuno");
+    extra["Fazione"] = d.faction ? link("factions", d.faction) : "—"; extra["Poteri"] = chips(d.abilities, "abilities") + statMap(d.stats); extra["Azioni"] = chips(d.actions, "actions");
+    extra["Mandato"] = d.term ? `${d.term} tick` : "a vita"; extra["Tolleranza sotto i requisiti"] = d.grace ? `${d.grace} tick` : "nessuna";
+  } else if (kind === "stats") {
+    const vals = (L.stats[d.id] ?? []).slice().sort((a, b) => a - b), a = agg(vals);
+    const lo = Math.min(d.min ?? 0, a.min ?? 0), hi = d.max > 1000 ? (a.max ?? 1) : d.max, bins = new Array(20).fill(0);
+    for (const v of vals) bins[Math.min(19, Math.max(0, Math.floor(((v - lo) / ((hi - lo) || 1)) * 20)))]++;
+    const mx = Math.max(1, ...bins);
+    extra["Media"] = fmt(a.avg); extra["Minimo / massimo"] = `${fmt(a.min)} / ${fmt(a.max)}`;
+    cards.push(["Distribuzione tra le pedine vive", `<div class="hist">${bins.map((b) => `<i style="height:${(b / mx) * 100}%" title="${b}"></i>`).join("")}</div><div class="row muted" style="justify-content:space-between"><span>${fmt(lo)}</span><span>${fmt(hi)}</span></div>`]);
+    const sorted = living().filter((e) => e.stats?.[d.id] != null).sort((x, y) => y.stats[d.id] - x.stats[d.id]);
+    cards.push(["I più alti", sorted.slice(0, 10).map((e) => `<div>${elink(e)} ${fmt(e.stats[d.id])}</div>`).join("")]);
+    cards.push(["I più bassi", sorted.slice(-10).reverse().map((e) => `<div>${elink(e)} ${fmt(e.stats[d.id])}</div>`).join("")]);
+    cards.push(["Requisiti che la usano", Object.values(C("classes")).filter((c) => JSON.stringify(c.requires ?? "").includes(`"${d.id}"`)).map((c) => link("classes", c.id)).join("") +
+      Object.values(C("titles")).filter((c) => JSON.stringify(c.claim_requires ?? "").includes(`"${d.id}"`)).map((c) => link("titles", c.id)).join("") || '<span class="muted">nessuno</span>']);
+  } else if (kind === "items") {
+    extra["Cosa fa"] = (D("items", d.id).lines ?? []).map((l) => `<div>${esc(l)}</div>`).join("");
+    const where = (L.items[d.id]?.holders ?? []).sort((a, b) => b.n - a.n);
+    cards.push(["Dove si trova", where.length ? `<table>${where.map((x) => `<tr><td class="num">${x.n}</td><td>${elink(x.e)} <span class="muted">${x.where}</span></td><td>${posText(x.e.pos)}</td></tr>`).join("")}</table>` : '<span class="muted">da nessuna parte</span>']);
+  } else if (kind === "actions") {
+    extra["Fa"] = actionKind(d); extra["Requisiti"] = esc(D("actions", d.id).requires || "—");
+    extra["Considerazioni"] = (d.considerations ?? []).map((c) => `<div><code>${esc(JSON.stringify(c.input))}</code> → ${esc(JSON.stringify(c.curve))}</div>`).join("");
+    cards.push(["Chi la fa adesso", pawnsWhere((e) => e.activity?.action === d.id)]);
+  } else if (kind === "jobs") {
+    extra["Effetti"] = esc(D("jobs", d.id).effects || "—"); extra["Requisiti"] = esc(D("jobs", d.id).requires || "—");
+    if (d.crime) extra["Reato"] = esc(`${d.crime.id} (gravità ${d.crime.severity})`);
+    cards.push(["Chi lo sta facendo", pawnsWhere((e) => e.activity?.job === d.id)]);
+  } else if (kind === "abilities") {
+    extra["Effetti"] = esc(D("abilities", d.id).effects || "—"); extra["Requisiti"] = esc(D("abilities", d.id).requires || "—");
+  } else if (kind === "statuses") {
+    extra["Statistiche"] = statMap(d.stats); extra["All'inizio"] = esc(D("statuses", d.id).on_apply); extra["Ogni tick"] = esc(D("statuses", d.id).per_tick);
+    if (d.stages?.length) extra["Stadi"] = d.stages.map((s) => `<span class="chip">${esc(s.name)} @${s.at}</span>`).join("");
+    cards.push(["Chi ce l'ha", pawnsWhere((e) => (e.statuses ?? []).some((s) => s.id === d.id))]);
+  } else if (kind === "factions") {
+    const f = S.state?.factions?.find((x) => x.id === d.id);
+    extra["Tesoro"] = fmt(f?.treasury, 0) + " €"; extra["Punti"] = S.state?.scores?.[d.id] ?? ""; extra["Ranghi"] = chips(d.ranks?.map((r) => `${r.name} (${r.level})`));
+    extra["Rapporti"] = chips(Object.entries(f?.relations ?? {}).sort((a, b) => a[1] - b[1]).map(([k, v]) => `${name("factions", k)} ${fmt(v, 0)}`));
+    cards.push(["Membri", pawnsWhere((e) => e.faction === d.id)]);
+  } else if (kind === "buildings") {
+    cards.push(["In gioco", entities().filter((e) => e.building?.def === d.id && !e.dead).map(elink).join("") || '<span class="muted">nessuno</span>']);
+  }
+  const used = usersOf(kind, d.id);
+  if (used.length) cards.push(["Chi la usa / dove compare", used.join("")]);
+  $("dBody").innerHTML =
+    `<div class="detailhead">${CATALOG[kind]?.sprite ? spriteHtml(kind, d, true) : ""}<div><h2>${esc(d.name || d.id)}</h2><div class="muted">${esc(kind)} · <code>${esc(d.id ?? "")}</code></div>` +
+    (d.description ? `<p>${esc(d.description)}</p>` : "") + `</div></div>` +
+    `<div class="grid2"><div class="card"><h4>Scheda</h4>${kv({ ...extra, ...scalarFields(d) })}</div>` +
+    cards.map(([t, h]) => `<div class="card"><h4>${esc(t)}</h4>${h}</div>`).join("") + `</div>` +
+    `<details class="card"><summary>Definizione completa (JSON)</summary><pre>${esc(JSON.stringify(d, null, 1))}</pre></details>`;
+}
+async function entityPage(id) {
+  $("dCrumb").textContent = "Entità #" + id;
+  let e, ai;
+  try { [e, ai] = await Promise.all([api(`/api/entities/${id}?truth=true`), api(`/api/entities/${id}/ai`).catch(() => null)]); }
+  catch (err) { $("dBody").innerHTML = `<div class="card">${esc(err.message)}</div>`; return; }
+  if (route.view !== "detail" || route.id !== id) return;
+  const groups = {};
+  // Main characteristics first, career counters last, the other sections in between.
+  for (const d of Object.values(C("stats"))) if (e.stats?.[d.id] != null) (groups[d.group || "Altre"] ??= []).push([d.id, e.stats[d.id], d]);
+  const rank = (g) => (/principal/i.test(g) ? 0 : /contator/i.test(g) ? 2 : 1);
+  const statCard = Object.entries(groups).sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0])).map(([g, list]) => `<div class="card"><h4>${esc(g)}</h4>${list.map(([k, v, d]) => {
+    const max = d?.max > 1000 ? Math.max(v, 1) : (d?.max ?? 100), min = d?.min ?? 0;
+    return `<div class="row" style="margin:0">${bar(v - min, max - min)} <span style="min-width:44px;text-align:right">${fmt(v)}</span> <a href="#cat/stats/${k}" class="muted">${esc(d?.name ?? k)}</a></div>`;
+  }).join("")}</div>`).join("");
+  const inv = (e.inventory ?? []).map(([i, n]) => `<span style="display:inline-flex;align-items:center;gap:4px;margin:2px 8px 2px 0">${spriteHtml("items", C("items")[i] ?? { id: i, name: i })} ${n}× ${link("items", i)}</span>`).join("");
+  const isB = e.kind === "building";
+  const info = isB
+    ? { Tipo: link("buildings", e.building.def), Proprietario: esc(factionName(e.building.owner?.Faction)), Integrità: `${fmt(e.building.hp, 0)} / ${fmt(e.building.max_hp, 0)}`, Dove: posText(e.pos),
+        Scorte: chips(Object.entries(e.building.stock ?? {}).filter(([, n]) => n > 0).map(([i, n]) => `${n}× ${name("items", i)}`)), "In vendita": chips(e.building.sells?.map((i) => name("items", i))) }
+    : { Razza: link("races", e.truth?.race ?? e.race), Sesso: esc({ Male: "uomo", Female: "donna", NonBinary: "non binario" }[e.sex] ?? "—"), Classi: chips(e.classes, "classes"),
+        Fazione: e.faction ? link("factions", e.faction) : "—", Rango: esc(e.rank ?? ""), Ruoli: chips(e.titles), Template: e.template ? link("templates", e.template) : "—",
+        Attività: esc(e.activity?.label ?? ""), Umore: esc(e.activity?.mood ?? ""), Salute: `${bar(e.health, 1)} ${fmt(e.health * 100, 0)}%` + (e.missing_parts?.length ? ` · manca: ${esc(e.missing_parts.join(", "))}` : ""),
+        Soldi: fmt(e.money, 0) + " €", Ricercato: fmt(e.wanted), Dissenso: fmt(e.dissent), Dove: posText(e.pos),
+        Stati: chips((e.statuses ?? []).map((s) => s.name + (s.stage ? " · " + s.stage : ""))), "In uso": chips(e.equipped),
+        "Vera identità": e.truth ? esc(`${e.truth.name} (${e.truth.race}, ${factionName(e.truth.faction)}) · copertura ${fmt(e.truth.cover, 0)}`) : "" };
+  const needs = Object.entries(e.needs ?? {}).map(([k, v]) => `<div class="row" style="margin:0">${bar(v, 1)} ${fmt(v * 100, 0)}% ${link("needs", k)}</div>`).join("");
+  const journal = (e.journal ?? []).map((j) => `<div><span class="muted">giorno ${Math.floor(j.tick / 24) + 1}</span> ${esc(j.text)}</div>`).join("");
+  $("dBody").innerHTML =
+    `<div class="detailhead">${spriteHtml(isB ? "bld" : "pawns", e, true)}<div><h2>${esc(e.name)}${e.dead ? " †" : ""}</h2><div class="muted">#${e.id} · ${esc(e.kind)}</div>` +
+    `<div class="row" style="margin-top:8px"><button onclick="goMap(${e.id})">Mostra sulla mappa</button> <button class="danger" onclick="removeEntity(${e.id})">Rimuovi</button></div></div></div>` +
+    `<div class="grid2"><div class="card"><h4>Scheda</h4>${kv(info)}</div>` +
+    (needs ? `<div class="card"><h4>Bisogni</h4>${needs}</div>` : "") +
+    (inv ? `<div class="card"><h4>Inventario</h4>${inv}</div>` : "") +
+    (journal ? `<div class="card"><h4>Taccuino</h4>${journal}</div>` : "") + `</div>` +
+    (statCard ? `<h4>Caratteristiche</h4><div class="grid2">${statCard}</div>` : "") +
+    (ai ? `<details class="card"><summary>Utility AI</summary><pre>${esc(JSON.stringify(ai, null, 1))}</pre></details>` : "") +
+    `<details class="card"><summary>Dati completi (JSON)</summary><pre>${esc(JSON.stringify(e, null, 1))}</pre></details>`;
+}
+window.removeEntity = async (id) => { if (!confirm("Rimuovere l'entità " + id + " dal mondo?")) return; await command({ type: "remove", entity: id }); selected = null; refreshAll(); };
+window.goMap = (id) => { location.hash = "#map"; setTimeout(() => selectEntity(id, true), 50); };
 
 // ── Header: control and saves ────────────────────────────────────────────────
 let control = {};
@@ -251,13 +753,11 @@ const TS = 16;
 const view = { layer: 0, scale: 1, ox: 0, oy: 0 };
 let terrain = null, tctx = null, hover = null, selected = null, paintChar = null, painting = false, panning = null;
 const tileImgs = {};
-
 function tileImg(id) {
   if (!S.assets.has("tile_" + id + ".png")) return null;
   if (!tileImgs[id]) { const im = new Image(); im.src = "/assets/tile_" + id + ".png"; im.onload = () => rebuildTerrain(); tileImgs[id] = im; }
   return tileImgs[id].complete && tileImgs[id].naturalWidth ? tileImgs[id] : null;
 }
-function hashColor(s) { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) | 0; return `hsl(${Math.abs(h) % 360} 40% 50%)`; }
 function legendOf(ch) { return S.map.legend[ch]; }
 function drawCell(x, y) {
   const l = S.map.layers[view.layer], row = l.tiles[y] ?? "", ch = row[x] ?? ".";
@@ -293,14 +793,9 @@ function resize() {
   draw();
 }
 window.addEventListener("resize", resize);
-
-const entities = () => S.state?.entities ?? [];
-function factionColor(f) {
-  const hex = S.sprites["faction:" + f]?.outline;
-  return hex || (f ? hashColor(f) : "#999");
-}
+function factionColor(f) { return S.sprites["faction:" + f]?.outline || (f ? hashColor(f) : "#999"); }
 function draw() {
-  if (current !== "map" || !S.map) return;
+  if (route.view !== "map" || !S.map) return;
   const dpr = devicePixelRatio;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = "#0d0f12"; ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(dpr * view.scale, 0, 0, dpr * view.scale, dpr * view.ox, dpr * view.oy);
@@ -331,7 +826,7 @@ function draw() {
     if (!e.pos || e.pos.layer !== view.layer || e.dead) continue;
     const cx = (e.pos.x + 0.5) * TS, cy = (e.pos.y + 0.5) * TS;
     if (e.kind === "building" && $("showBuildings").checked) {
-      const d = S.content?.buildings?.[e.building?.def];
+      const d = C("buildings")[e.building?.def];
       const [fw, fh] = d?.footprint ?? [1, 1];
       ctx.fillStyle = "rgba(255,255,255,.18)"; ctx.strokeStyle = factionColor(e.building?.owner?.Faction); ctx.lineWidth = 2 * px;
       const x0 = (e.pos.x - Math.floor(fw / 2)) * TS, y0 = (e.pos.y - fh + 1) * TS;
@@ -374,29 +869,19 @@ async function selectEntity(id, goto) {
   if (id == null) { box.innerHTML = "Clic su una pedina o un edificio."; draw(); return; }
   try {
     const e = await api(`/api/entities/${id}?truth=true`);
-    box.innerHTML = entityHtml(e) + `<div class="row" style="margin-top:6px"><button onclick="showEntity(${id})">Scheda completa</button> <button class="danger" onclick="removeEntity(${id})">Rimuovi</button></div>`;
-    if (goto && e.pos) { show("map"); if (e.pos.layer !== view.layer) setLayer(e.pos.layer); centerOn(e.pos); }
+    box.innerHTML = `<div class="detailhead">${spriteHtml(e.kind === "building" ? "bld" : "pawns", e)}<div><b>${esc(e.name)}</b> <span class="muted">#${e.id}</span><div>${posText(e.pos)} · ${esc(factionName(e.faction ?? e.building?.owner?.Faction))}</div>` +
+      `<div class="muted">${esc(e.activity?.label ?? "")}</div></div></div>` +
+      `<div class="row" style="margin-top:6px"><a href="#ent/${id}"><button>Apri il dettaglio ▸</button></a> <button class="danger" onclick="removeEntity(${id})">Rimuovi</button></div>`;
+    if (goto && e.pos) { if (e.pos.layer !== view.layer) setLayer(e.pos.layer); centerOn(e.pos); }
   } catch (err) { box.textContent = err.message; }
   draw();
 }
+window.selectEntity = selectEntity;
 function centerOn(p) {
   const r = canvas.getBoundingClientRect();
   view.scale = Math.max(view.scale, 2);
   view.ox = r.width / 2 - (p.x + 0.5) * TS * view.scale; view.oy = r.height / 2 - (p.y + 0.5) * TS * view.scale; draw();
 }
-function entityHtml(e) {
-  const inv = (e.inventory ?? []).map(([i, n]) => `<span class="chip">${n}× ${esc(S.content?.items?.[i]?.name ?? i)}</span>`).join("");
-  const stock = Object.entries(e.building?.stock ?? {}).map(([i, n]) => `<span class="chip">${n}× ${esc(S.content?.items?.[i]?.name ?? i)}</span>`).join("");
-  return `<div><b>${esc(e.name)}</b> <span class="muted">#${e.id} · ${esc(e.kind)} ${esc(e.template ?? "")}</span></div>` +
-    `<div>${posText(e.pos)} · ${esc(factionName(e.faction ?? e.building?.owner?.Faction))}${e.truth ? ` · <b>in realtà</b> ${esc(e.truth.name)} (${esc(e.truth.race)}, ${esc(factionName(e.truth.faction))})` : ""}</div>` +
-    (e.activity ? `<div class="muted">${esc(e.activity.label)}</div>` : "") +
-    (e.kind !== "building" ? `<div>salute ${Math.round((e.health ?? 0) * 100)}% · ${Number(e.money ?? 0).toFixed(0)} € · ricercato ${Number(e.wanted ?? 0).toFixed(0)}</div>` : `<div>${Math.round(e.building?.hp ?? 0)}/${Math.round(e.building?.max_hp ?? 0)} hp</div>`) +
-    (inv ? `<div>inventario: ${inv}</div>` : "") + (stock ? `<div>scorte: ${stock}</div>` : "") +
-    ((e.statuses ?? []).length ? `<div>${e.statuses.map((s) => `<span class="chip">${esc(s.name)}${s.stage ? " · " + esc(s.stage) : ""}</span>`).join("")}</div>` : "");
-}
-window.removeEntity = async (id) => { if (!confirm("Rimuovere l'entità " + id + " dal mondo?")) return; await command({ type: "remove", entity: id }); selected = null; refreshAll(); };
-window.showEntity = (id) => { show("entities"); entityDetail(id); };
-
 const painted = new Set();
 async function paint(c) {
   if (!paintChar) { toast("Scegli una casella dalla tavolozza", true); return; }
@@ -448,7 +933,6 @@ canvas.addEventListener("mousemove", (e) => {
 $("layer").onchange = () => setLayer(Number($("layer").value));
 for (const id of ["showZones", "showBuildings", "showPawns", "showGrid"]) $(id).onchange = draw;
 $("mode").onchange = () => { const m = $("mode").value; $("paintBox").hidden = m !== "paint"; $("buildBox").hidden = m !== "building"; $("spawnBox").hidden = m !== "spawn"; };
-
 function fillMapControls() {
   $("layer").innerHTML = S.map.layers.map((l, i) => `<option value="${i}">${esc(l.name)}${l.depth < 0 ? " (livello " + l.depth + ")" : l.indoor ? " (interno)" : ""} · ${l.width}×${l.height}</option>`).join("");
   $("palette").innerHTML = Object.entries(S.map.legend).map(([ch, [id, walk]]) => {
@@ -457,11 +941,11 @@ function fillMapControls() {
     return `<button data-ch="${esc(ch)}" title="${esc(def?.name ?? id)} (${esc(ch)})${walk ? "" : " · solido"}">${img}<span>${esc(ch)}</span></button>`;
   }).join("");
   for (const b of $("palette").querySelectorAll("button")) b.onclick = () => { paintChar = b.dataset.ch; for (const o of $("palette").querySelectorAll("button")) o.classList.toggle("on", o === b); };
-  const facs = Object.values(S.content?.factions ?? {});
+  const facs = Object.values(C("factions"));
   const facOpts = `<option value="">nessuno</option>` + facs.map((f) => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("");
   $("bOwner").innerHTML = facOpts; $("sFac").innerHTML = facOpts.replace("nessuno", "quella del template");
-  $("bDef").innerHTML = Object.values(S.content?.buildings ?? {}).map((b) => `<option value="${esc(b.id)}">${esc(b.name)} (${esc(b.id)})</option>`).join("");
-  $("sTpl").innerHTML = Object.values(S.content?.templates ?? {}).map((t) => `<option value="${esc(t.id)}">${esc(t.name || t.id)} (${esc(t.id)})</option>`).join("");
+  $("bDef").innerHTML = Object.values(C("buildings")).map((b) => `<option value="${esc(b.id)}">${esc(b.name)} (${esc(b.id)})</option>`).join("");
+  $("sTpl").innerHTML = Object.values(C("templates")).map((t) => `<option value="${esc(t.id)}">${esc(t.name || t.id)} (${esc(t.id)})</option>`).join("");
 }
 async function loadMap() {
   S.map = await api("/api/ui/map");
@@ -482,77 +966,20 @@ async function pollTerrain() {
   } catch (e) {}
 }
 
-// ── Entities ─────────────────────────────────────────────────────────────────
-function renderEntities() {
-  const q = $("eFilter").value.toLowerCase(), kind = $("eKind").value, dead = $("eDead").checked;
-  const rows = entities().filter((e) => (!kind || e.kind === kind) && (dead || !e.dead) &&
-    (!q || [e.name, e.template, e.faction, e.race, e.building?.def].some((v) => String(v ?? "").toLowerCase().includes(q))));
-  $("eCount").textContent = rows.length + " entità";
-  $("eTable").innerHTML = "<tr><th>id</th><th>nome</th><th>tipo</th><th>template</th><th>fazione</th><th>dove</th><th>attività</th></tr>" +
-    rows.slice(0, 800).map((e) => `<tr class="click" data-id="${e.id}"><td>${e.id}</td><td>${esc(e.name)}</td><td>${e.kind}${e.dead ? " †" : ""}</td><td>${esc(e.template ?? e.building?.def ?? "")}</td><td>${esc(factionName(e.faction ?? e.building?.owner?.Faction))}</td><td>${posText(e.pos)}</td><td class="muted">${esc(e.activity?.label ?? "")}</td></tr>`).join("");
-  for (const tr of $("eTable").querySelectorAll("tr.click")) tr.onclick = () => entityDetail(Number(tr.dataset.id));
-}
-async function entityDetail(id) {
-  try {
-    const [e, ai] = await Promise.all([api(`/api/entities/${id}?truth=true`), api(`/api/entities/${id}/ai`).catch(() => null)]);
-    $("eDetail").innerHTML = entityHtml(e) +
-      `<div class="row" style="margin-top:6px"><button onclick="selectEntity(${id}, true)">Mostra sulla mappa</button> <button class="danger" onclick="removeEntity(${id})">Rimuovi</button></div>` +
-      `<details><summary>Dati completi</summary><pre>${esc(JSON.stringify(e, null, 1))}</pre></details>` +
-      (ai ? `<details><summary>Utility AI</summary><pre>${esc(JSON.stringify(ai, null, 1))}</pre></details>` : "");
-  } catch (err) { $("eDetail").textContent = err.message; }
-}
-window.selectEntity = selectEntity;
-for (const id of ["eFilter", "eKind", "eDead"]) $(id).oninput = renderEntities;
-
-// ── Items: where they are ────────────────────────────────────────────────────
-function itemIndex() {
-  const idx = {};
-  const add = (item, n, e, where) => { (idx[item] ??= { total: 0, holders: [] }); idx[item].total += n; idx[item].holders.push({ n, e, where }); };
-  for (const e of entities()) {
-    if (e.dead) continue;
-    for (const [i, n] of e.inventory ?? []) add(i, n, e, "inventario");
-    for (const [i, n] of Object.entries(e.building?.stock ?? {})) if (n > 0) add(i, n, e, "scorte");
-  }
-  return idx;
-}
-function renderItems() {
-  const idx = itemIndex(), q = $("iFilter").value.toLowerCase();
-  const all = Object.values(S.content?.items ?? {}).filter((d) => !q || d.id.includes(q) || d.name.toLowerCase().includes(q));
-  $("iTable").innerHTML = "<tr><th>oggetto</th><th>categoria</th><th>prezzo base</th><th>nel mondo</th><th>tag</th></tr>" +
-    all.map((d) => `<tr class="click" data-id="${esc(d.id)}"><td>${esc(d.name)} <span class="muted">${esc(d.id)}</span></td><td>${esc(d.category)}</td><td>${d.base_price}</td><td>${idx[d.id]?.total ?? 0}</td><td>${(d.tags ?? []).map((t) => `<span class="chip">${esc(t)}</span>`).join("")}</td></tr>`).join("");
-  for (const tr of $("iTable").querySelectorAll("tr.click")) tr.onclick = () => itemDetail(tr.dataset.id, idx);
-}
-function itemDetail(id, idx) {
-  const d = S.content.items[id], h = idx[id]?.holders ?? [];
-  h.sort((a, b) => b.n - a.n);
-  $("iDetail").innerHTML = `<b>${esc(d.name)}</b> <span class="muted">${esc(id)}</span><div class="muted">${esc(d.description ?? "")}</div>` +
-    `<table><tr><th>qtà</th><th>chi</th><th>dove</th></tr>` +
-    h.map((x) => `<tr class="click" onclick="selectEntity(${x.e.id}, true)"><td>${x.n}</td><td>${esc(x.e.name)} <span class="muted">${x.where}</span></td><td>${posText(x.e.pos)}</td></tr>`).join("") + "</table>" +
-    `<details><summary>Definizione</summary><pre>${esc(JSON.stringify(d, null, 1))}</pre></details>`;
-}
-$("iFilter").oninput = renderItems;
-
-// ── Content browser ──────────────────────────────────────────────────────────
-const contentNames = { items: "Oggetti", buildings: "Edifici", races: "Razze", classes: "Classi", statuses: "Stati e malattie", jobs: "Lavori", actions: "Azioni dell'AI",
-  factions: "Fazioni", templates: "Personaggi (template)", placements: "Posizionamenti iniziali", spawners: "Generatori", triggers: "Eventi a condizione",
-  collections: "Collezioni", titles: "Titoli", news_sources: "Fonti di notizie", news_impacts: "Impatti delle notizie", victory: "Vittoria",
-  global_modifiers: "Eventi globali", supplies: "Rifornimenti", abilities: "Abilità", needs: "Bisogni", stats: "Statistiche", body_plans: "Corpi",
-  fluids: "Fluidi", sprites: "Sprite", params: "Parametri dei pacchetti", map: "Mappa (definizione)", packs: "Pacchetti", bindings: "Collegamenti", press: "Stampa" };
+// ── Raw content browser ──────────────────────────────────────────────────────
 function renderContentList() {
   if (!S.content) return;
   const sel = $("cCat");
   if (!sel.options.length) {
-    sel.innerHTML = Object.keys(S.content).sort((a, b) => (contentNames[a] ?? a).localeCompare(contentNames[b] ?? b))
-      .map((k) => `<option value="${k}">${esc(contentNames[k] ?? k)} (${Array.isArray(S.content[k]) ? S.content[k].length : S.content[k] && typeof S.content[k] === "object" ? Object.keys(S.content[k]).length : 1})</option>`).join("");
+    sel.innerHTML = Object.keys(S.content).sort().map((k) => `<option value="${k}">${esc(CATALOG[k]?.title ?? k)} (${Array.isArray(S.content[k]) ? S.content[k].length : S.content[k] && typeof S.content[k] === "object" ? Object.keys(S.content[k]).length : 1})</option>`).join("");
     sel.value = "items";
   }
   const cat = S.content[sel.value], q = $("cFilter").value.toLowerCase();
   let entries = Array.isArray(cat) ? cat.map((v, i) => [String(i), v]) : cat && typeof cat === "object" ? Object.entries(cat) : [["valore", cat]];
   const label = ([k, v]) => (v && typeof v === "object" && !Array.isArray(v) ? (v.name || v.building || v.template || v.id || k) : k);
   entries = entries.filter((e) => !q || JSON.stringify(e).toLowerCase().includes(q));
-  $("cList").innerHTML = entries.map(([k, v], i) => `<div data-i="${i}">${esc(label([k, v]))} <span class="muted">${esc(v?.id && v.id !== label([k, v]) ? v.id : "")}</span></div>`).join("");
+  $("cList").innerHTML = entries.map(([k, v], i) => `<div data-i="${i}" style="padding:3px 6px;cursor:pointer">${esc(label([k, v]))} <span class="muted">${esc(v?.id && v.id !== label([k, v]) ? v.id : "")}</span></div>`).join("");
   $("cList").querySelectorAll("div").forEach((d) => (d.onclick = () => {
-    $("cList").querySelectorAll("div").forEach((o) => o.classList.toggle("on", o === d));
     const [k, v] = entries[Number(d.dataset.i)];
     const shown = sel.value === "map" && k === "layers" ? v.map((l) => ({ ...l, tiles: `(${l.tiles?.length ?? 0} righe)` })) : v;
     $("cDetail").textContent = JSON.stringify(shown, null, 2);
@@ -569,7 +996,7 @@ async function renderSprites() {
   $("spTable").innerHTML = "<tr><th>chiave</th><th>anteprima</th>" + fields.map((f) => `<th>${f}</th>`).join("") + "<th></th></tr>" +
     keys.map((k) => {
       const d = S.sprites[k] ?? {};
-      const img = d.sheet && S.assets.has(d.sheet + ".png") ? `<img src="/assets/${esc(d.sheet)}.png" style="height:40px;image-rendering:pixelated">` : (d.color ? `<span class="chip" style="background:${esc(d.color)}">&nbsp;&nbsp;</span>` : "");
+      const img = d.sheet && S.assets.has(d.sheet + ".png") ? `<img class="spr" data-layers='${esc(JSON.stringify([{ file: d.sheet + ".png" }]))}' data-label="${esc(k)}" src="/assets/${esc(d.sheet)}.png">` : (d.color || d.outline ? `<span class="chip" style="background:${esc(d.color || d.outline)}">&nbsp;&nbsp;</span>` : "");
       return `<tr data-k="${esc(k)}"><td>${esc(k)}</td><td>${img}</td>` + fields.map((f) => `<td><input data-f="${f}" value="${esc(d[f] ?? "")}" size="${f === "sheet" ? 18 : 8}"></td>`).join("") + `<td><button>Salva</button></td></tr>`;
     }).join("");
   for (const tr of $("spTable").querySelectorAll("tr[data-k]")) tr.querySelector("button").onclick = async () => {
@@ -583,7 +1010,7 @@ function renderGallery() {
   const q = $("gFilter").value.toLowerCase();
   const files = [...S.assets].filter((f) => !q || f.includes(q));
   $("assetNote").textContent = S.assets.size ? `${S.assets.size} file` : "Nessuna cartella di immagini configurata sul server.";
-  $("gallery").innerHTML = files.slice(0, 400).map((f) => `<figure><img loading="lazy" src="/assets/${esc(f)}" alt=""><figcaption>${esc(f)}</figcaption></figure>`).join("");
+  $("gallery").innerHTML = files.slice(0, 400).map((f) => `<figure><img loading="lazy" src="/assets/${esc(f)}" data-layers='${esc(JSON.stringify([{ file: f }]))}' data-label="${esc(f)}" alt=""><figcaption>${esc(f)}</figcaption></figure>`).join("");
 }
 $("spFilter").oninput = renderSprites; $("gFilter").oninput = renderGallery;
 
@@ -600,29 +1027,19 @@ async function loadParams() {
 }
 $("pFilter").oninput = loadParams;
 
-// ── Factions and quarters ────────────────────────────────────────────────────
-function renderFactions() {
-  const st = S.state; if (!st) return;
-  $("fTable").innerHTML = "<tr><th>fazione</th><th>membri</th><th>tesoro</th><th>punti</th><th>giocatore</th><th>stato</th></tr>" +
-    st.factions.map((f) => `<tr><td>${esc(f.name)} <span class="muted">${esc(f.id)}</span></td><td>${f.members}</td><td>${f.treasury.toFixed(0)} €</td><td>${st.scores?.[f.id] ?? f.victory_points}</td><td>${esc(f.controlled_by ?? "")}</td><td>${f.absorbed_into ? "assorbita da " + esc(factionName(f.absorbed_into)) : ""}</td></tr>`).join("");
-  const zoneName = (id) => S.map?.zones.find((z) => z.id === id)?.name ?? id;
-  $("qTable").innerHTML = "<tr><th>quartiere</th><th>padrone</th><th>dal tick</th><th>influenza</th></tr>" +
-    Object.entries(st.territories ?? {}).map(([z, t]) => `<tr><td>${esc(zoneName(z))}</td><td>${esc(t.owner ? factionName(t.owner) : "libero")}</td><td>${t.since}</td><td>${Object.entries(t.influence).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([f, v]) => `<span class="chip">${esc(factionName(f))} ${v.toFixed(0)}</span>`).join("")}</td></tr>`).join("");
-}
-
 // ── Events ───────────────────────────────────────────────────────────────────
 async function loadEvents() {
   const kind = $("evKind").value.trim(), text = $("evText").value.toLowerCase();
   const r = await api("/api/events?limit=400" + (kind ? "&kind=" + encodeURIComponent(kind) : ""));
   const evs = r.events.filter((e) => !text || e.message.toLowerCase().includes(text)).reverse();
   $("evTable").innerHTML = "<tr><th>tick</th><th>tipo</th><th>messaggio</th><th>dove</th></tr>" +
-    evs.map((e) => `<tr><td>${e.tick}</td><td><span class="chip">${esc(e.kind)}</span></td><td>${esc(e.message)}</td><td class="muted">${posText(e.pos)}</td></tr>`).join("");
+    evs.map((e) => `<tr><td>${e.tick}</td><td><span class="chip">${esc(e.kind)}</span></td><td>${esc(e.message)}${e.actor != null ? ` <a class="chip" href="#ent/${e.actor}">attore</a>` : ""}${e.target != null ? ` <a class="chip" href="#ent/${e.target}">bersaglio</a>` : ""}</td><td class="muted">${posText(e.pos)}</td></tr>`).join("");
 }
 $("evRefresh").onclick = loadEvents; $("evKind").onchange = loadEvents; $("evText").oninput = loadEvents;
 
 // ── Commands ─────────────────────────────────────────────────────────────────
 const examples = {
-  "Crea pedine (spawn)": { type: "spawn", template: "fidentino_base", zone: "piazza_garibaldi", count: 1, faction: null, name: null },
+  "Crea pedine (spawn)": { type: "spawn", template: "fidentino", zone: "piazza_garibaldi", count: 1, faction: null, name: null },
   "Piazza un edificio": { type: "place_building", building: "osteria", layer: "fidenza", x: 100, y: 50, owner_faction: null, name: "Nuova osteria" },
   "Sposta un'entità": { type: "move_entity", entity: 1, layer: "fidenza", x: 100, y: 50 },
   "Rimuovi un'entità": { type: "remove", entity: 0 },
@@ -635,6 +1052,8 @@ const examples = {
   "Relazione tra fazioni": { type: "set_relation", a: "chiesa", b: "templari_borgo", value: -50 },
   "Ordina un lavoro": { type: "order", entity: 2, job: "girovaga", zone: "piazza_garibaldi" },
   "Parametro": { type: "set_param", key: "territory.threshold", value: 20 },
+  "Il campione prende una classe": { type: "player_take_class", player: "giocatore", class: "investigatore" },
+  "Il campione sfida un ruolo": { type: "player_challenge_role", player: "giocatore", title: "capo_rivoluzionari" },
 };
 $("cmdTpl").innerHTML = Object.keys(examples).map((k) => `<option>${esc(k)}</option>`).join("");
 $("cmdTpl").onchange = () => ($("cmdBody").value = JSON.stringify(examples[$("cmdTpl").value], null, 2));
@@ -649,23 +1068,31 @@ $("cmdSend").onclick = async () => {
 async function refreshAll() {
   refreshControl();
   try { S.state = await api("/api/state?truth=true"); } catch (e) { return; }
+  rebuildIndexes();
   await pollTerrain();
-  if (current === "map") draw();
-  else if (current === "entities") renderEntities();
-  else if (current === "factions") renderFactions();
-  else if (current === "items" && !document.activeElement?.closest?.("#iDetail")) renderItems();
+  const busy = document.activeElement && ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName) && document.activeElement.id !== "lFilter";
+  if (route.view === "map") draw();
+  else if (route.view === "overview") renderOverview();
+  else if (route.view === "list" && !busy) renderList();
+  renderSideCounts();
+}
+function renderSideCounts() {
+  for (const a of $("side").querySelectorAll("a")) {
+    const n = a.querySelector(".n"); if (!n) continue;
+    if (a.dataset.route === "list/pawns") n.textContent = living().length;
+    if (a.dataset.route === "list/bld") n.textContent = entities().filter((e) => e.kind === "building" && !e.dead).length;
+  }
 }
 (async function start() {
   try {
-    const [content, assets, sprites] = await Promise.all([api("/api/content"), api("/api/assets"), api("/api/sprites")]);
-    S.content = content; S.sprites = sprites; S.assets = new Set(assets.files);
+    const [content, assets, sprites, describe] = await Promise.all([api("/api/content"), api("/api/assets"), api("/api/sprites"), api("/api/admin/describe").catch(() => ({}))]);
+    S.content = content; S.sprites = sprites; S.assets = new Set(assets.files); S.describe = describe;
     await loadMap();
   } catch (e) { toast("Server non raggiungibile: " + e.message, true); }
-  resize();
-  let tab = "map"; try { tab = localStorage.getItem("adminTab") || "map"; } catch (e) {}
-  if (location.hash.length > 1) tab = location.hash.slice(1);
-  show(tabs.some(([t]) => t === tab) ? tab : "map");
-  await refreshAll();
+  try { S.state = await api("/api/state?truth=true"); rebuildIndexes(); } catch (e) {}
+  renderSide();
+  if (!location.hash) { let h = ""; try { h = localStorage.getItem("adminRoute") || ""; } catch (e) {} location.hash = h || "#overview"; }
+  navigate();
   setInterval(refreshAll, 2000);
 })();
 </script>
