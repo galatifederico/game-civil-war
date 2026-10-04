@@ -107,6 +107,7 @@ fn router_inner(state: AppState) -> Router {
         .route("/api/ui/classes/{player}", get(ui_classes))
         .route("/api/ui/class", post(ui_take_class))
         .route("/api/ui/roles", get(ui_roles))
+        .route("/api/ui/stats", get(ui_stats))
         .route("/api/ui/role", post(ui_challenge_role))
         .route("/api/save", post(save_game))
         .route("/api/load", post(load_game))
@@ -454,6 +455,19 @@ fn ability_and_action_names(content: &crate::content::Content, abilities: &[Stri
         }
     }
     out
+}
+
+/// The characteristics of the pawns, in content order: id, name, section of the card and range.
+async fn ui_stats(State(s): State<AppState>) -> ApiResult {
+    let sim = s.sim.lock().unwrap();
+    let out: Vec<Value> = sim
+        .content()
+        .stats
+        .values()
+        .filter(|d| d.visible)
+        .map(|d| json!({ "id": d.id, "name": d.name, "group": d.group, "min": d.min, "max": d.max, "description": d.description }))
+        .collect();
+    Ok(Json(json!(out)))
 }
 
 /// Every class that can be acquired, with its requirements checked on the player's champion.

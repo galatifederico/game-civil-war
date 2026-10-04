@@ -25,7 +25,12 @@ public class SimHud : MonoBehaviour
     GUIStyle cell, cellHead, statValue, statLabel, badge, rowButton, padStyle, big, bigButton, slotStyle, promptStyle;
     Texture2D panelTex, barTex, barFillTex, barLowTex, dimTex, badgeTex, padTex, circleBase, circleKnob, circleA;
 
-    enum Win { None, Map, Inventory, Team, Options, Pigeon, Ranking, Economy, Manual, Card, Actions, Item, Collection }
+    enum Win { None, Map, Inventory, Team, Options, Pigeon, Ranking, Economy, Manual, Card, Actions, Item, Collection, Classes, Roles }
+    // Classes of the champion and roles of the world, as last received; open sections of the card.
+    JObject classesInfo;
+    JArray rolesInfo;
+    float classesAt = -10f, rolesAt = -10f;
+    readonly HashSet<string> openStatGroups = new();
     // Inventory: objects or collections; the collections as last received and the one opened.
     bool invCollections;
     JArray collections;
@@ -361,6 +366,8 @@ public class SimHud : MonoBehaviour
         if (SideButton(new Rect(8, y, colW, rowH + 6), "Risorse" + Key("R"), Win.Economy)) Open(Win.Economy);
         y += rowH + 12;
         if (SideButton(new Rect(8, y, colW, rowH + 6), "Manuale" + Key("H"), Win.Manual)) Open(Win.Manual);
+        y += rowH + 12;
+        if (SideButton(new Rect(8, y, colW, rowH + 6), "Ruoli" + Key("U"), Win.Roles)) Open(Win.Roles);
     }
 
     void RightColumn(float w)
@@ -371,6 +378,8 @@ public class SimHud : MonoBehaviour
         if (SideButton(new Rect(x, y, colW, rowH + 6), "Inventario" + Key("I"), Win.Inventory)) Open(Win.Inventory);
         y += rowH + 12;
         if (SideButton(new Rect(x, y, colW, rowH + 6), "Team" + Key("T"), Win.Team)) Open(Win.Team);
+        y += rowH + 12;
+        if (SideButton(new Rect(x, y, colW, rowH + 6), "Classi" + Key("K"), Win.Classes)) Open(Win.Classes);
         y += rowH + 12;
         if (SideButton(new Rect(x, y, colW, rowH + 6), "Opzioni" + Key("O"), Win.Options)) Open(Win.Options);
     }
@@ -396,6 +405,8 @@ public class SimHud : MonoBehaviour
         if (which == Win.Map) view.ShowOverview(0);
         if (which == Win.Pigeon && view.FeedFilter == "main") MarkRead();
         if (which == Win.Inventory) collectionsAt = -10f;
+        if (which == Win.Classes) classesAt = -10f;
+        if (which == Win.Roles) rolesAt = -10f;
     }
 
     void Close()
@@ -436,6 +447,8 @@ public class SimHud : MonoBehaviour
             case Win.Actions: ActionsWin(inner); break;
             case Win.Item: ItemWin(inner); break;
             case Win.Collection: CollectionWin(inner); break;
+            case Win.Classes: ClassesWin(inner); break;
+            case Win.Roles: RolesWin(inner); break;
         }
         GUILayout.EndScrollView();
         GUILayout.EndArea();
@@ -454,6 +467,8 @@ public class SimHud : MonoBehaviour
         Win.Ranking => "CLASSIFICA UFFICIALE",
         Win.Economy => "RISORSE MONDIALI",
         Win.Manual => "MANUALE DEL GIOCATORE",
+        Win.Classes => "CLASSI DEL CAMPIONE",
+        Win.Roles => "RUOLI",
         _ => "",
     };
 
@@ -1136,6 +1151,7 @@ public class SimHud : MonoBehaviour
         GUILayout.Label($"Soldi {Fmt((double)e["money"])} €  ·  Ricercato {(float)e["wanted"]:0.0}  ·  Dissenso {(float)e["dissent"]:0}", big, GUILayout.Width(width));
         var statuses = e["statuses"]?.Select(s => (string)s["name"] + (s["stage"]?.Type == JTokenType.String ? $" ({s["stage"]})" : "")).ToList();
         if (statuses?.Count > 0) GUILayout.Label("Status: " + string.Join(", ", statuses), big, GUILayout.Width(width));
+        if (e["titles"] is JArray roles && roles.Count > 0) GUILayout.Label("Ruoli: " + string.Join(", ", roles.Select(r => (string)r)), big, GUILayout.Width(width));
 
         // The three slots of the bag: one category each, with its items.
         Section("Oggetti");
@@ -1158,8 +1174,142 @@ public class SimHud : MonoBehaviour
             if (GUILayout.Button($"Paga la tangente ({FactionName(payer)})", bigButton, GUILayout.Width(width), GUILayout.Height(rowH + 8)))
                 view.SendCommand(new JObject { ["type"] = "bribe", ["faction"] = payer, ["target"] = e["id"] });
         }
+        if (e["journal"] is JArray journal && journal.Count > 0)
+        {
+            Section("Taccuino");
+            foreach (var n in journal) GUILayout.Label($"Giorno {(long)n["tick"] / 24 + 1}: {n["text"]}", label, GUILayout.Width(width));
+        }
+        Characteristics(width, e["stats"] as JObject);
         GUILayout.Space(10);
         ActionsButton(width, (long)e["id"]);
+    }
+
+    /// The characteristics by section (Fisiche, Conoscenze, Contatori…), each opened with a tap.
+    void Characteristics(float width, JObject stats)
+    {
+        view.LoadStatDefs();
+        if (stats == null || view.StatDefs == null) return;
+        Section("Caratteristiche");
+        foreach (var g in view.StatDefs.GroupBy(d => string.IsNullOrEmpty((string)d["group"]) ? "Altre" : (string)d["group"]))
+        {
+            bool open = openStatGroups.Contains(g.Key);
+            if (GUILayout.Button((open ? "▾ " : "▸ ") + g.Key, rowButton, GUILayout.Width(width))) { if (open) openStatGroups.Remove(g.Key); else openStatGroups.Add(g.Key); }
+            if (!open) continue;
+            foreach (var d in g)
+            {
+                var v = stats[(string)d["id"]];
+                if (v == null) continue;
+                float val = (float)v, min = (float?)d["min"] ?? 0, max = (float?)d["max"] ?? 100;
+                if (max - min <= 1.01f) GUILayout.Label($"{d["name"]}: {(val >= 1 ? "sì" : "no")}", label, GUILayout.Width(width));
+                else if (max > 1000 || max <= 5) GUILayout.Label($"{d["name"]}: {val:0.#}", label, GUILayout.Width(width));
+                else StatBar(width, (string)d["name"], val, min, max);
+            }
+        }
+    }
+
+    void StatBar(float width, string name, float value, float min, float max)
+    {
+        GUILayout.BeginHorizontal();
+        float bw = Mathf.Min(width * 0.5f, 380);
+        GUILayout.Label(name, label, GUILayout.Width(Mathf.Min(width * 0.35f, 240)));
+        var r = GUILayoutUtility.GetRect(bw, touch ? 14 : 12, GUILayout.Width(bw));
+        r.y += touch ? 6 : 5;
+        GUI.DrawTexture(r, barTex);
+        float f = Mathf.Clamp01((value - min) / Mathf.Max(1f, max - min));
+        GUI.DrawTexture(new Rect(r.x, r.y, r.width * f, r.height), barFillTex);
+        GUILayout.Label($"{value:0.#}", label, GUILayout.Width(60));
+        GUILayout.FlexibleSpace();
+        GUILayout.EndHorizontal();
+    }
+
+    // ── Classes and roles ────────────────────────────────────────────────────
+
+    /// Every class the champion could take: requirements ticked off, Diventa when they are all met.
+    void ClassesWin(float width)
+    {
+        if (Time.time - classesAt > 3f)
+        {
+            classesAt = Time.time;
+            view.Classes(j => classesInfo = j);
+        }
+        var c = classesInfo;
+        if (c == null)
+        {
+            GUILayout.Label("…", big);
+            return;
+        }
+        GUILayout.Label("Il campione è: " + string.Join(", ", c["current"].Select(x => (string)x)), big, GUILayout.Width(width));
+        GUILayout.Label("Una classe si prende quando si hanno tutti i requisiti (✓) e si perde scendendo sotto il 90% delle soglie. Si può avere una classe alla volta.", small, GUILayout.Width(width));
+        var list = ((JArray)c["classes"]).OrderByDescending(x => (bool)x["held"]).ThenByDescending(x => (bool)x["eligible"]);
+        foreach (var g in list.GroupBy(x => (string)x["group"]))
+        {
+            Section(string.IsNullOrEmpty(g.Key) ? "Altre" : g.Key);
+            foreach (var k in g)
+            {
+                bool held = (bool)k["held"], ok = (bool)k["eligible"];
+                GUILayout.BeginHorizontal();
+                GUILayout.Label((held ? "★ " : ok ? "✓ " : "") + (string)k["name"], new GUIStyle(big) { fontStyle = FontStyle.Bold }, GUILayout.Width(width * 0.6f));
+                GUILayout.FlexibleSpace();
+                if (ok && !held && GUILayout.Button("Diventa " + (string)k["name"], bigButton, GUILayout.Width(Mathf.Min(260, width * 0.38f))))
+                    view.TakeClass((string)k["id"], m => { view.LastCommandResult = m; classesAt = -10f; });
+                GUILayout.EndHorizontal();
+                GUILayout.Label((string)k["description"], small, GUILayout.Width(width));
+                foreach (var r in k["requirements"]) GUILayout.Label(((bool)r["ok"] ? "  ✓ " : "  ✗ ") + (string)r["text"], (bool)r["ok"] ? good : small, GUILayout.Width(width));
+                var powers = k["powers"]?.Select(x => (string)x).ToList();
+                if (powers?.Count > 0) GUILayout.Label("  Poteri: " + string.Join(", ", powers), small, GUILayout.Width(width));
+            }
+        }
+    }
+
+    static string ModeName(string m) => m switch
+    {
+        "Seat" => "chi siede sul trono",
+        "Succession" => "successione",
+        "Election" => "elezione",
+        "Appointment" => "nomina",
+        "Challenge" => "sfida",
+        "Coup" => "colpo di stato",
+        "Purchase" => "acquisto",
+        _ => m,
+    };
+
+    /// The roles of the world: who holds them, how they are won, the requirements for the champion.
+    void RolesWin(float width)
+    {
+        if (Time.time - rolesAt > 3f)
+        {
+            rolesAt = Time.time;
+            view.Roles(j => rolesInfo = j);
+        }
+        if (rolesInfo == null)
+        {
+            GUILayout.Label("…", big);
+            return;
+        }
+        GUILayout.Label("Ogni ruolo è unico. Uno vacante si prende avendo i requisiti; quelli a sfida o colpo di stato si strappano a chi li tiene.", small, GUILayout.Width(width));
+        foreach (var g in rolesInfo.GroupBy(r => (string)r["faction"] ?? "Senza fazione"))
+        {
+            Section(g.Key);
+            foreach (var r in g)
+            {
+                var h = r["holder"];
+                string who = h == null || h.Type == JTokenType.Null ? "vacante" : (string)h["name"];
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(((bool)r["mine"] ? "★ " : "") + (string)r["name"], new GUIStyle(big) { fontStyle = FontStyle.Bold }, GUILayout.Width(width * 0.6f));
+                GUILayout.FlexibleSpace();
+                if ((bool)r["can_act"])
+                {
+                    string verb = who == "vacante" ? "Prendi il posto" : (string)r["mode"] == "Coup" ? "Colpo di stato" : "Sfida";
+                    if (GUILayout.Button(verb, bigButton, GUILayout.Width(Mathf.Min(220, width * 0.35f))))
+                        view.ChallengeRole((string)r["id"], m => { view.LastCommandResult = m; rolesAt = -10f; });
+                }
+                GUILayout.EndHorizontal();
+                GUILayout.Label($"{r["description"]}  Ora: {who} · si ottiene per {ModeName((string)r["mode"])}", small, GUILayout.Width(width));
+                foreach (var q in r["requirements"]) GUILayout.Label(((bool)q["ok"] ? "  ✓ " : "  ✗ ") + (string)q["text"], (bool)q["ok"] ? good : small, GUILayout.Width(width));
+                var powers = r["powers"]?.Select(x => (string)x).ToList();
+                if (powers?.Count > 0) GUILayout.Label("  Poteri: " + string.Join(", ", powers), small, GUILayout.Width(width));
+            }
+        }
     }
 
     static string Cap(string s) => string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s.Substring(1);
@@ -1629,6 +1779,8 @@ public class SimHud : MonoBehaviour
             if (Input.GetKeyDown(KeyCode.L)) Open(Win.Ranking);
             if (Input.GetKeyDown(KeyCode.R)) Open(Win.Economy);
             if (Input.GetKeyDown(KeyCode.H) || Input.GetKeyDown(KeyCode.F1)) Open(Win.Manual);
+            if (Input.GetKeyDown(KeyCode.K)) Open(Win.Classes);
+            if (Input.GetKeyDown(KeyCode.U)) Open(Win.Roles);
         }
         nearby = view.State != null && view.Zoom >= 1f ? view.NearbyTarget() : null;
         // Space / E / Enter: closes what someone is saying, otherwise the actions with whoever is next to us.

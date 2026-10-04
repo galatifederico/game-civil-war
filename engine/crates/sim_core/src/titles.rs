@@ -35,6 +35,13 @@ pub fn eligible(world: &mut World, e: Entity, t: &TitleDef) -> bool {
     eval_condition(world, &EffectCtx::new(Some(e), None, format!("title:{}", t.id)), &t.claim_requires)
 }
 
+/// Whether the holder still deserves the role: the requirements loosened by `classes.keep_ratio`, as for classes.
+pub fn keeps(world: &mut World, e: Entity, t: &TitleDef) -> bool {
+    let ratio = world.resource::<Params>().get("classes.keep_ratio", 0.9) as f32;
+    let loose = TitleDef { claim_requires: crate::classes::relaxed(&t.claim_requires, ratio), ..t.clone() };
+    eligible(world, e, &loose)
+}
+
 /// Stats named by a condition (used as the default candidate score).
 fn condition_stats(c: &Condition, out: &mut Vec<String>) {
     match c {
@@ -196,7 +203,7 @@ pub fn roles_tick(world: &mut World) {
                 continue;
             }
             if t.grace > 0 {
-                if eligible(world, h, t) {
+                if keeps(world, h, t) {
                     world.resource_mut::<Titles>().failing.remove(&t.id);
                 } else {
                     let since = *world.resource_mut::<Titles>().failing.entry(t.id.clone()).or_insert(tick);

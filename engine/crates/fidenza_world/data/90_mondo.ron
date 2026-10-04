@@ -46,6 +46,8 @@
         Entity(template: "cavaliere_templare", count: 2, zone: "borgo_templari"),
         Entity(template: "jedi", zone: "borgo_templari"),
         Entity(template: "diablo", zone: "sala_casino"),
+        Entity(template: "massone", count: 3, zone: "piazza_garibaldi"),
+        Entity(template: "gran_maestro_loggia", zone: "piazza_garibaldi"),
         Entity(template: "croupier", count: 2, zone: "casino"),
         Entity(template: "sith", zone: "casino"),
         Entity(template: "contadino", count: 3, zone: "campagna_bassa"),
@@ -135,10 +137,6 @@
                    Publish(headline: "Emergenza sanitaria alle Terme: chiuse le piscine, la Cripta nega ogni responsabilità", truth: Real, topics: ["epidemia", "salso"])]),
         (id: "re_morto", name: "Il Re è morto", news: 1.0, when: TemplateDead("re_anolino"),
          effects: [Publish(headline: "Re Anolino è morto! Il Trono degli Ubriaconi è vacante", truth: Real, topics: ["succession"])]),
-    ],
-    titles: [
-        (id: "trono_degli_ubriaconi", name: "Re degli Ubriaconi", faction: "ubriaconi", seat_zone: "trono_ubriaconi",
-         victory_points: 400, grants_faction_control: true, news: 1.0),
     ],
     press: (
         feed_name: "Il Piccione Viaggiatore",

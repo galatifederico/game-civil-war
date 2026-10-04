@@ -395,6 +395,29 @@ public class SimView : MonoBehaviour
         StartCoroutine(Api.Post("/api/ui/talk", new JObject { ["player"] = PlayerId, ["target"] = target },
             j => ok((string)j["name"], (string)j["line"]), e => ok(null, e)));
 
+    /// The classes the champion could take, with each requirement checked.
+    public void Classes(System.Action<JObject> ok) =>
+        StartCoroutine(Api.Get($"/api/ui/classes/{UnityEngine.Networking.UnityWebRequest.EscapeURL(PlayerId ?? "")}", j => ok((JObject)j), e => LastCommandResult = e));
+
+    /// The champion becomes one of the classes it meets the requirements of.
+    public void TakeClass(string cls, System.Action<string> done) =>
+        StartCoroutine(Api.Post("/api/ui/class", new JObject { ["player"] = PlayerId, ["class"] = cls }, j => done((string)j["ok"]), e => done(e)));
+
+    /// The roles of the world: holder, how they are won, powers, requirements checked on the champion.
+    public void Roles(System.Action<JArray> ok) =>
+        StartCoroutine(Api.Get($"/api/ui/roles?player={UnityEngine.Networking.UnityWebRequest.EscapeURL(PlayerId ?? "")}", j => ok((JArray)j), e => LastCommandResult = e));
+
+    /// The champion goes for a role (claims it if vacant, challenges the holder otherwise).
+    public void ChallengeRole(string title, System.Action<string> done) =>
+        StartCoroutine(Api.Post("/api/ui/role", new JObject { ["player"] = PlayerId, ["title"] = title }, j => done((string)j["ok"] ?? (string)j["error"]), e => done(e)));
+
+    /// Names, sections and ranges of the characteristics (asked once).
+    public JArray StatDefs;
+    public void LoadStatDefs()
+    {
+        if (StatDefs == null) StartCoroutine(Api.Get("/api/ui/stats", j => StatDefs = (JArray)j, _ => { }));
+    }
+
     /// The collections, with how many pieces the team holds.
     public void Collections(System.Action<JArray> ok) =>
         StartCoroutine(Api.Get($"/api/ui/collections?player={UnityEngine.Networking.UnityWebRequest.EscapeURL(PlayerId ?? "")}", j => ok((JArray)j), e => LastCommandResult = e));

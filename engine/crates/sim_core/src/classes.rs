@@ -97,7 +97,7 @@ pub fn take(world: &mut World, e: Entity, class: &str) {
     world.entity_mut(e).insert(ClassState { acquired: Some(class.to_string()), offers: vec![], since: tick });
     crate::lifecycle::refresh_role(world, e);
     let name = crate::effects::name_of(world, e);
-    event(world, e, kind::CLASS_GAINED, format!("{name} diventa {}", d.name), 0.3);
+    event(world, e, kind::CLASS_GAINED, format!("{name} diventa {}", d.name), 0.2);
 }
 
 /// `e` loses the class it took and goes back to the default class.
@@ -122,7 +122,7 @@ pub fn drop_acquired(world: &mut World, e: Entity, reason: &str) {
     }
     crate::lifecycle::refresh_role(world, e);
     let name = crate::effects::name_of(world, e);
-    event(world, e, kind::CLASS_LOST, format!("{name} non è più {} ({reason})", class_name(world, &class)), 0.2);
+    event(world, e, kind::CLASS_LOST, format!("{name} non è più {} ({reason})", class_name(world, &class)), 0.1);
 }
 
 /// A pawn with only the default class (or a class it took itself) may change class freely; one with a

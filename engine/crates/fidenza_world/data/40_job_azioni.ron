@@ -6,7 +6,7 @@
         (id: "bevi", name: "Beve", handler: "consume", duration: 1, params: {"tag": "bevanda"}),
         (id: "compra_cibo", name: "Fa la spesa", handler: "buy", duration: 1, params: {"tag": "cibo"}),
         (id: "compra_da_bere", name: "Ordina da bere", handler: "buy", duration: 1, params: {"tag": "bevanda", "use": true}),
-        (id: "dormi", name: "Dorme", duration: 4, effects: [ModNeed(need: "riposo", amount: 0.8)]),
+        (id: "dormi", name: "Dorme", duration: 4, effects: [ModNeed(need: "riposo", amount: 0.8), ModStat(stat: "stress", amount: -2)]),
         (id: "girovaga", name: "Girovaga", duration: 2, effects: [ModNeed(need: "svago", amount: 0.12)]),
         // Ferma sul posto: a guardarsi intorno, a chiacchierare, ad ascoltare chi gli parla.
         (id: "contempla_tenebre", name: "Contempla le tenebre", duration: 4, effects: [ModNeed(need: "svago", amount: 0.3)]),
@@ -20,7 +20,7 @@
         (id: "coltiva", name: "Coltiva", work_type: "agricoltura", handler: "produce", params: {"wage": 3}, duration: 4, skill: "forza"),
         (id: "alleva", name: "Alleva", work_type: "allevamento", handler: "produce", params: {"wage": 3}, duration: 6),
         (id: "scava", name: "Scava", work_type: "estrazione", handler: "produce", duration: 4, skill: "forza",
-         params: {"wage": 3, "item": "ferro", "qty": 1}),
+         params: {"wage": 3, "item": "ferro", "qty": 1}, effects: [ModStat(stat: "c_minerali", amount: 1)]),
         (id: "trasforma", name: "Lavora in produzione", work_type: "produzione", handler: "process", duration: 3, skill: "destrezza",
          params: {"wage": 4}),
         (id: "ripara", name: "Ripara", work_type: "costruzione", handler: "build", duration: 4, skill: "forza", params: {"wage": 3, "repair": 30}),
@@ -28,8 +28,10 @@
          params: {"building": "gnomo_da_giardino"}),
         (id: "ruba_reliquia", name: "Ruba una reliquia", work_type: "furto", handler: "steal", duration: 3, params: {"tag": "reliquia_maggiore"},
          suspicious: true, news: 0.9, crime: (id: "furto_sacrilego", severity: 25, witness_radius: 6, news: 1.0)),
-        (id: "medica", name: "Medica le ferite", work_type: "medicina", params: {"wage": 3}, duration: 2, effects: [On(Target, Heal(25))]),
-        (id: "scava_roccia", name: "Scava", work_type: "estrazione", handler: "dig", duration: 2, range: 1, skill: "forza", params: {"wage": 2}),
+        (id: "medica", name: "Medica le ferite", work_type: "medicina", params: {"wage": 3}, duration: 2,
+         effects: [On(Target, Heal(25)), ModStat(stat: "c_curati", amount: 1), ModStat(stat: "con_medicina", amount: 0.2), ModBond(friendship: 2)]),
+        (id: "scava_roccia", name: "Scava", work_type: "estrazione", handler: "dig", duration: 2, range: 1, skill: "forza", params: {"wage": 2},
+         effects: [ModStat(stat: "c_minerali", amount: 1)]),
         (id: "deposita", name: "Porta i materiali al deposito", handler: "store", duration: 1, params: {"tag": "minerale"}),
         (id: "raccogli_porcini", name: "Raccoglie porcini giganti", handler: "produce", duration: 3, params: {"item": "porcino_gigante", "qty": 2}),
         (id: "trasporta", name: "Carica merci", work_type: "trasporto", handler: "haul", params: {"wage": 2}, duration: 1),
@@ -38,6 +40,7 @@
 
         // Crimine, intrigo, combattimento.
         (id: "scippo", name: "Scippo", handler: "steal", duration: 2, params: {"amount": 40}, suspicious: true,
+         effects: [ModStat(stat: "c_furti", amount: 1), ModStat(stat: "furtivita", amount: 0.2)],
          crime: (id: "scippo", severity: 12, witness_radius: 7, news: 0.7)),
         (id: "furto_identita", name: "Furto d'identità", handler: "identity_theft", duration: 6, suspicious: true,
          crime: (id: "sostituzione_di_persona", severity: 20, witness_radius: 3, news: 0.9)),
@@ -47,6 +50,7 @@
         (id: "sabotaggio", name: "Sabotaggio", handler: "sabotage", duration: 3, params: {"damage": 40}, suspicious: true,
          crime: (id: "sabotaggio", severity: 14, witness_radius: 5, news: 0.8)),
         (id: "assassinio", name: "Assassinio silenzioso", handler: "assassinate", duration: 2, params: {"damage": 80}, suspicious: true,
+         effects: [ModStat(stat: "c_uccisi", amount: 1)],
          crime: (id: "omicidio", severity: 40, witness_radius: 4, news: 1.0)),
         (id: "attacco", name: "Attacca", handler: "attack", duration: 1, params: {"damage": 6},
          crime: (id: "aggressione", severity: 6, witness_radius: 5, news: 0.5)),
@@ -59,13 +63,14 @@
 
         // Ordine pubblico.
         (id: "perquisizione", name: "Perquisisce", handler: "search", duration: 1, required_tags: ["polizia"]),
-        (id: "arresto", name: "Arresta", handler: "arrest", duration: 1, required_tags: ["polizia"]),
+        (id: "arresto", name: "Arresta", handler: "arrest", duration: 1, required_tags: ["polizia"], effects: [ModStat(stat: "c_arresti", amount: 1)]),
 
         // Stampa.
-        (id: "pubblica", name: "Scrive un articolo", handler: "publish", duration: 2, required_tags: ["stampa"]),
+        (id: "pubblica", name: "Scrive un articolo", handler: "publish", duration: 2, required_tags: ["stampa"],
+         effects: [ModStat(stat: "c_articoli", amount: 1), ModStat(stat: "con_giornalismo", amount: 0.5), ModStat(stat: "notorieta", amount: 0.3)]),
         (id: "inchiesta", name: "Conduce un'inchiesta", handler: "investigate", duration: 3, required_tags: ["stampa"], news: 0.2),
         (id: "bufala", name: "Diffonde una bufala", duration: 1,
-         effects: [Publish(headline: "Scie chimiche sopra la rotonda di Fidenza: i Vegani controllano il meteo!", truth: Fake, topics: ["bufala", "vegano"])]),
+         effects: [ModStat(stat: "c_bufale", amount: 1), Publish(headline: "Scie chimiche sopra la rotonda di Fidenza: i Vegani controllano il meteo!", truth: Fake, topics: ["bufala", "vegano"])]),
 
         // Medicina e alchimia.
         (id: "esame", name: "Esame clinico", work_type: "medicina", handler: "analyze", duration: 3, skill: "intelletto"),
