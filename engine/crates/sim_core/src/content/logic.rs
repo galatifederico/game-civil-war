@@ -176,6 +176,8 @@ pub enum Condition {
     BondAtLeast { #[serde(default)] friendship: f32, #[serde(default)] attraction: f32 },
     /// `stat` of the subject plus luck beats the target's (a brawl, a duel). `luck` 0..1, default 0.5.
     Contest { stat: String, #[serde(default)] luck: Option<f32> },
+    /// The subject carries an item of this kind (see `ItemDef::types`).
+    HasItemType(String),
     /// The subject holds this role (title).
     HoldsTitle(String),
     /// The subject holds any role.

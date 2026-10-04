@@ -127,6 +127,14 @@ pub fn damage(world: &mut World, e: Entity, amount: f32, part: Option<&str>, sou
         return DamageOutcome::Nothing;
     }
     let Some(mut body) = world.get::<Body>(e).cloned() else { return DamageOutcome::Nothing };
+    // A blow from someone: its attack against the victim's defense, and the victim's clothes take a bit.
+    let amount = match source.filter(|s| *s != e) {
+        Some(s) => {
+            crate::equipment::wear_armour(world, e);
+            amount * crate::equipment::combat_multiplier(world, s, e)
+        }
+        None => amount,
+    };
     let alive: Vec<usize> = (0..body.parts.len()).filter(|i| !body.parts[*i].missing).collect();
     let idx = match part {
         Some(p) => body.parts.iter().position(|q| q.id == p && !q.missing),

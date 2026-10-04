@@ -152,6 +152,9 @@ pub struct EntityView {
     /// Last findings of the pawn (investigations…), newest first.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub journal: Vec<crate::stats::JournalEntry>,
+    /// Items in use (wielded or worn).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub equipped: Vec<String>,
     /// Roles held.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub titles: Vec<String>,
@@ -327,6 +330,10 @@ pub fn entity_view(world: &World, e: Entity, truth: bool) -> Option<EntityView> 
         leader_of: world.get::<Leader>(e).map(|l| l.player.clone()),
         dead: world.get::<Dead>(e).is_some(),
         journal: world.get::<crate::stats::Journal>(e).map(|j| j.0.iter().rev().take(10).cloned().collect()).unwrap_or_default(),
+        equipped: world
+            .get::<crate::equipment::Equipment>(e)
+            .map(|q| q.items.iter().filter_map(|i| content.items.get(i).map(|d| d.name.clone())).collect())
+            .unwrap_or_default(),
         titles: crate::titles::held(world, e).iter().filter_map(|t| content.titles.get(t).map(|d| d.name.clone())).collect(),
     })
 }

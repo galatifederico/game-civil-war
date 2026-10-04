@@ -23,6 +23,8 @@
         blood_fluid: "sangue",
         currency_name: "euro",
         crime_record: "reati",
+        attack: "attacco",
+        defense: "difesa",
         default_class: "normie",
     ),
     params: {
@@ -38,12 +40,15 @@
         "logistics.batch": 8.0,
         "economy.guild_income_share": 0.5,
         "health.natural_heal": 0.15,
+        "inventory.slots": 5.0,
     },
     stats: [
         // Principali.
         (id: "intelletto", name: "Intelligenza", group: "Principali", max: 200, default: 10, spread: 4, description: "Scala: 10 è la media, 20 un laureato, 30 un genio"),
         (id: "percezione", name: "Percezione", group: "Principali", default: 10, spread: 3),
         (id: "resistenza", name: "Resistenza", group: "Principali", default: 10, spread: 3),
+        (id: "attacco", name: "Forza", group: "Principali", default: 20, spread: 8, description: "Quanto fanno male i suoi colpi (armi comprese)"),
+        (id: "difesa", name: "Difesa", group: "Principali", default: 20, spread: 8, description: "Quanto resiste ai colpi (armature e copricapi comprese)"),
         (id: "eta", name: "Età", group: "Principali", min: 0, max: 120, default: 35, spread: 22, per_day: 0.05, description: "Anni; cresce di un anno ogni 20 giorni di gioco"),
         // Fisiche.
         (id: "forza", name: "Muscoli", group: "Fisiche", default: 10, spread: 3, description: "Forza fisica: 10 è la media, 25 un palestrato"),

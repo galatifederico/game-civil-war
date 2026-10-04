@@ -69,7 +69,7 @@ pub fn spawn_template(world: &mut World, template: &str, pos: Option<Position>, 
     for (k, v) in &t.stats {
         base.insert(k.clone(), *v);
     }
-    let mut inv = Inventory::with_slots(t.slots.unwrap_or(3));
+    let mut inv = Inventory::with_slots(t.slots.unwrap_or_else(|| world.resource::<crate::params::Params>().get("inventory.slots", 3.0) as u32));
     for (item, qty) in &t.items {
         inv.add(&content, item, *qty);
     }

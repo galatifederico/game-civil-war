@@ -1,0 +1,70 @@
+// Lo Scantinato della Fumetteria, il dungeon dei nerd (botola nel Quartiere Nerd), e il suo abitante: il Polipo.
+// Il polipo resta nello scantinato e attacca chi entra, ma punta soprattutto le donne: le avvinghia con i
+// tentacoli e quando è in pericolo sparisce in una nube d'inchiostro.
+(
+    body_plans: [
+        (id: "cefalopode", parts: [
+            (id: "mantello", name: "Mantello", hp: 35, vital: true, coverage: 3, capacities: {"coscienza": 1, "vista": 1}),
+            (id: "tentacolo_1", name: "Tentacolo 1", parent: "mantello", hp: 8, coverage: 0.5, capacities: {"manipulation": 0.125, "moving": 0.125}),
+            (id: "tentacolo_2", name: "Tentacolo 2", parent: "mantello", hp: 8, coverage: 0.5, capacities: {"manipulation": 0.125, "moving": 0.125}),
+            (id: "tentacolo_3", name: "Tentacolo 3", parent: "mantello", hp: 8, coverage: 0.5, capacities: {"manipulation": 0.125, "moving": 0.125}),
+            (id: "tentacolo_4", name: "Tentacolo 4", parent: "mantello", hp: 8, coverage: 0.5, capacities: {"manipulation": 0.125, "moving": 0.125}),
+            (id: "tentacolo_5", name: "Tentacolo 5", parent: "mantello", hp: 8, coverage: 0.5, capacities: {"manipulation": 0.125, "moving": 0.125}),
+            (id: "tentacolo_6", name: "Tentacolo 6", parent: "mantello", hp: 8, coverage: 0.5, capacities: {"manipulation": 0.125, "moving": 0.125}),
+            (id: "tentacolo_7", name: "Tentacolo 7", parent: "mantello", hp: 8, coverage: 0.5, capacities: {"manipulation": 0.125, "moving": 0.125}),
+            (id: "tentacolo_8", name: "Tentacolo 8", parent: "mantello", hp: 8, coverage: 0.5, capacities: {"manipulation": 0.125, "moving": 0.125}),
+        ]),
+    ],
+    races: [
+        (id: "polipo", name: "Polipo", body_plan: "cefalopode", sexless: true, tags: ["polipo", "bestia", "fauna", "nerd"],
+         needs_exempt: ["fame", "riposo", "svago", "sete"],
+         description: "Vive nello Scantinato della Fumetteria da quando qualcuno ci ha buttato un acquario. Ha gusti precisi: punta le donne.",
+         stats: {"forza": 16, "furtivita": 12, "percezione": 8, "attacco": 30, "difesa": 15},
+         abilities: ["tentacoli", "nube_d_inchiostro"], immunities: ["diarrea", "std"]),
+    ],
+    statuses: [
+        (id: "avvinghiato", name: "Avvinghiato", kind: Debuff, duration: 3, ai_speed: 0.5, tags: ["presa"],
+         description: "Stretto dai tentacoli: non scappa e si muove a fatica.", stats: {"velocita": -1, "destrezza": -5, "stress": 10}),
+    ],
+    abilities: [
+        (id: "tentacoli", name: "Tentacoli", description: "Avvinghia la vittima: danni e non scappa.", cooldown: 4, range: 2,
+         effects: [On(Target, All([Damage(amount: 5), ApplyStatus(status: "avvinghiato")]))]),
+        (id: "nube_d_inchiostro", name: "Nube d'inchiostro", description: "Sparisce nel nero e chi è vicino resta imbrattato.", cooldown: 24,
+         effects: [Stealth(amount: 60, duration: 3), ResetAggro, On(Radius(3), ApplyStatus(status: "imbrattato"))]),
+    ],
+    actions: [
+        (id: "scendi_nello_scantinato", name: "Scende nello Scantinato", universal: true, weight: 0.1, cooldown: 120,
+         requires: StatAtLeast(stat: "con_lore_nerd", value: 40),
+         kind: Job(job: "curiosa_nello_scantinato", target: Zone("scantinato_nerd")),
+         considerations: [(input: Stat(stat: "curiosita", max: 100), curve: Identity)], label: "Scende nello Scantinato della Fumetteria"),
+        // Prima le donne: peso alto e raggio più ampio.
+        (id: "avvinghia_donna", name: "Avvinghia", weight: 2.5,
+         kind: Ability(ability: "tentacoli", target: Nearest((pawn: true, visible: true, max_distance: 10, not_detained: true, tags_none: ["bestia", "macchina"],
+                                                                condition: IsSex(Female))))),
+        (id: "avvinghia_chiunque", name: "Avvinghia", weight: 1.0,
+         kind: Ability(ability: "tentacoli", target: Nearest((pawn: true, relation: Hostile, visible: true, max_distance: 3, tags_none: ["bestia"])))),
+        (id: "nube_d_inchiostro", name: "Nube d'inchiostro", weight: 3.0, kind: Ability(ability: "nube_d_inchiostro"),
+         considerations: [(input: Condition(HpBelow(0.5)), curve: Identity)]),
+    ],
+    templates: [
+        (id: "polipo", name: "Polipo dello Scantinato", race: "polipo", classes: ["bestia"], faction: "fauna_selvatica", slots: 0,
+         actions: ["avvinghia_donna", "avvinghia_chiunque", "nube_d_inchiostro"]),
+    ],
+    buildings: [
+        (id: "baule_nerd", name: "Baule dei tesori nerd", footprint: (1, 1), hp: 150, tags: ["cassaforte", "nerd"],
+         description: "Fumetti introvabili, una spada laser vera e un anello che nessuno dovrebbe toccare. Lo sorveglia il polipo.",
+         stock: {"spada_laser": 1, "anello_potere": 1, "costume_cosplay": 2, "boomerang": 1}),
+    ],
+    jobs: [
+        (id: "curiosa_nello_scantinato", name: "Curiosa nello Scantinato", duration: 3,
+         effects: [ModStat(stat: "con_lore_nerd", amount: 1), ModStat(stat: "curiosita", amount: 0.5), ModNeed(need: "svago", amount: 0.2),
+                   Chance(0.05, GiveRandomItem(items: ["costume_cosplay", "cerchietto_orecchie", "corazza_cartone"]))]),
+    ],
+    spawners: [
+        (id: "polipo", template: "polipo", zone: "scantinato_nerd", interval: 72, max_alive: 1, faction: "fauna_selvatica",
+         tether: (zone: "scantinato_nerd", release: Never)),
+    ],
+    sprites: {
+        "race:polipo": (shape: "circle", color: "#8e44ad", glyph: "Po", sheet: "chibi_polipo"),
+    },
+)

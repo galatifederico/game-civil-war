@@ -414,3 +414,72 @@ fn feed_keeps_few_main_news_and_drops_old_secondary_ones() {
     assert!(feed.articles.windows(2).all(|w| w[0].id < w[1].id));
     assert!(feed.next_id > 40);
 }
+
+/// Spawns a template at a cell of a zone (x, y relative to the zone's map).
+fn spawn_at(sim: &mut Simulation, template: &str, zone: &str, x: i32, y: i32) -> Entity {
+    let map = sim.world.resource::<WorldMap>().clone();
+    let z = map.zone(zone).unwrap_or_else(|| panic!("zona {zone}")).clone();
+    let pos = Position::new(z.layer, z.x + x, z.y + y);
+    sim_core::lifecycle::spawn_template(&mut sim.world, template, Some(pos), &Default::default()).expect("spawn")
+}
+
+#[test]
+fn weapons_count_only_when_their_requirements_are_met() {
+    let mut sim = sim(3);
+    let e = spawn_at(&mut sim, "fidentino", "piazza_garibaldi", 20, 14);
+    sim.world.get_mut::<Stats>(e).unwrap().set_base("con_arti_marziali", 0.0, (0.0, 100.0));
+    sim_core::inventory_ops::give(&mut sim.world, e, "katana", 1);
+    sim.tick();
+    let eq = sim.world.get::<sim_core::equipment::Equipment>(e).unwrap();
+    assert!(!eq.items.contains(&"katana".to_string()), "a katana without martial arts is just carried");
+    let before = sim.world.get::<Stats>(e).unwrap().get("attacco");
+    sim.world.get_mut::<Stats>(e).unwrap().set_base("con_arti_marziali", 30.0, (0.0, 100.0));
+    sim.tick();
+    let eq = sim.world.get::<sim_core::equipment::Equipment>(e).unwrap();
+    assert!(eq.items.contains(&"katana".to_string()), "now it is wielded: {:?}", eq.items);
+    let after = sim.world.get::<Stats>(e).unwrap().get("attacco");
+    assert!(after >= before + 7.9, "the katana adds Forza: {before} → {after}");
+}
+
+#[test]
+fn the_octopus_goes_for_women_first() {
+    use sim_core::stats::Sex;
+    let mut sim = sim(4);
+    let octopus = spawn_at(&mut sim, "polipo", "scantinato_nerd", 5, 12);
+    let man = spawn_at(&mut sim, "fidentino", "scantinato_nerd", 7, 12);
+    let woman = spawn_at(&mut sim, "fidentino", "scantinato_nerd", 10, 12);
+    sim.world.entity_mut(man).insert(Sex::Male);
+    sim.world.entity_mut(woman).insert(Sex::Female);
+    let grabbed = |sim: &Simulation, e: Entity| sim.world.get::<sim_core::status::StatusEffects>(e).is_some_and(|s| s.has("avvinghiato"));
+    let mut first = None;
+    for _ in 0..12 {
+        sim.tick();
+        if sim.world.get::<Dead>(octopus).is_some() {
+            break;
+        }
+        if grabbed(&sim, woman) {
+            first = Some("donna");
+            break;
+        }
+        if grabbed(&sim, man) {
+            first = Some("uomo");
+            break;
+        }
+    }
+    assert_eq!(first, Some("donna"), "the octopus should grab the woman first");
+}
+
+#[test]
+fn the_champion_throws_what_can_be_thrown() {
+    let mut sim = sim(7);
+    let (champ, ce) = id_of(&mut sim, "leader_anarchico");
+    let pos = *sim.world.get::<Position>(ce).unwrap();
+    let target = sim_core::lifecycle::spawn_template(&mut sim.world, "fidentino", Some(Position::new(pos.layer, pos.x + 3, pos.y)), &Default::default()).unwrap();
+    let tid = *sim.world.get::<SimId>(target).unwrap();
+    sim_core::inventory_ops::give(&mut sim.world, ce, "sasso", 3);
+    sim_core::player::give_order(&mut sim.world, "giocatore", champ, sim_core::player::Order::Job { job: "lancia_oggetto".into(), target: Some(tid) }).unwrap();
+    sim.run(4);
+    assert!(sim_core::inventory_ops::count(&sim.world, ce, "sasso") < 3, "a stone was thrown");
+    let health = sim.world.get::<sim_core::anatomy::Body>(target).unwrap().health_ratio();
+    assert!(health < 1.0, "the target was hit");
+}

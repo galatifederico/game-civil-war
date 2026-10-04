@@ -207,6 +207,16 @@ CREATURES = {
             "...EAAAAAAAAAA..", ".LLAAAAAAAAAAa..", "....aaaaaaaaa...", "...L.L.L.L.L....",
             "..L..L..L..L....", "", "", "", "", ""],
     ),
+    "polipo": dict(
+        pal=dict(A="#8e44ad", a="#6c3483", E="#f5f0dc", P="#16121a", S="#f1948a", M="#b07cc6"),
+        down=[
+            "", "", "",
+            ".....AAAAAA.....", "....AMMAAAAA....", "...AMMAAAAAAA...", "...AAAAAAAAAA...",
+            "...AAEEAAEEAA...", "...AAEPAAEPAA...", "...AAAAAAAAAA...", "....AAAaaAAA....",
+            "...aAAAAAAAAa...", "..AAaA.AA.AaAA..", ".AA.AA.AA.AA.AA.", ".A.AS..AA..SA.A.",
+            ".S.A..AS.SA..S..", "...S..S...S.....", "", "", ""],
+        left=None,
+    ),
     "cinghiale": dict(
         pal=dict(A="#6d4c33", a="#4a3220", B="#3a2616", E="#f2e14b", T="#f5f0dc", N="#2a1a10"),
         down=[

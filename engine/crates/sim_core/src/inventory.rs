@@ -25,11 +25,14 @@ pub struct Inventory {
     /// Maximum number of distinct slots (categories). 0 = unlimited.
     pub max_slots: u32,
     pub slots: Vec<Slot>,
+    /// Wear of the unit in use of each item (it breaks when it reaches the item's durability).
+    #[serde(default)]
+    pub wear: BTreeMap<String, f32>,
 }
 
 impl Default for Inventory {
     fn default() -> Self {
-        Self { max_slots: 3, slots: Vec::new() }
+        Self { max_slots: 3, slots: Vec::new(), wear: BTreeMap::new() }
     }
 }
 
@@ -44,7 +47,7 @@ fn cap_of(content: &Content, item: &str) -> (String, u32) {
 
 impl Inventory {
     pub fn with_slots(max_slots: u32) -> Self {
-        Self { max_slots, slots: Vec::new() }
+        Self { max_slots, slots: Vec::new(), wear: BTreeMap::new() }
     }
 
     /// How many units of `item` would fit.

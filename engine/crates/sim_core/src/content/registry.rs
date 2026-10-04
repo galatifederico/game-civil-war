@@ -239,6 +239,17 @@ impl Validator<'_> {
                 self.check(&c.statuses, "status", s, &ctx);
             }
         }
+        for it in c.items.values() {
+            let ctx = format!("oggetto {}", it.id);
+            self.cond(&it.requires, &ctx);
+            self.effects(&it.on_hit, &ctx);
+            for s in it.carried_stats.keys() {
+                self.stat(s, &ctx);
+            }
+        }
+        for s in [&c.bindings.attack, &c.bindings.defense].into_iter().flatten() {
+            self.stat(s, "bindings");
+        }
         for cl in c.classes.values() {
             let ctx = format!("classe {}", cl.id);
             for s in cl.stats.keys() {

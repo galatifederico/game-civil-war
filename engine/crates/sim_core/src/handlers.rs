@@ -26,6 +26,7 @@ pub fn register_core(ext: &mut Extensions) {
         ("buy", buy),
         ("steal", steal),
         ("attack", attack),
+        ("throw", throw),
         ("assassinate", assassinate),
         ("sabotage", sabotage),
         ("build", build),
@@ -158,12 +159,49 @@ fn strength(world: &World, e: Entity) -> f32 {
 
 fn attack(world: &mut World, ctx: &JobCtx) -> JobResult {
     let Some(t) = target_alive(world, ctx) else { return JobResult::fail("nessun bersaglio") };
-    let dmg = strength(world, ctx.actor) / 10.0 * ctx.param_f("damage", 5.0) as f32;
+    let mut dmg = strength(world, ctx.actor) / 10.0 * ctx.param_f("damage", 5.0) as f32;
+    // With a weapon in hand the blow hurts more, and the weapon wears.
+    let weapon = crate::equipment::best_weapon(world, ctx.actor);
+    if let Some((w, extra)) = &weapon {
+        dmg += extra;
+        crate::equipment::wear(world, ctx.actor, w, 1.0);
+    }
     if world.get::<Building>(t).is_some() {
         crate::buildings::damage_building(world, t, dmg, Some(ctx.actor));
     } else {
         crate::anatomy::damage(world, t, dmg, None, Some(ctx.actor));
     }
+    if let Some(d) = weapon.and_then(|(w, _)| world.resource::<Content>().items.get(&w).cloned()) {
+        crate::effects::apply_effects(world, &crate::effects::EffectCtx::new(Some(t), Some(ctx.actor), format!("item:{}", d.id)), &d.on_hit);
+    }
+    JobResult::ok()
+}
+
+/// Throws the most harmful carried item of a kind (param `type`, default "lanciabile") at the target: it
+/// is spent unless reusable (then it only wears).
+fn throw(world: &mut World, ctx: &JobCtx) -> JobResult {
+    let Some(t) = target_alive(world, ctx) else { return JobResult::fail("nessun bersaglio") };
+    let kind = ctx.param_str("type").unwrap_or("lanciabile").to_string();
+    let Some(item) = crate::equipment::best_of_type(world, ctx.actor, &kind) else { return JobResult::fail("niente da lanciare") };
+    let Some(d) = world.resource::<Content>().items.get(&item).cloned() else { return JobResult::fail("oggetto sconosciuto") };
+    if let (Some(a), Some(b)) = (world.get::<Position>(ctx.actor).copied(), world.get::<Position>(t).copied())
+        && d.range > 0
+        && !a.within(&b, d.range)
+    {
+        return JobResult::fail("troppo lontano");
+    }
+    if d.reusable {
+        crate::equipment::wear(world, ctx.actor, &item, 1.0);
+    } else {
+        crate::inventory_ops::take(world, ctx.actor, &item, 1);
+    }
+    let dmg = d.damage.max(1.0);
+    if world.get::<Building>(t).is_some() {
+        crate::buildings::damage_building(world, t, dmg, Some(ctx.actor));
+    } else {
+        crate::anatomy::damage(world, t, dmg, None, Some(ctx.actor));
+    }
+    crate::effects::apply_effects(world, &crate::effects::EffectCtx::new(Some(t), Some(ctx.actor), format!("item:{item}")), &d.on_hit);
     JobResult::ok()
 }
 

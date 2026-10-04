@@ -5,6 +5,8 @@
     - percezione: 0 -> 100
     - età: 0 -> 100
     - resistenza: 0 -> 100
+    - Forza: 0 -> 100
+    - Difesa: 0 -> 100
 - Fisiche:
     - vista: 0 -> 100
     - velocità: 0 -> 100
@@ -749,14 +751,17 @@
 
 # Caratteristiche oggetti
 
-- tipo
+- tipo: questo ci permette di sempificare l'utilizzo degli oggetti. Anche con alcune azioni che abbiamo usato prima, così non dobbiamo per forza collegare azione a singolo oggetto ma andiamo per classi, ad esempio posso lanciare un oggetto se è lanciabile, posso attaccare con un oggett (spada) se è lanciabile.
     - arma
     - lanciabile
     - armatura
-    - 
+    - copricapo
 - vita
 - peso
 - costo
+- cumulabile: ad esempio, negli slot, di spada ne posso avere una, di petardi posso averne 100 e mi occupano un solo slot.
+- requisiti.
+    - es: due mani libere
 - bonus:
     + forza
     - velocità

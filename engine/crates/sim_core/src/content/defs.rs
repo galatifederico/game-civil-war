@@ -88,6 +88,9 @@ pub struct Bindings {
     pub crime_record: Option<Id>,
     /// Class a pawn falls back to when it loses its last class.
     pub default_class: Option<Id>,
+    /// Combat stats: damage dealt grows with `attack`, damage taken shrinks with `defense` (both 0..100).
+    pub attack: Option<Id>,
+    pub defense: Option<Id>,
 }
 
 impl Default for Bindings {
@@ -110,6 +113,8 @@ impl Default for Bindings {
             currency_name: "crediti".into(),
             crime_record: None,
             default_class: None,
+            attack: None,
+            defense: None,
         }
     }
 }
@@ -402,6 +407,26 @@ pub struct ItemDef {
     pub victory_points: i64,
     /// Unique items exist once in the world.
     pub unique: bool,
+    /// Kinds of item that actions work with ("arma", "lanciabile", "armatura", "copricapo"…): an action asks
+    /// for a kind, not for a specific item.
+    pub types: Vec<Id>,
+    /// Hit points of one unit: it wears when used to hit, thrown or hit while worn, and breaks at zero
+    /// (0 = never wears).
+    pub durability: f32,
+    /// Weight of one unit: past the carrying capacity the bearer slows down.
+    pub weight: f32,
+    /// Needed to wield or wear it (its bonuses count only then).
+    pub requires: Condition,
+    /// Hands it takes in use (a two-handed sword: 2). Hand items count only while there are hands free.
+    pub hands: u8,
+    /// Where it is worn ("corpo", "testa"…): only the best item for each place counts.
+    pub wear_slot: Option<Id>,
+    /// Damage when hitting with it (weapons) or throwing it.
+    pub damage: f32,
+    /// How far it can be thrown.
+    pub range: i32,
+    /// Effects on whoever is hit by it (thrown or wielded): subject = the victim, target = the attacker.
+    pub on_hit: Vec<Effect>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

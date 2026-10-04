@@ -233,6 +233,7 @@ building("redazione", "piazza_garibaldi", 6, 23, "redazione_gazzetta")
 clear_below(p, 6, 23, ch="=")
 link(p, 6, 23, "=")
 building("forno", "piazza_garibaldi", 27, 21, "anarchici_commercio", "Forno di Piazza")
+building("galleria_borgazzi", "piazza_garibaldi", 34, 5, None)
 building("stazione_polizia", "piazza_garibaldi", 34, 22, "polizia_neutra")
 clear_below(p, 34, 22, ch="=")
 link(p, 34, 22, "=")
@@ -406,6 +407,14 @@ for (x, y) in [(4, 4), (9, 4), (4, 8), (9, 8)]:
     sc.rect(x, y, x + 2, y + 1, "c")
 building("spacciatore_casino", "sala_casino", 17, 6, "casino_diablo")
 door("Porta della Sala da gioco", "casino", 21, 12, "sala_casino", *sm)
+
+# Scantinato della Fumetteria: il dungeon dei nerd, dove vive il polipo.
+sn, snm = interior("scantinato_nerd", "Scantinato della Fumetteria", 22, 16, "x", ["nerd", "dungeon", "scantinato"])
+for (x, y) in [(3, 3), (3, 7), (16, 3), (16, 9)]:
+    sn.rect(x, y, x + 2, y + 1, "c")
+sn.rect(8, 5, 13, 9, "~")
+building("baule_nerd", "scantinato_nerd", 18, 12, None)
+door("Botola dello Scantinato", "fumetteria", 26, 6, "scantinato_nerd", *snm)
 
 # ── Wild surface ────────────────────────────────────────────────────────────
 bo = outdoor("bosco_stirone", "Bosco dello Stirone", "E", ["bosco", "selvatico"], road=":")

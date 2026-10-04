@@ -1151,6 +1151,7 @@ public class SimHud : MonoBehaviour
         GUILayout.Label($"Soldi {Fmt((double)e["money"])} €  ·  Ricercato {(float)e["wanted"]:0.0}  ·  Dissenso {(float)e["dissent"]:0}", big, GUILayout.Width(width));
         var statuses = e["statuses"]?.Select(s => (string)s["name"] + (s["stage"]?.Type == JTokenType.String ? $" ({s["stage"]})" : "")).ToList();
         if (statuses?.Count > 0) GUILayout.Label("Status: " + string.Join(", ", statuses), big, GUILayout.Width(width));
+        if (e["equipped"] is JArray gear && gear.Count > 0) GUILayout.Label("In uso: " + string.Join(", ", gear.Select(g => (string)g)), big, GUILayout.Width(width));
         if (e["titles"] is JArray roles && roles.Count > 0) GUILayout.Label("Ruoli: " + string.Join(", ", roles.Select(r => (string)r)), big, GUILayout.Width(width));
 
         // The three slots of the bag: one category each, with its items.

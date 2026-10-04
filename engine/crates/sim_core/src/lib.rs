@@ -17,6 +17,7 @@ pub mod crime;
 pub mod dungeon;
 pub mod economy;
 pub mod effects;
+pub mod equipment;
 pub mod events;
 pub mod extensions;
 pub mod factions;

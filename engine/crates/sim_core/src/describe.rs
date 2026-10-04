@@ -89,9 +89,38 @@ pub fn item_effects(c: &Content, id: &str) -> Vec<String> {
         let what = d.on_use.iter().map(|e| effect(c, e)).collect::<Vec<_>>().join(", ");
         out.push(format!("Usandolo{}: {what}", if d.reusable { " (non si consuma)" } else { " (si consuma)" }));
     }
+    if !d.types.is_empty() {
+        out.push(format!("Tipo: {}", d.types.join(", ")));
+    }
+    if d.damage > 0.0 {
+        let how = if d.types.iter().any(|t| t == "lanciabile") && d.hands == 0 { "lanciandolo" } else { "colpendo" };
+        out.push(format!("Danni {how}: {:.0}{}", d.damage, if d.range > 0 { format!(" (fino a {} caselle)", d.range) } else { String::new() }));
+    }
+    if !d.on_hit.is_empty() {
+        out.push(format!("A chi viene colpito: {}", d.on_hit.iter().map(|e| effect(c, e)).collect::<Vec<_>>().join(", ")));
+    }
     if !d.carried_stats.is_empty() {
         let what = d.carried_stats.iter().map(|(s, v)| format!("{} {}", stat(c, s), signed(*v))).collect::<Vec<_>>().join(", ");
-        out.push(format!("Portandolo addosso: {what}"));
+        let when = match (&d.wear_slot, d.hands) {
+            (Some(p), _) => format!("Indossato ({p})"),
+            (None, h) if h > 0 => "Impugnato".to_string(),
+            _ => "Portandolo addosso".to_string(),
+        };
+        out.push(format!("{when}: {what}"));
+    }
+    match d.hands {
+        0 => {}
+        1 => out.push("Occupa una mano".into()),
+        n => out.push(format!("Occupa {n} mani")),
+    }
+    if !matches!(d.requires, Condition::Always) {
+        out.push(format!("Serve: {}", condition(c, &d.requires)));
+    }
+    if d.weight > 0.0 {
+        out.push(format!("Peso {}", num(d.weight)));
+    }
+    if d.durability > 0.0 {
+        out.push(format!("Resiste a {:.0} colpi prima di rompersi", d.durability));
     }
     if d.victory_points > 0 {
         out.push(format!("Vale {} punti vittoria finché lo tiene la tua fazione", d.victory_points));
@@ -150,6 +179,7 @@ pub fn condition(c: &Content, cond: &Condition) -> String {
         Condition::Disguised => "travestito".into(),
         Condition::HoldsTitle(t) => format!("è {}", c.titles.get(t).map_or(t.as_str(), |x| x.name.as_str())),
         Condition::HoldsAnyTitle => "ha un ruolo".into(),
+        Condition::HasItemType(t) => format!("ha con sé qualcosa di tipo {t}"),
         Condition::BondAtLeast { attraction, .. } if *attraction > 0.0 => format!("attrazione almeno {}", num(*attraction)),
         Condition::BondAtLeast { friendship, .. } => format!("amicizia almeno {}", num(*friendship)),
         Condition::Contest { stat: s, .. } => format!("vince il confronto di {}", stat(c, s)),

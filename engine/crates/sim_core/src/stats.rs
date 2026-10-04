@@ -110,6 +110,7 @@ impl Needs {
 pub fn recompute_stats(
     content: Res<Content>,
     titles: Res<crate::factions::Titles>,
+    params: Res<crate::params::Params>,
     mut q: Query<
         (
             &Race,
@@ -118,6 +119,7 @@ pub fn recompute_stats(
             Option<&Inventory>,
             Option<&crate::factions::FactionMember>,
             Option<&crate::ids::SimId>,
+            Option<&crate::equipment::Equipment>,
             &mut Stats,
             &mut Tags,
         ),
@@ -133,7 +135,7 @@ pub fn recompute_stats(
             roles.entry(*h).or_default().push(d);
         }
     }
-    for (race, classes, statuses, inv, member, sid, mut stats, mut tags) in &mut q {
+    for (race, classes, statuses, inv, member, sid, equipment, mut stats, mut tags) in &mut q {
         let mut eff = stats.base.clone();
         let mut t: BTreeSet<String> = tags.base.clone();
         let add = |m: &BTreeMap<String, f32>, eff: &mut BTreeMap<String, f32>| {
@@ -167,8 +169,21 @@ pub fn recompute_stats(
         if let Some(inv) = inv {
             for (item, _) in inv.items() {
                 if let Some(idef) = content.items.get(item) {
-                    add(&idef.carried_stats, &mut eff);
+                    // Weapons and clothes count only while in use (see `equipment`).
+                    let in_use = !crate::equipment::is_equipment(idef) || equipment.is_some_and(|q| q.items.contains(item));
+                    if in_use {
+                        add(&idef.carried_stats, &mut eff);
+                    }
                 }
+            }
+        }
+        // Too much weight slows down: capacity grows with strength.
+        if let Some(q) = equipment.filter(|q| q.weight > 0.0) {
+            let strength = eff.get(&content.bindings.strength).copied().unwrap_or(0.0);
+            let capacity = params.get("inventory.base_capacity", 10.0) as f32 + strength * params.get("inventory.capacity_per_strength", 1.0) as f32;
+            let over = q.weight - capacity;
+            if over > 0.0 {
+                *eff.entry(content.bindings.speed.clone()).or_insert(0.0) -= over * params.get("inventory.overweight_slowdown", 0.05) as f32;
             }
         }
         if let Some(m) = member
