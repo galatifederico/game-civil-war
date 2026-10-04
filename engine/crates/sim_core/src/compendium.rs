@@ -15,7 +15,7 @@ pub fn build(content: &Content, params: &Params) -> Value {
         "needs": content.needs.values().map(|n| json!({ "id": n.id, "name": n.name, "decay": n.decay })).collect::<Vec<_>>(),
         "races": content.races.values().map(|r| json!({
             "id": r.id, "name": r.name, "description": r.description, "stats": r.stats, "tags": r.tags,
-            "abilities": r.abilities, "shapeshifter": r.shapeshifter, "immunities": r.immunities,
+            "abilities": r.abilities, "sexes": r.sexes, "immunities": r.immunities,
             "body": content.body_plans.get(&r.body_plan).map(|b| b.parts.iter().map(|p| p.name.clone()).collect::<Vec<_>>()),
         })).collect::<Vec<_>>(),
         "classes": content.classes.values().map(|c| json!({

@@ -26,7 +26,7 @@ pub struct TemplateId(pub String);
 #[derive(Component, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Race(pub String);
 
-/// Sex of a pawn (races marked `sexless`, like machines, have none).
+/// Sex of a pawn (races without `sexes`, like machines, have none).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Sex {
     Male,
@@ -205,7 +205,7 @@ pub fn recompute_stats(
             t.insert(format!("title:{}", d.id));
         }
         for (k, v) in eff.iter_mut() {
-            let (lo, hi) = content.stat_bounds(k);
+            let (lo, hi) = content.race_stat_bounds(&race.0, k);
             *v = v.clamp(lo, hi);
         }
         stats.effective = eff;
@@ -241,13 +241,13 @@ pub fn stat_recovery(content: Res<Content>, params: Res<crate::params::Params>, 
 /// Needs decay, modulated by statuses (`need_rates` multiply the base decay).
 pub fn decay_needs(content: Res<Content>, mut q: Query<(&mut Needs, &StatusEffects, &Race), (With<Pawn>, Without<Dead>)>) {
     for (mut needs, statuses, race) in &mut q {
-        let exempt = content.races.get(&race.0).map(|r| r.needs_exempt.clone()).unwrap_or_default();
+        let rdef = content.races.get(&race.0);
         for (nid, nd) in &content.needs {
-            if exempt.contains(nid) {
+            if rdef.is_some_and(|r| r.needs_exempt.contains(nid)) {
                 needs.0.insert(nid.clone(), 1.0);
                 continue;
             }
-            let mut rate = 1.0;
+            let mut rate = 1.0 + rdef.and_then(|r| r.need_rates.get(nid)).copied().unwrap_or(0.0);
             for (sid, st) in &statuses.active {
                 if let Some(sd) = content.statuses.get(sid) {
                     rate += sd.need_rates.get(nid).copied().unwrap_or(0.0);

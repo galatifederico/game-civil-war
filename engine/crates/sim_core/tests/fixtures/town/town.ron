@@ -33,7 +33,7 @@
     ],
     races: [
         (id: "human", name: "Human", body_plan: "humanoid"),
-        (id: "lizard", name: "Lizard", body_plan: "humanoid", tags: ["cold_blooded"], shapeshifter: true),
+        (id: "lizard", name: "Lizard", body_plan: "humanoid", tags: ["cold_blooded"]),
     ],
     classes: [
         (id: "citizen", name: "Citizen", actions: [], work: {"labor": 3}),

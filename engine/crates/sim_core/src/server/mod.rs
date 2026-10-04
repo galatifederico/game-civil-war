@@ -109,6 +109,7 @@ fn router_inner(state: AppState) -> Router {
         .route("/api/ui/roles", get(ui_roles))
         .route("/api/ui/stats", get(ui_stats))
         .route("/api/admin/describe", get(admin_describe))
+        .route("/api/admin/content/{kind}/{id}", put(admin_edit_content))
         .route("/api/ui/role", post(ui_challenge_role))
         .route("/api/save", post(save_game))
         .route("/api/load", post(load_game))
@@ -891,6 +892,15 @@ async fn set_param(State(s): State<AppState>, Path(key): Path<String>, Json(b): 
 async fn sprites(State(s): State<AppState>) -> ApiResult {
     let sim = s.sim.lock().unwrap();
     Ok(Json(serde_json::to_value(sim.world.resource::<SpriteMapping>()).unwrap_or_default()))
+}
+
+/// Replaces one content definition (the body is its JSON form; the path id must match).
+async fn admin_edit_content(State(s): State<AppState>, Path((kind, id)): Path<(String, String)>, Json(def): Json<Value>) -> ApiResult {
+    if def.get("id").and_then(|v| v.as_str()) != Some(id.as_str()) {
+        return Err((StatusCode::BAD_REQUEST, "l'id nel corpo non corrisponde a quello dell'indirizzo".into()));
+    }
+    let res = s.sim.lock().unwrap().execute(SimCommand::EditContent { kind, def });
+    res.map(|m| Json(json!({ "ok": m }))).map_err(|e| (StatusCode::BAD_REQUEST, e))
 }
 
 async fn set_sprite(State(s): State<AppState>, Path(id): Path<String>, Json(sprite): Json<crate::content::SpriteDef>) -> ApiResult {

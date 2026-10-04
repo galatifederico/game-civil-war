@@ -55,3 +55,27 @@ pub fn load_pack_dir(dir: impl AsRef<Path>) -> Result<Vec<ContentPack>, ContentE
         })
         .collect()
 }
+
+/// File in a pack folder where the admin console keeps its edits (loaded last, so it wins).
+pub const OVERRIDES_FILE: &str = "99_console.json";
+
+/// Where edits made while the game runs are saved (`None`: kept in memory only).
+#[derive(bevy_ecs::prelude::Resource, Debug, Clone, Default)]
+pub struct ContentOverrides(pub Option<PathBuf>);
+
+/// Writes (or replaces, by id) one definition in the overrides pack file.
+pub fn save_override(path: &Path, kind: &str, def: serde_json::Value) -> Result<(), String> {
+    let mut root: serde_json::Value = match std::fs::read_to_string(path) {
+        Ok(text) => serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?,
+        Err(_) => serde_json::json!({}),
+    };
+    let obj = root.as_object_mut().ok_or_else(|| format!("{}: non è un oggetto JSON", path.display()))?;
+    let list = obj.entry(kind).or_insert_with(|| serde_json::json!([]));
+    let list = list.as_array_mut().ok_or_else(|| format!("{}: '{kind}' non è una lista", path.display()))?;
+    match list.iter_mut().find(|d| d.get("id").is_some() && d.get("id") == def.get("id")) {
+        Some(slot) => *slot = def,
+        None => list.push(def),
+    }
+    let text = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
+    std::fs::write(path, text + "\n").map_err(|e| format!("{}: {e}", path.display()))
+}

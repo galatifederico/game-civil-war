@@ -214,15 +214,33 @@ pub struct RaceDef {
     /// Statuses members can never catch.
     #[serde(default)]
     pub immunities: Vec<Id>,
-    /// Can take other forms (see ShapeshiftFramework).
-    #[serde(default)]
-    pub shapeshifter: bool,
     /// Needs that do not apply to this race (machines do not eat, beasts find their own food…).
     #[serde(default)]
     pub needs_exempt: Vec<Id>,
-    /// Members have no sex (machines, programs…).
+    /// Extra decay of a need for this race (0.5 = half again as fast, -0.5 = half as fast).
     #[serde(default)]
-    pub sexless: bool,
+    pub need_rates: BTreeMap<Id, f32>,
+    /// Sexes members can be born with; empty for races without sex (machines, programs…).
+    #[serde(default = "all_sexes")]
+    pub sexes: Vec<crate::stats::Sex>,
+    /// Per-race limits and starting value of stats (on top of the stat's own min/max/default).
+    #[serde(default)]
+    pub stat_ranges: BTreeMap<Id, StatRange>,
+}
+
+fn all_sexes() -> Vec<crate::stats::Sex> {
+    use crate::stats::Sex;
+    vec![Sex::Male, Sex::Female, Sex::NonBinary]
+}
+
+/// A race's own bounds for a stat; unset values fall back to the stat definition.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct StatRange {
+    pub min: Option<f32>,
+    pub max: Option<f32>,
+    /// Value members are born with (the stat's spread still applies around it).
+    pub initial: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

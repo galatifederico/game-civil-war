@@ -60,11 +60,15 @@ pub fn spawn_template(world: &mut World, template: &str, pos: Option<Position>, 
     let name = ov.name.clone().unwrap_or_else(|| {
         if t.unique { t.name.clone() } else { format!("{} {}", t.name, id.0) }
     });
-    let mut base: BTreeMap<String, f32> = content.stats.values().map(|s| (s.id.clone(), s.default)).collect();
-    // Everybody is a bit different: stats with a spread vary around their default.
+    // Starting value: the race's own when it has one, else the stat's default.
+    let ranges = content.races.get(&t.race).map(|r| &r.stat_ranges);
+    let start = |s: &crate::content::StatDef| ranges.and_then(|r| r.get(&s.id)).and_then(|r| r.initial).unwrap_or(s.default);
+    let mut base: BTreeMap<String, f32> = content.stats.values().map(|s| (s.id.clone(), start(s))).collect();
+    // Everybody is a bit different: stats with a spread vary around their starting value.
     for s in content.stats.values().filter(|s| s.spread > 0.0 && !t.stats.contains_key(&s.id)) {
         let r = world.resource_mut::<crate::rng::SimRng>().next_f32();
-        base.insert(s.id.clone(), (s.default + (r * 2.0 - 1.0) * s.spread).clamp(s.min, s.max).round());
+        let (lo, hi) = content.race_stat_bounds(&t.race, &s.id);
+        base.insert(s.id.clone(), (start(s) + (r * 2.0 - 1.0) * s.spread).clamp(lo, hi).round());
     }
     for (k, v) in &t.stats {
         base.insert(k.clone(), *v);
@@ -97,14 +101,26 @@ pub fn spawn_template(world: &mut World, template: &str, pos: Option<Position>, 
         Notebook::default(),
         Movement::default(),
     ));
-    let sexless = content.races.get(&t.race).is_some_and(|r| r.sexless);
+    use crate::stats::Sex;
+    let allowed = content.races.get(&t.race).map_or_else(|| vec![Sex::Male, Sex::Female, Sex::NonBinary], |r| r.sexes.clone());
     let sex = match t.sex {
-        _ if sexless => None,
-        Some(s) => Some(s),
-        None => {
+        _ if allowed.is_empty() => None,
+        Some(s) if allowed.contains(&s) => Some(s),
+        _ => {
+            // Weighted among the sexes the race allows.
             let nb = world.resource::<crate::params::Params>().get("population.nonbinary_share", 0.06) as f32;
-            let roll = world.resource_mut::<crate::rng::SimRng>().next_f32();
-            Some(if roll < nb { crate::stats::Sex::NonBinary } else if roll < nb + (1.0 - nb) / 2.0 { crate::stats::Sex::Female } else { crate::stats::Sex::Male })
+            let weight = |s: &Sex| if *s == Sex::NonBinary { nb } else { (1.0 - nb) / 2.0 };
+            let total: f32 = allowed.iter().map(weight).sum();
+            let mut roll = world.resource_mut::<crate::rng::SimRng>().next_f32() * total;
+            let mut pick = allowed[allowed.len() - 1];
+            for s in &allowed {
+                roll -= weight(s);
+                if roll < 0.0 {
+                    pick = *s;
+                    break;
+                }
+            }
+            Some(pick)
         }
     };
     if let Some(s) = sex {

@@ -67,65 +67,91 @@ fn merge<T, F: Fn(&T) -> &str>(dst: &mut BTreeMap<Id, T>, src: Vec<T>, id: F) {
     }
 }
 
+/// Kinds of definitions (keyed by id) the admin console can replace while the game runs.
+pub const EDITABLE_KINDS: &[&str] = &[
+    "stats", "needs", "body_plans", "races", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
+    "buildings", "templates", "spawners", "triggers", "collections", "titles", "news_sources", "global_modifiers", "supplies",
+];
+
+/// Adds one pack on top of the content merged so far (same id = replaced).
+fn merge_pack(c: &mut ContentData, p: ContentPack) {
+    if !p.meta.id.is_empty() {
+        c.packs.push(p.meta.clone());
+    }
+    if let Some(b) = p.bindings {
+        c.bindings = b;
+    }
+    c.params.extend(p.params);
+    merge(&mut c.stats, p.stats, |d| &d.id);
+    merge(&mut c.needs, p.needs, |d| &d.id);
+    merge(&mut c.body_plans, p.body_plans, |d| &d.id);
+    merge(&mut c.races, p.races, |d| &d.id);
+    merge(&mut c.classes, p.classes, |d| &d.id);
+    merge(&mut c.statuses, p.statuses, |d| &d.id);
+    merge(&mut c.fluids, p.fluids, |d| &d.id);
+    merge(&mut c.items, p.items, |d| &d.id);
+    merge(&mut c.abilities, p.abilities, |d| &d.id);
+    merge(&mut c.jobs, p.jobs, |d| &d.id);
+    merge(&mut c.actions, p.actions, |d| &d.id);
+    merge(&mut c.factions, p.factions, |d| &d.id);
+    merge(&mut c.buildings, p.buildings, |d| &d.id);
+    if let Some(m) = p.map {
+        match &mut c.map {
+            None => c.map = Some(m),
+            Some(cur) => {
+                cur.layers.extend(m.layers);
+                cur.zones.extend(m.zones);
+                cur.portals.extend(m.portals);
+                cur.networks.extend(m.networks);
+                cur.walls.extend(m.walls);
+                cur.edges.extend(m.edges);
+                cur.legend.extend(m.legend);
+                cur.props.extend(m.props);
+            }
+        }
+    }
+    merge(&mut c.templates, p.templates, |d| &d.id);
+    c.placements.extend(p.placements);
+    merge(&mut c.spawners, p.spawners, |d| &d.id);
+    merge(&mut c.triggers, p.triggers, |d| &d.id);
+    merge(&mut c.collections, p.collections, |d| &d.id);
+    merge(&mut c.titles, p.titles, |d| &d.id);
+    if let Some(press) = p.press {
+        c.press = press;
+    }
+    merge(&mut c.news_sources, p.news_sources, |d| &d.id);
+    c.news_impacts.extend(p.news_impacts);
+    c.victory.extend(p.victory);
+    merge(&mut c.global_modifiers, p.global_modifiers, |d| &d.id);
+    merge(&mut c.supplies, p.supplies, |d| &d.id);
+    c.sprites.extend(p.sprites);
+    for (k, lines) in p.dialogue {
+        c.dialogue.entry(k).or_default().extend(lines);
+    }
+}
+
+impl Content {
+    /// The content with one definition added or replaced (`kind` is one of [`EDITABLE_KINDS`], `def`
+    /// its JSON form), validated like a fresh load.
+    pub fn with_def(&self, kind: &str, def: serde_json::Value) -> Result<Content, ContentError> {
+        if !EDITABLE_KINDS.contains(&kind) {
+            return Err(ContentError::Invalid(vec![format!("i contenuti di tipo '{kind}' non si modificano da qui")]));
+        }
+        let pack: ContentPack = serde_json::from_value(serde_json::json!({ kind: [def] })).map_err(|e| ContentError::Invalid(vec![format!("{kind}: {e}")]))?;
+        let mut c = (*self.0).clone();
+        merge_pack(&mut c, pack);
+        let errors = c.validate();
+        if errors.is_empty() { Ok(Content(Arc::new(c))) } else { Err(ContentError::Invalid(errors)) }
+    }
+}
+
 impl Content {
     /// Merges packs in order (later definitions with the same id replace earlier ones) and validates
     /// every cross reference.
     pub fn from_packs(packs: Vec<ContentPack>) -> Result<Self, ContentError> {
         let mut c = ContentData::default();
         for p in packs {
-            if !p.meta.id.is_empty() {
-                c.packs.push(p.meta.clone());
-            }
-            if let Some(b) = p.bindings {
-                c.bindings = b;
-            }
-            c.params.extend(p.params);
-            merge(&mut c.stats, p.stats, |d| &d.id);
-            merge(&mut c.needs, p.needs, |d| &d.id);
-            merge(&mut c.body_plans, p.body_plans, |d| &d.id);
-            merge(&mut c.races, p.races, |d| &d.id);
-            merge(&mut c.classes, p.classes, |d| &d.id);
-            merge(&mut c.statuses, p.statuses, |d| &d.id);
-            merge(&mut c.fluids, p.fluids, |d| &d.id);
-            merge(&mut c.items, p.items, |d| &d.id);
-            merge(&mut c.abilities, p.abilities, |d| &d.id);
-            merge(&mut c.jobs, p.jobs, |d| &d.id);
-            merge(&mut c.actions, p.actions, |d| &d.id);
-            merge(&mut c.factions, p.factions, |d| &d.id);
-            merge(&mut c.buildings, p.buildings, |d| &d.id);
-            if let Some(m) = p.map {
-                match &mut c.map {
-                    None => c.map = Some(m),
-                    Some(cur) => {
-                        cur.layers.extend(m.layers);
-                        cur.zones.extend(m.zones);
-                        cur.portals.extend(m.portals);
-                        cur.networks.extend(m.networks);
-                        cur.walls.extend(m.walls);
-                        cur.edges.extend(m.edges);
-                        cur.legend.extend(m.legend);
-                        cur.props.extend(m.props);
-                    }
-                }
-            }
-            merge(&mut c.templates, p.templates, |d| &d.id);
-            c.placements.extend(p.placements);
-            merge(&mut c.spawners, p.spawners, |d| &d.id);
-            merge(&mut c.triggers, p.triggers, |d| &d.id);
-            merge(&mut c.collections, p.collections, |d| &d.id);
-            merge(&mut c.titles, p.titles, |d| &d.id);
-            if let Some(press) = p.press {
-                c.press = press;
-            }
-            merge(&mut c.news_sources, p.news_sources, |d| &d.id);
-            c.news_impacts.extend(p.news_impacts);
-            c.victory.extend(p.victory);
-            merge(&mut c.global_modifiers, p.global_modifiers, |d| &d.id);
-            merge(&mut c.supplies, p.supplies, |d| &d.id);
-            c.sprites.extend(p.sprites);
-            for (k, lines) in p.dialogue {
-                c.dialogue.entry(k).or_default().extend(lines);
-            }
+            merge_pack(&mut c, p);
         }
         if let Some(m) = c.map.as_mut() {
             for l in m.layers.iter_mut() {
@@ -152,6 +178,15 @@ impl ContentData {
 
     pub fn stat_bounds(&self, stat: &str) -> (f32, f32) {
         self.stats.get(stat).map_or((f32::MIN, f32::MAX), |s| (s.min, s.max))
+    }
+
+    /// Bounds of a stat for members of a race: the stat's own, narrowed by the race's `stat_ranges`.
+    pub fn race_stat_bounds(&self, race: &str, stat: &str) -> (f32, f32) {
+        let (lo, hi) = self.stat_bounds(stat);
+        match self.races.get(race).and_then(|r| r.stat_ranges.get(stat)) {
+            Some(r) => (r.min.map_or(lo, |m| m.max(lo)), r.max.map_or(hi, |m| m.min(hi))),
+            None => (lo, hi),
+        }
     }
 
     pub fn zone(&self, id: &str) -> Option<&ZoneDef> {
@@ -229,8 +264,17 @@ impl Validator<'_> {
         for r in c.races.values() {
             let ctx = format!("razza {}", r.id);
             self.check(&c.body_plans, "piano corporeo", &r.body_plan, &ctx);
-            for s in r.stats.keys() {
+            for s in r.stats.keys().chain(r.stat_ranges.keys()) {
                 self.stat(s, &ctx);
+            }
+            for (s, range) in &r.stat_ranges {
+                if let (Some(lo), Some(hi)) = (range.min, range.max)
+                    && lo > hi {
+                        self.errors.push(format!("{ctx}: {s} ha il minimo ({lo}) sopra il massimo ({hi})"));
+                    }
+            }
+            for n in r.needs_exempt.iter().chain(r.need_rates.keys()) {
+                self.check(&c.needs, "bisogno", n, &ctx);
             }
             for a in &r.abilities {
                 self.check(&c.abilities, "abilità", a, &ctx);

@@ -40,6 +40,9 @@ pub enum SimCommand {
     Promote { entity: SimId, rank: String },
     SetRelation { a: String, b: String, value: f32 },
     SetSprite { id: String, sprite: SpriteDef },
+    /// Admin: adds or replaces one content definition (`kind` as in the packs: "races", "items"…)
+    /// while the game runs; saved to the overrides file of the content folder.
+    EditContent { kind: String, def: serde_json::Value },
     /// A player's order to its champion or to a member of its faction (members may refuse).
     PlayerOrder { player: String, entity: SimId, order: crate::player::Order },
     /// Walks the player's champion one cell right away (Pokémon-style, outside the tick); a passage
@@ -264,6 +267,26 @@ pub fn apply(world: &mut World, cmd: SimCommand) -> Result<String, String> {
             let cur = f.relation(&a, &b);
             f.modify_relation(&a, &b, value - cur);
             Ok(format!("relazione {a}↔{b} = {value}"))
+        }
+        SimCommand::EditContent { kind, def } => {
+            let id = def.get("id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).ok_or("manca l'id")?.to_string();
+            let content = world.resource::<Content>().with_def(&kind, def).map_err(|e| e.to_string())?;
+            if kind == "jobs"
+                && let Some(j) = content.jobs.get(&id)
+                && !j.handler.is_empty()
+                && !world.resource::<crate::extensions::Extensions>().job_handlers.contains_key(&j.handler) {
+                    return Err(format!("job {id}: handler '{}' non registrato", j.handler));
+                }
+            // Saved in canonical form (defaults filled in), as the engine reads it back.
+            let saved = serde_json::to_value(&content).ok().and_then(|v| v.get(&kind)?.get(&id).cloned()).unwrap_or_default();
+            world.insert_resource(content);
+            match world.resource::<crate::content::ContentOverrides>().0.clone() {
+                Some(path) => {
+                    crate::content::save_override(&path, &kind, saved)?;
+                    Ok(format!("{kind}/{id} aggiornato e salvato in {}", path.file_name().map(|f| f.to_string_lossy()).unwrap_or_default()))
+                }
+                None => Ok(format!("{kind}/{id} aggiornato (solo in memoria)")),
+            }
         }
         SimCommand::SetSprite { id, sprite } => {
             world.resource_mut::<SpriteMapping>().0.insert(id.clone(), sprite);

@@ -80,6 +80,21 @@ a.chip:hover { outline: 1px solid var(--accent); }
 .gallery figure { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px; text-align: center; }
 .gallery img { max-width: 100%; max-height: 96px; image-rendering: pixelated; cursor: zoom-in; background: repeating-conic-gradient(#8883 0 25%, #0000 0 50%) 0 0 / 12px 12px; }
 .gallery figcaption { font-size: 11px; word-break: break-all; }
+table.ed { margin-bottom: 6px; }
+table.ed td, table.ed th { padding: 3px 6px; }
+input.num { width: 76px; text-align: right; }
+.card { overflow-x: auto; }
+.card .kv > div { min-width: 0; }
+.card .kv input:not([type=checkbox]), .card .kv textarea, .card .kv select { max-width: 100%; }
+.picker input { min-width: 0; }
+button.x { padding: 0 6px; line-height: 18px; color: var(--warn); border-color: transparent; background: transparent; }
+button.x:hover { border-color: var(--warn); }
+.chip button.x { padding: 0 3px; line-height: 14px; }
+.picker { display: inline-flex; gap: 4px; margin-top: 4px; }
+.scrollbox { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; margin-top: 6px; }
+.card.wide { grid-column: 1 / -1; }
+textarea.json { width: 100%; font: 12px/1.35 ui-monospace, monospace; margin-bottom: 4px; }
+h3.group { margin: 18px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 4px; }
 #toast { position: fixed; right: 12px; bottom: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; display: none; max-width: 420px; z-index: 30; }
 @media (max-width: 900px) { body { grid-template-columns: 1fr; } aside { position: static; height: auto; max-height: 40vh; } .split { grid-template-columns: 1fr; } #mapwrap { height: 60vh; } }
 </style>
@@ -623,46 +638,228 @@ const FIELD = { default: "valore iniziale", group: "gruppo", max: "massimo", min
   label: "etichetta", handler: "gestore", duration: "durata", work_type: "tipo di lavoro", skill: "abilità che velocizza", news: "notiziabilità", priority: "priorità",
   innate: "di razza", mode: "modo", term: "mandato", grace: "tolleranza", vacancy_ticks: "vacanza (tick)", members_only: "solo membri", challenge_stat: "si sfida con",
   challenge_allies: "raggio degli alleati", seat_zone: "trono", grants_faction_control: "dà il controllo della fazione", kind: "tipo", stacking: "accumulo",
-  progression: "progressione", hidden: "nascosto", body_plan: "corpo", shapeshifter: "mutaforma", sexless: "senza sesso", sex: "sesso", playable: "giocabile",
+  progression: "progressione", hidden: "nascosto", body_plan: "corpo", sexes: "sessi", stat_ranges: "caratteristiche della razza", need_rates: "velocità dei bisogni", needs_exempt: "bisogni assenti", sex: "sesso", playable: "giocabile",
   neutral: "neutrale", role: "ruolo", treasury: "tesoro iniziale", decay: "calo per tick", low_threshold: "soglia bassa", interval: "intervallo", max_alive: "massimo vivi",
   zone: "zona", template: "template", footprint: "ingombro", hp: "integrità", income: "incasso", markup: "ricarico" };
-function scalarFields(d) {
-  const o = {};
-  for (const [k, v] of Object.entries(d)) if (v !== null && typeof v !== "object" && k !== "name" && k !== "id" && k !== "description") o[FIELD[k] ?? k] = esc(v === true ? "sì" : v === false ? "no" : v);
-  return o;
-}
-function statMap(m) { return chips(Object.entries(m ?? {}).map(([k, v]) => `${name("stats", k)} ${v > 0 ? "+" : ""}${v}`)); }
 function pawnsWhere(f) {
   const list = living().filter(f);
   return list.length ? list.slice(0, 200).map(elink).join("") + (list.length > 200 ? ` <span class="muted">e altri ${list.length - 200}</span>` : "") : '<span class="muted">nessuno</span>';
 }
-function renderDetail() {
-  if (route.kind === "ent") return entityPage(route.id);
-  const kind = route.kind, d = C(kind)[route.id] ?? Object.values(C(kind)).find((x) => x.name === route.id);
-  const spec = CATALOG[kind];
-  $("dCrumb").textContent = `${spec?.title ?? kind} › ${d?.name ?? route.id}`;
-  if (!d) { $("dBody").innerHTML = `<div class="card">Voce non trovata.</div>`; return; }
-  const cards = [];
-  const extra = {};
+// ── Editing definitions ───────────────────────────────────────────────────────
+// The detail page edits a copy of the definition; every change sends it back whole
+// (PUT /api/admin/content/{kind}/{id}) and the engine validates, applies and saves it.
+let draft = null;
+let pickers = [];
+const SEX = { Male: "uomo", Female: "donna", NonBinary: "non binario" };
+const getAt = (o, p) => p.reduce((a, k) => (a == null ? undefined : a[k]), o);
+function setAt(o, p, v) {
+  let a = o;
+  for (const k of p.slice(0, -1)) a = a[k] != null && typeof a[k] === "object" ? a[k] : (a[k] = {});
+  a[p[p.length - 1]] = v;
+}
+/** Removes a map entry; maps left empty below the top level go too. */
+function delAt(o, p) {
+  const parent = getAt(o, p.slice(0, -1));
+  if (parent && typeof parent === "object") delete parent[p[p.length - 1]];
+  if (p.length > 2 && parent && !Object.keys(parent).length) delAt(o, p.slice(0, -1));
+}
+async function saveDraft() {
+  const { kind, id, def } = draft;
+  try {
+    const r = await put(`/api/admin/content/${kind}/${encodeURIComponent(id)}`, def);
+    S.content[kind][id] = def;
+    S.describe = await api("/api/admin/describe").catch(() => S.describe);
+    toast(r.ok);
+  } catch (e) { toast("Rifiutato: " + e.message, true); }
+  const y = window.scrollY, main = document.querySelector("main"), my = main?.scrollTop;
+  renderDetail();
+  window.scrollTo(0, y); if (main) main.scrollTop = my;
+}
+const P = (p) => esc(JSON.stringify(p));
+const del = (p, v) => `<button class="x" title="Togli" data-act="${v === undefined ? "delkey" : "rm"}" data-p="${P(p)}"${v === undefined ? "" : ` data-v="${esc(v)}"`}>×</button>`;
+/** A text box with the available values and a + button. op: push (into a list), rm (from a list), key (new map key). */
+function picker(path, cands, { op = "push", free = false, value = 0, ph = "aggiungi…" } = {}) {
+  const i = pickers.push({ path, cands, op, free, value }) - 1;
+  if (!cands.length && !free) return '<span class="muted">niente altro da aggiungere</span>';
+  return `<span class="picker"><input list="pk${i}" placeholder="${esc(ph)}" size="22"><datalist id="pk${i}">${cands.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</datalist><button data-act="pick" data-i="${i}">+ Aggiungi</button></span>`;
+}
+const candsOf = (kind, except = []) => Object.values(C(kind)).filter((d) => !except.includes(d.id)).map((d) => [d.id, d.name || d.id]).sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+/** Values a field takes across all definitions of a kind (for suggestions and enums). */
+function peerValues(kind, f) {
+  const out = new Set();
+  for (const d of Object.values(C(kind))) for (const v of [].concat(d[f] ?? [])) if (typeof v !== "object") out.add(String(v));
+  return [...out].sort();
+}
+const zoneIds = () => (S.content?.map?.zones ?? []).map((z) => [z.id, z.name || z.id]);
+function numInput(path, value, ph, t = "num") {
+  return `<input type="number" step="any" class="num" data-set="${P(path)}" data-t="${t}" value="${value == null ? "" : Number(Number(value).toPrecision(6))}" placeholder="${esc(ph ?? "")}">`;
+}
+
+// What a definition does to stats: [stat, "modifier"] pairs (abilities, statuses, items…).
+function statEffects(kind, d) {
+  const out = [];
+  const map = (m, suffix = "") => Object.entries(m ?? {}).forEach(([k, v]) => out.push([k, `${v > 0 ? "+" : ""}${fmt(v, 2)}${suffix}`]));
+  const walk = (x) => {
+    if (Array.isArray(x)) return x.forEach(walk);
+    if (!x || typeof x !== "object") return;
+    if (x.ModStat) out.push([x.ModStat.stat, `${x.ModStat.amount > 0 ? "+" : ""}${fmt(x.ModStat.amount, 2)}`]);
+    if (x.SetStat) out.push([x.SetStat.stat, `= ${fmt(x.SetStat.value, 2)}`]);
+    Object.values(x).forEach(walk);
+  };
+  if (kind === "statuses") { map(d.stats); (d.stages ?? []).forEach((s) => map(s.stats, ` (${s.name})`)); walk(d.on_apply); }
+  else if (kind === "abilities") walk(d.effects);
+  else if (kind === "items") { map(d.carried_stats, " (portato)"); walk(d.on_use); }
+  else if (["classes", "races", "titles", "templates"].includes(kind)) map(d.stats);
+  return out;
+}
+/** Table of referenced definitions with what they do to stats, a remove button each and a picker. */
+const STAT_KINDS = ["abilities", "statuses", "items", "classes", "races", "titles", "templates"];
+function refTable(kind, path, list, refKind, { op, label = "Nome", pickOp = "push", pickCands } = {}) {
+  if (!STAT_KINDS.includes(refKind)) {
+    const rows = (list ?? []).map((id) => `<tr><td>${link(refKind, id)}</td><td class="muted">${esc(C(refKind)[id]?.description || D(refKind, id).requires || "")}</td><td class="num">${op ? op(id) : del(path, id)}</td></tr>`).join("");
+    return `<table class="ed"><thead><tr><th>${esc(label)}</th><th>Descrizione</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="muted">nessuna</td></tr>`}</tbody></table>` +
+      picker(path, pickCands ?? candsOf(refKind, list ?? []), { op: pickOp });
+  }
+  const rows = (list ?? []).map((id) => {
+    const rd = C(refKind)[id], fx = rd ? statEffects(refKind, rd) : [];
+    const other = D(refKind, id).effects || D(refKind, id).on_apply || rd?.description || "";
+    const cells = fx.length ? `<td>${fx.map(([s]) => esc(name("stats", s))).join("<br>")}</td><td class="num">${fx.map(([, m]) => esc(m)).join("<br>")}</td>`
+      : `<td colspan="2" class="muted">${esc(other)}</td>`;
+    return `<tr><td>${link(refKind, id)}</td>${cells}<td class="num">${op ? op(id) : del(path, id)}</td></tr>`;
+  }).join("");
+  return `<table class="ed"><thead><tr><th>${esc(label)}</th><th>Caratteristica</th><th class="num">Modificatore</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="muted">nessuna</td></tr>`}</tbody></table>` +
+    picker(path, pickCands ?? candsOf(refKind, list ?? []), { op: pickOp });
+}
+/** Editable map id → number (stats, items, needs…). */
+function mapTable(path, m, keyKind, { keyLabel = "Voce", valLabel = "Valore", value = 0 } = {}) {
+  const rows = Object.entries(m ?? {}).map(([k, v]) => `<tr><td>${keyKind ? link(keyKind, k) : esc(k)}</td><td class="num">${typeof v === "number" || v == null ? numInput([...path, k], v, "", "num") : `<code>${esc(JSON.stringify(v))}</code>`}</td><td class="num">${del([...path, k])}</td></tr>`).join("");
+  const cands = keyKind ? candsOf(keyKind, Object.keys(m ?? {})) : [];
+  return `<table class="ed"><thead><tr><th>${esc(keyLabel)}</th><th class="num">${esc(valLabel)}</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="muted">nessuna</td></tr>`}</tbody></table>` +
+    picker(path, cands, { op: "key", free: !keyKind, value });
+}
+/** Free-text values (tags…) as chips, with the values used elsewhere as suggestions. */
+function tagList(kind, path, list, f) {
+  const sugg = peerValues(kind, f).filter((v) => !(list ?? []).includes(v)).map((v) => [v, v]);
+  return `<div>${(list ?? []).map((t) => `<span class="chip">${esc(t)} ${del(path, t)}</span>`).join("") || '<span class="muted">nessuno</span>'}</div>` + picker(path, sugg, { free: true });
+}
+function jsonBox(path, v, text) {
+  return (text ? `<div class="muted" style="margin-bottom:4px">${esc(text)}</div>` : "") +
+    `<textarea class="json" rows="${Math.min(14, Math.max(2, JSON.stringify(v, null, 1).split("\n").length))}" data-json="${P(path)}">${esc(JSON.stringify(v, null, 1))}</textarea>` +
+    `<div><button data-act="json" data-p="${P(path)}">Salva</button></div>`;
+}
+
+// How each field is edited, by name.
+const REFLIST = { abilities: "abilities", actions: "actions", classes: "classes", includes: "classes", replaces: "classes", races: "races", titles: "titles",
+  immunities: "statuses", innate_statuses: "statuses", statuses: "statuses", needs_exempt: "needs", exports: "items", items: "items" };
+const REF = { race: "races", faction: "factions", body_plan: "body_plans", template: "templates", skill: "stats", escalates_to: "statuses", item: "items",
+  challenge_stat: "stats", summoner: "templates", author: "templates", carries: "statuses" };
+const STATMAP = new Set(["stats", "carried_stats", "score"]);
+const KEYMAP = { items: "items", stock: "items", cost: "items", passive: "items", need_rates: "needs", relations: "factions", capacities: null, ideology: null, work: null };
+// Conditions and effects: edited as JSON, with their description in words.
+const LOGIC = new Set(["requires", "claim_requires", "when", "active_when", "release", "effects", "on_apply", "per_tick", "on_expire", "on_use", "on_hit",
+  "on_enter", "bonus", "effects_when_low", "considerations", "stages", "contagion", "consequences", "recipes", "ranks", "goals", "headlines", "tether", "disguise", "crime", "params"]);
+const ZONES = new Set(["zone", "seat_zone", "zones"]);
+const ENUMS = { statuses: ["kind", "stacking"], factions: ["role"], titles: ["mode"], templates: ["sex"] };
+const ENUM_LABEL = { mode: MODES, sex: SEX };
+const LOGIC_TEXT = { requires: "requires", claim_requires: "requires", effects: "effects", on_apply: "on_apply", per_tick: "per_tick" };
+const SECTION = { stats: "Caratteristiche", carried_stats: "Caratteristiche quando è in uso", score: "Punteggio per la successione" };
+const TITLES = { abilities: "abilità", actions: "azioni", includes: "comprende le classi", replaces: "sostituisce le classi", races: "razze", classes: "classi",
+  titles: "ruoli", immunities: "immunità", innate_statuses: "stati innati", statuses: "stati", needs_exempt: "bisogni assenti", exports: "esporta", items: "oggetti",
+  tags: "tag", grants_tags: "tag che dà", required_tags: "tag richiesti", ideology_tags: "tag ideologici", forbids: "vieta", types: "tipi", zones: "zone",
+  work: "lavori (priorità)", stock: "scorte iniziali", cost: "costo di costruzione", passive: "produzione passiva", need_rates: "velocità dei bisogni",
+  relations: "rapporti iniziali", capacities: "capacità", ideology: "ideologia", requires: "requisiti", claim_requires: "requisiti per il ruolo",
+  effects: "effetti", on_apply: "all'inizio", per_tick: "ogni tick", on_expire: "alla fine", on_use: "all'uso", on_hit: "quando colpisce", stages: "stadi",
+  contagion: "contagio", considerations: "considerazioni dell'AI", kind: "tipo", ranks: "ranghi", goals: "obiettivi", recipes: "ricette", sells: "vende",
+  consequences: "conseguenze dei danni", crime: "reato", params: "parametri", when: "quando", active_when: "attivo quando", tether: "legato a", bonus: "bonus",
+  headlines: "titoli", truth: "verità", price_tags: "prezzi per tag", supply: "rifornimenti", effects_when_low: "effetti quando è basso", parts: "parti",
+  disguise: "travestimento", spills: "versa", footprint: "ingombro", work_type: "tipo di lavoro", label: "etichetta", score: "punteggio" };
+const fieldLabel = (f) => TITLES[f] ?? FIELD[f] ?? f.replace(/_/g, " ");
+
+/** The editor of one field (null when the field is not edited by itself). */
+function fieldEditor(kind, d, f) {
+  const v = d[f], peers = Object.values(C(kind)).map((x) => x[f]);
+  const sample = v ?? peers.find((x) => x != null);
+  if (LOGIC.has(f) || (kind === "actions" && f === "kind")) return ["logic", jsonBox([f], v, typeof D(kind, d.id)[LOGIC_TEXT[f]] === "string" ? D(kind, d.id)[LOGIC_TEXT[f]] : "")];
+  if (ZONES.has(f)) {
+    if (Array.isArray(v)) return ["list", `<div>${v.map((z) => `<span class="chip">${esc(z)} ${del([f], z)}</span>`).join("") || '<span class="muted">nessuna</span>'}</div>` + picker([f], zoneIds().filter(([z]) => !v.includes(z)), { free: true })];
+    return ["value", `<input data-set="${P([f])}" data-t="str" list="zones-dl" value="${esc(v ?? "")}" size="24">`];
+  }
+  if (Array.isArray(sample) && (sample.length === 0 || typeof sample[0] === "string") && Array.isArray(v ?? [])) {
+    if (REFLIST[f]) return ["refs", refTable(kind, [f], v, REFLIST[f])];
+    return ["tags", tagList(kind, [f], v, f)];
+  }
+  if (sample && typeof sample === "object" && !Array.isArray(sample) && Object.values(sample).every((x) => typeof x === "number" || x === null)) {
+    if (STATMAP.has(f)) return ["map", mapTable([f], v, "stats", { keyLabel: "Caratteristica", valLabel: "Modificatore" })];
+    if (f in KEYMAP) return ["map", mapTable([f], v, KEYMAP[f], { keyLabel: KEYMAP[f] ? fieldLabel(KEYMAP[f]) : "Chiave", valLabel: "Valore", value: f === "items" || f === "stock" || f === "cost" ? 1 : 0 })];
+  }
+  if (REF[f]) {
+    const nullable = v == null || peers.some((x) => x == null || x === "");
+    return ["value", `<select data-set="${P([f])}" data-t="strnull">${nullable ? '<option value="">—</option>' : ""}${candsOf(REF[f]).map(([id, l]) => `<option value="${esc(id)}" ${id === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select> ${v ? link(REF[f], v, "▸") : ""}`];
+  }
+  if (ENUMS[kind]?.includes(f)) {
+    const vals = [...new Set([...peerValues(kind, f), ...Object.keys(ENUM_LABEL[f] ?? {})])], lab = ENUM_LABEL[f] ?? {};
+    const nullable = v == null || peers.some((x) => x == null);
+    return ["value", `<select data-set="${P([f])}" data-t="strnull">${nullable ? '<option value="">—</option>' : ""}${vals.map((x) => `<option value="${esc(x)}" ${x === v ? "selected" : ""}>${esc(lab[x] ?? x)}</option>`).join("")}</select>`];
+  }
+  if (typeof sample === "boolean") return ["value", `<input type="checkbox" data-set="${P([f])}" data-t="bool" ${v ? "checked" : ""}>`];
+  if (typeof sample === "number") return ["value", numInput([f], v, "", v === null || peers.some((x) => x === null) ? "numnull" : "num")];
+  if (typeof sample === "string" || sample == null) {
+    if (f === "name" || f === "description" || f === "id") return null;
+    if (sample == null && v == null) return ["value", `<input data-set="${P([f])}" data-t="strnull" value="" size="24" placeholder="—">`];
+    const sugg = peerValues(kind, f);
+    return ["value", `<input data-set="${P([f])}" data-t="${v === null || peers.some((x) => x === null) ? "strnull" : "str"}" value="${esc(v ?? "")}" size="24"${sugg.length > 1 && sugg.length < 80 ? ` list="dl-${kind}-${f}"` : ""}>` +
+      (sugg.length > 1 && sugg.length < 80 ? `<datalist id="dl-${kind}-${f}">${sugg.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>` : "")];
+  }
+  return ["logic", jsonBox([f], v, typeof D(kind, d.id)[LOGIC_TEXT[f]] === "string" ? D(kind, d.id)[LOGIC_TEXT[f]] : "")];
+}
+const card = (title, html, cls = "") => `<div class="card ${cls}"><h4>${esc(title)}</h4>${html}</div>`;
+
+// Races: their own sections (stats, abilities, immunities, needs, body, sexes).
+function raceSections(d) {
+  const out = [];
+  const ranges = d.stat_ranges ?? {}, bonus = d.stats ?? {};
+  const stats = Object.values(C("stats")).sort((a, b) => (a.group || "").localeCompare(b.group || "") || a.name.localeCompare(b.name));
+  const rows = stats.map((s) => {
+    const r = ranges[s.id] ?? {}, custom = Object.keys(r).length || bonus[s.id] != null;
+    return `<tr data-name="${esc((s.name + " " + s.id + " " + (s.group || "")).toLowerCase())}" data-custom="${custom ? 1 : 0}"><td>${link("stats", s.id)} <span class="muted">${esc(s.group || "")}</span></td>` +
+      `<td class="num">${numInput(["stat_ranges", s.id, "min"], r.min, fmt(s.min))}</td><td class="num">${numInput(["stat_ranges", s.id, "max"], r.max, s.max > 1e6 ? "∞" : fmt(s.max))}</td>` +
+      `<td class="num">${numInput(["stat_ranges", s.id, "initial"], r.initial, fmt(s.default) + (s.spread ? " ± " + fmt(s.spread) : ""))}</td><td class="num">${numInput(["stats", s.id], bonus[s.id], "0")}</td></tr>`;
+  }).join("");
+  out.push(card("Caratteristiche", `<div class="row"><input class="tfilter" placeholder="cerca caratteristica…" size="24"> <label><input type="checkbox" class="tcustom"> solo quelle personalizzate per la razza</label></div>` +
+    `<div class="muted">Vuoto = vale il valore generale della caratteristica (in grigio). Il bonus si somma sempre; minimo e massimo limitano il valore; l'iniziale è quello alla nascita.</div>` +
+    `<div class="scrollbox"><table class="ed stattable"><thead><tr><th>Caratteristica</th><th class="num">Minimo</th><th class="num">Massimo</th><th class="num">Iniziale</th><th class="num">Bonus</th></tr></thead><tbody>${rows}</tbody></table></div>`, "wide"));
+  out.push(card("Abilità", refTable("abilities", ["abilities"], d.abilities, "abilities", { label: "Abilità" })));
+  out.push(card("Immunità", refTable("statuses", ["immunities"], d.immunities, "statuses", { label: "Stato da cui è immune" })));
+  const exempt = d.needs_exempt ?? [], rates = d.need_rates ?? {};
+  const has = Object.values(C("needs")).filter((n) => !exempt.includes(n.id));
+  out.push(card("Bisogni", `<table class="ed"><thead><tr><th>Bisogno</th><th class="num">Calo/tick</th><th class="num">Variazione</th><th class="num">Effettivo</th><th></th></tr></thead><tbody>` +
+    (has.map((n) => `<tr><td>${link("needs", n.id)}</td><td class="num">${fmt(n.decay, 4)}</td><td class="num">${numInput(["need_rates", n.id], rates[n.id], "0")}</td>` +
+      `<td class="num">${fmt(n.decay * Math.max(0, 1 + (rates[n.id] ?? 0)), 4)}</td><td class="num"><button class="x" title="La razza non ha questo bisogno" data-act="push" data-p="${P(["needs_exempt"])}" data-v="${esc(n.id)}">×</button></td></tr>`).join("") ||
+      `<tr><td colspan="5" class="muted">nessun bisogno</td></tr>`) + `</tbody></table>` +
+    picker(["needs_exempt"], exempt.map((n) => [n, name("needs", n)]), { op: "rm", ph: "dai un bisogno…" }) +
+    `<div class="muted">Variazione: +0,5 = consuma il 50% più in fretta, −0,5 = la metà.</div>`));
+  const plan = C("body_plans")[d.body_plan];
+  out.push(card("Corpo", `<div class="row"><select data-set="${P(["body_plan"])}" data-t="str">${candsOf("body_plans").map(([id]) => `<option ${id === d.body_plan ? "selected" : ""}>${esc(id)}</option>`).join("")}</select> ${link("body_plans", d.body_plan, "▸ apri")}</div>` +
+    `<table class="ed"><thead><tr><th>Parte</th><th>Attaccata a</th><th class="num">Vita</th><th class="num">Copertura</th><th>Vitale</th></tr></thead><tbody>` +
+    (plan?.parts ?? []).map((p) => `<tr><td>${esc(p.name)}</td><td class="muted">${esc(plan.parts.find((q) => q.id === p.parent)?.name ?? "")}</td><td class="num">${fmt(p.hp)}</td><td class="num">${fmt(p.coverage, 2)}</td><td>${p.vital ? "sì" : ""}</td></tr>`).join("") + `</tbody></table>`));
+  const sexes = d.sexes ?? [];
+  out.push(card("Sessi", `<table class="ed"><tbody>${sexes.map((s) => `<tr><td>${esc(SEX[s] ?? s)}</td><td class="num">${del(["sexes"], s)}</td></tr>`).join("") || '<tr><td class="muted">nessuno: la razza è senza sesso e non si riproduce</td></tr>'}</tbody></table>` +
+    picker(["sexes"], Object.entries(SEX).filter(([k]) => !sexes.includes(k)), { ph: "aggiungi un sesso…" })));
+  return { sections: out, used: ["stats", "stat_ranges", "abilities", "immunities", "needs_exempt", "need_rates", "body_plan", "sexes"] };
+}
+
+/** Live facts about a definition (who has it, how it is doing). */
+function liveInfo(kind, d) {
+  const cards = [], extra = {};
   if (kind === "classes") {
-    extra["Requisiti"] = esc(D("classes", d.id).requires || "non si acquisisce (data dal template o dalla razza)");
-    extra["Bonus"] = statMap(d.stats); extra["Abilità"] = chips(d.abilities, "abilities"); extra["Azioni"] = chips(d.actions, "actions");
-    extra["Comprende"] = chips(d.includes, "classes"); extra["Sostituisce"] = chips(d.replaces, "classes"); extra["Lavori (priorità)"] = chips(Object.entries(d.work ?? {}).map(([k, v]) => `${k} ${v}`));
     cards.push(["Chi è di questa classe", pawnsWhere((e) => e.classes?.includes(d.id))]);
-    cards.push(["Chi ha i requisiti ma non è di questa classe", '<span class="muted">vedi la finestra Classi del client per il campione; per le altre pedine conta il controllo periodico</span>']);
   } else if (kind === "races") {
-    extra["Bonus"] = statMap(d.stats); extra["Abilità"] = chips(d.abilities, "abilities"); extra["Immunità"] = chips(d.immunities, "statuses"); extra["Senza bisogni"] = chips(d.needs_exempt);
     cards.push(["In gioco", pawnsWhere((e) => (e.truth?.race ?? e.race) === d.id)]);
   } else if (kind === "templates") {
-    extra["Razza"] = link("races", d.race); extra["Classi"] = chips(d.classes, "classes"); extra["Fazione"] = d.faction ? link("factions", d.faction) : "—";
-    extra["Ruoli"] = chips(d.titles, "titles"); extra["Statistiche"] = statMap(d.stats); extra["Oggetti"] = chips(Object.entries(d.items ?? {}).map(([i, n]) => `${n}× ${name("items", i)}`));
-    extra["Azioni in più"] = chips(d.actions, "actions");
     cards.push(["In gioco", pawnsWhere((e) => e.template === d.id)]);
   } else if (kind === "titles") {
     const h = holderOf(d.id);
-    extra["Titolare"] = h ? elink(h) : "vacante"; extra["Come si ottiene"] = esc(MODES[d.mode] ?? d.mode); extra["Requisiti"] = esc(D("titles", d.id).requires || "nessuno");
-    extra["Fazione"] = d.faction ? link("factions", d.faction) : "—"; extra["Poteri"] = chips(d.abilities, "abilities") + statMap(d.stats); extra["Azioni"] = chips(d.actions, "actions");
-    extra["Mandato"] = d.term ? `${d.term} tick` : "a vita"; extra["Tolleranza sotto i requisiti"] = d.grace ? `${d.grace} tick` : "nessuna";
+    extra["Titolare"] = h ? elink(h) : "vacante";
   } else if (kind === "stats") {
     const vals = (L.stats[d.id] ?? []).slice().sort((a, b) => a - b), a = agg(vals);
     const lo = Math.min(d.min ?? 0, a.min ?? 0), hi = d.max > 1000 ? (a.max ?? 1) : d.max, bins = new Array(20).fill(0);
@@ -680,22 +877,15 @@ function renderDetail() {
     const where = (L.items[d.id]?.holders ?? []).sort((a, b) => b.n - a.n);
     cards.push(["Dove si trova", where.length ? `<table>${where.map((x) => `<tr><td class="num">${x.n}</td><td>${elink(x.e)} <span class="muted">${x.where}</span></td><td>${posText(x.e.pos)}</td></tr>`).join("")}</table>` : '<span class="muted">da nessuna parte</span>']);
   } else if (kind === "actions") {
-    extra["Fa"] = actionKind(d); extra["Requisiti"] = esc(D("actions", d.id).requires || "—");
-    extra["Considerazioni"] = (d.considerations ?? []).map((c) => `<div><code>${esc(JSON.stringify(c.input))}</code> → ${esc(JSON.stringify(c.curve))}</div>`).join("");
+    extra["Fa"] = actionKind(d);
     cards.push(["Chi la fa adesso", pawnsWhere((e) => e.activity?.action === d.id)]);
   } else if (kind === "jobs") {
-    extra["Effetti"] = esc(D("jobs", d.id).effects || "—"); extra["Requisiti"] = esc(D("jobs", d.id).requires || "—");
-    if (d.crime) extra["Reato"] = esc(`${d.crime.id} (gravità ${d.crime.severity})`);
     cards.push(["Chi lo sta facendo", pawnsWhere((e) => e.activity?.job === d.id)]);
-  } else if (kind === "abilities") {
-    extra["Effetti"] = esc(D("abilities", d.id).effects || "—"); extra["Requisiti"] = esc(D("abilities", d.id).requires || "—");
   } else if (kind === "statuses") {
-    extra["Statistiche"] = statMap(d.stats); extra["All'inizio"] = esc(D("statuses", d.id).on_apply); extra["Ogni tick"] = esc(D("statuses", d.id).per_tick);
-    if (d.stages?.length) extra["Stadi"] = d.stages.map((s) => `<span class="chip">${esc(s.name)} @${s.at}</span>`).join("");
     cards.push(["Chi ce l'ha", pawnsWhere((e) => (e.statuses ?? []).some((s) => s.id === d.id))]);
   } else if (kind === "factions") {
     const f = S.state?.factions?.find((x) => x.id === d.id);
-    extra["Tesoro"] = fmt(f?.treasury, 0) + " €"; extra["Punti"] = S.state?.scores?.[d.id] ?? ""; extra["Ranghi"] = chips(d.ranks?.map((r) => `${r.name} (${r.level})`));
+    extra["Tesoro"] = fmt(f?.treasury, 0) + " €"; extra["Punti"] = S.state?.scores?.[d.id] ?? "";
     extra["Rapporti"] = chips(Object.entries(f?.relations ?? {}).sort((a, b) => a[1] - b[1]).map(([k, v]) => `${name("factions", k)} ${fmt(v, 0)}`));
     cards.push(["Membri", pawnsWhere((e) => e.faction === d.id)]);
   } else if (kind === "buildings") {
@@ -703,13 +893,95 @@ function renderDetail() {
   }
   const used = usersOf(kind, d.id);
   if (used.length) cards.push(["Chi la usa / dove compare", used.join("")]);
+  if (Object.keys(extra).length) cards.unshift(["Situazione", kv(extra)]);
+  return cards;
+}
+
+function renderDetail() {
+  if (route.kind === "ent") return entityPage(route.id);
+  const kind = route.kind, src = C(kind)[route.id] ?? Object.values(C(kind)).find((x) => x.name === route.id);
+  const spec = CATALOG[kind];
+  $("dCrumb").textContent = `${spec?.title ?? kind} › ${src?.name ?? route.id}`;
+  if (!src) { $("dBody").innerHTML = `<div class="card">Voce non trovata.</div>`; return; }
+  const d = structuredClone(src);
+  draft = { kind, id: d.id, def: d };
+  pickers = [];
+  const editable = EDITABLE.includes(kind);
+  // Main sections: the race's own, else one per list/map field plus a card of single values.
+  let main = [], used = ["id", "name", "description"];
+  if (kind === "races") { const r = raceSections(d); main = r.sections; used = [...used, ...r.used]; }
+  const values = {}, details = [], logic = [];
+  for (const f of Object.keys(d)) {
+    if (used.includes(f)) continue;
+    const ed = fieldEditor(kind, d, f);
+    if (!ed) continue;
+    const [type, html] = ed;
+    if (kind === "races") details.push([fieldLabel(f), html]);
+    else if (type === "value") values[fieldLabel(f)] = html;
+    else if (type === "refs" || type === "map") main.push(card(SECTION[f] ?? fieldLabel(f)[0].toUpperCase() + fieldLabel(f).slice(1), html));
+    else if (type === "logic") logic.push([fieldLabel(f), html]);
+    else details.push([fieldLabel(f), html]);
+  }
+  if (Object.keys(values).length) main.unshift(card("Valori", kv(values)));
+  const live = liveInfo(kind, d);
   $("dBody").innerHTML =
     `<div class="detailhead">${CATALOG[kind]?.sprite ? spriteHtml(kind, d, true) : ""}<div><h2>${esc(d.name || d.id)}</h2><div class="muted">${esc(kind)} · <code>${esc(d.id ?? "")}</code></div>` +
     (d.description ? `<p>${esc(d.description)}</p>` : "") + `</div></div>` +
-    `<div class="grid2"><div class="card"><h4>Scheda</h4>${kv({ ...extra, ...scalarFields(d) })}</div>` +
-    cards.map(([t, h]) => `<div class="card"><h4>${esc(t)}</h4>${h}</div>`).join("") + `</div>` +
-    `<details class="card"><summary>Definizione completa (JSON)</summary><pre>${esc(JSON.stringify(d, null, 1))}</pre></details>`;
+    (editable ? "" : `<div class="muted" style="margin-bottom:8px">Questo tipo di contenuto non si modifica dalla console.</div>`) +
+    `<div class="grid2 ${editable ? "" : "readonly"}">${main.join("")}</div>` +
+    (live.length ? `<h3 class="group">Informazioni di gioco</h3><div class="grid2">${live.map(([t, h]) => card(t, h)).join("")}</div>` : "") +
+    `<h3 class="group">Dettaglio</h3><div class="grid2 ${editable ? "" : "readonly"}">` +
+    card("Nome e descrizione", kv({ Nome: "name" in d ? `<input data-set="${P(["name"])}" data-t="str" value="${esc(d.name ?? "")}" size="30">` : "", Descrizione: "description" in d ? `<textarea data-set="${P(["description"])}" data-t="str" rows="3" cols="40">${esc(d.description ?? "")}</textarea>` : "" })) +
+    details.map(([t, h]) => card(t[0].toUpperCase() + t.slice(1), h)).join("") +
+    logic.map(([t, h]) => card(t[0].toUpperCase() + t.slice(1), h)).join("") + `</div>` +
+    `<details class="card"><summary>Definizione completa (JSON)</summary>${editable ? jsonBox([], d) : `<pre>${esc(JSON.stringify(d, null, 1))}</pre>`}</details>` +
+    `<datalist id="zones-dl">${zoneIds().map(([z, n]) => `<option value="${esc(z)}">${esc(n)}</option>`).join("")}</datalist>`;
+  for (const el of $("dBody").querySelectorAll(".readonly input, .readonly select, .readonly textarea, .readonly button")) el.disabled = true;
 }
+const EDITABLE = ["stats", "needs", "body_plans", "races", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
+  "buildings", "templates", "spawners", "triggers", "collections", "titles", "news_sources", "global_modifiers", "supplies"];
+$("dBody").addEventListener("change", (ev) => {
+  const el = ev.target.closest("[data-set]"); if (!el || !draft) return;
+  const p = JSON.parse(el.dataset.set), t = el.dataset.t;
+  let v = t === "bool" ? el.checked : el.value;
+  if (t === "num" || t === "numnull") v = el.value === "" ? null : Number(el.value);
+  if (t === "strnull" && v === "") v = null;
+  if (v === null && p.length > 1) delAt(draft.def, p); else setAt(draft.def, p, v);
+  saveDraft();
+});
+$("dBody").addEventListener("input", (ev) => {
+  // Filter of the race stat table (no saving).
+  const box = ev.target.closest(".card"); if (!box || !ev.target.matches(".tfilter, .tcustom")) return;
+  const q = box.querySelector(".tfilter").value.toLowerCase(), only = box.querySelector(".tcustom").checked;
+  for (const tr of box.querySelectorAll("tbody tr")) tr.style.display = (!q || tr.dataset.name.includes(q)) && (!only || tr.dataset.custom === "1") ? "" : "none";
+});
+$("dBody").addEventListener("click", (ev) => {
+  const el = ev.target.closest("button[data-act]"); if (!el || !draft) return;
+  const a = el.dataset.act, def = draft.def;
+  if (a === "pick") {
+    const pk = pickers[Number(el.dataset.i)], raw = el.parentElement.querySelector("input").value.trim();
+    if (!raw) return;
+    const hit = pk.cands.find(([v]) => v === raw) ?? pk.cands.find(([, l]) => String(l).toLowerCase() === raw.toLowerCase());
+    if (!hit && !pk.free) { toast(`«${raw}» non è tra i valori disponibili`, true); return; }
+    const v = hit ? hit[0] : raw, list = getAt(def, pk.path);
+    if (pk.op === "key") setAt(def, [...pk.path, v], pk.value);
+    else if (pk.op === "rm") setAt(def, pk.path, (list ?? []).filter((x) => x !== v));
+    else setAt(def, pk.path, [...(list ?? []).filter((x) => x !== v), v]);
+  } else {
+    const p = JSON.parse(el.dataset.p);
+    if (a === "rm") setAt(def, p, (getAt(def, p) ?? []).filter((x) => x !== el.dataset.v));
+    else if (a === "push") setAt(def, p, [...(getAt(def, p) ?? []), el.dataset.v]);
+    else if (a === "delkey") delAt(def, p);
+    else if (a === "json") {
+      let v;
+      try { v = JSON.parse(el.parentElement.previousElementSibling.value); } catch (e) { toast("JSON non valido: " + e.message, true); return; }
+      if (!p.length) { if (v?.id !== draft.id) { toast("l'id non si cambia da qui", true); return; } draft.def = v; }
+      else setAt(def, p, v);
+    }
+  }
+  saveDraft();
+});
+
 async function entityPage(id) {
   $("dCrumb").textContent = "Entità #" + id;
   let e, ai;

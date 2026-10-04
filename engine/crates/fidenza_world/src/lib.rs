@@ -312,7 +312,7 @@ fn can_conceive(world: &World, a: Entity, b: Entity) -> bool {
     use sim_core::stats::{Race, Sex};
     let (Some(ra), Some(rb)) = (world.get::<Race>(a), world.get::<Race>(b)) else { return false };
     let content = world.resource::<Content>();
-    let sexless = |r: &str| content.races.get(r).is_none_or(|d| d.sexless);
+    let sexless = |r: &str| content.races.get(r).is_none_or(|d| d.sexes.is_empty());
     if sexless(&ra.0) || sexless(&rb.0) {
         return false;
     }

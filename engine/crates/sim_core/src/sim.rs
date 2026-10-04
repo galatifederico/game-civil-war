@@ -40,13 +40,15 @@ pub struct SimBuilder {
     systems: Vec<SystemAdder>,
     plugins: Vec<String>,
     skip_placements: bool,
+    /// Edits from the admin console go to the overrides file of the last pack folder loaded.
+    overrides: Option<std::path::PathBuf>,
 }
 
 impl SimBuilder {
     pub fn new(seed: u64) -> Self {
         let mut ext = Extensions::default();
         crate::handlers::register_core(&mut ext);
-        Self { seed, packs: Vec::new(), ext, systems: Vec::new(), plugins: Vec::new(), skip_placements: false }
+        Self { seed, packs: Vec::new(), ext, systems: Vec::new(), plugins: Vec::new(), skip_placements: false, overrides: None }
     }
 
     pub fn add_pack(&mut self, pack: ContentPack) -> &mut Self {
@@ -55,7 +57,8 @@ impl SimBuilder {
     }
 
     pub fn load_pack_dir(&mut self, dir: impl AsRef<Path>) -> Result<&mut Self, ContentError> {
-        self.packs.extend(crate::content::load_pack_dir(dir)?);
+        self.packs.extend(crate::content::load_pack_dir(&dir)?);
+        self.overrides = Some(dir.as_ref().join(crate::content::OVERRIDES_FILE));
         Ok(self)
     }
 
@@ -150,6 +153,7 @@ impl SimBuilder {
         world.insert_resource(crate::map::TerrainChanges::default());
         world.insert_resource(self.ext);
         world.insert_resource(content);
+        world.insert_resource(crate::content::ContentOverrides(self.overrides.clone()));
 
         let mut schedule = Schedule::default();
         schedule.set_executor(SingleThreadedExecutor::new());
