@@ -60,6 +60,8 @@ a.chip:hover { outline: 1px solid var(--accent); }
 .kv { display: grid; grid-template-columns: minmax(140px, max-content) 1fr; gap: 3px 14px; }
 .kv > div:nth-child(odd) { color: var(--muted); }
 .detailhead { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 8px; }
+.stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.stack table.ed { width: auto; min-width: 50%; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; }
 .bar { display: inline-block; width: 120px; height: 8px; background: var(--chip); border-radius: 4px; vertical-align: middle; overflow: hidden; }
 .bar > i { display: block; height: 100%; background: var(--bar); }
@@ -928,9 +930,9 @@ function renderDetail() {
     `<div class="detailhead">${CATALOG[kind]?.sprite ? spriteHtml(kind, d, true) : ""}<div><h2>${esc(d.name || d.id)}</h2><div class="muted">${esc(kind)} · <code>${esc(d.id ?? "")}</code></div>` +
     (d.description ? `<p>${esc(d.description)}</p>` : "") + `</div></div>` +
     (editable ? "" : `<div class="muted" style="margin-bottom:8px">Questo tipo di contenuto non si modifica dalla console.</div>`) +
-    `<div class="grid2 ${editable ? "" : "readonly"}">${main.join("")}</div>` +
-    (live.length ? `<h3 class="group">Informazioni di gioco</h3><div class="grid2">${live.map(([t, h]) => card(t, h)).join("")}</div>` : "") +
-    `<h3 class="group">Dettaglio</h3><div class="grid2 ${editable ? "" : "readonly"}">` +
+    `<div class="stack ${editable ? "" : "readonly"}">${main.join("")}</div>` +
+    (live.length ? `<h3 class="group">Informazioni di gioco</h3><div class="stack">${live.map(([t, h]) => card(t, h)).join("")}</div>` : "") +
+    `<h3 class="group">Dettaglio</h3><div class="stack ${editable ? "" : "readonly"}">` +
     card("Nome e descrizione", kv({ Nome: "name" in d ? `<input data-set="${P(["name"])}" data-t="str" value="${esc(d.name ?? "")}" size="30">` : "", Descrizione: "description" in d ? `<textarea data-set="${P(["description"])}" data-t="str" rows="3" cols="40">${esc(d.description ?? "")}</textarea>` : "" })) +
     details.map(([t, h]) => card(t[0].toUpperCase() + t.slice(1), h)).join("") +
     logic.map(([t, h]) => card(t[0].toUpperCase() + t.slice(1), h)).join("") + `</div>` +
