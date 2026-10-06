@@ -93,6 +93,10 @@ button.x:hover { border-color: var(--warn); }
 .chip button.x { padding: 0 3px; line-height: 14px; }
 .scrollbox { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; margin-top: 6px; }
 .card.wide { grid-column: 1 / -1; }
+details.statgroup { border: 1px solid var(--line); border-radius: 6px; margin-top: 6px; }
+details.statgroup > summary { padding: 6px 10px; cursor: pointer; background: var(--chip); border-radius: 6px; }
+details.statgroup[open] > summary { border-bottom: 1px solid var(--line); border-radius: 6px 6px 0 0; }
+details.statgroup table { margin: 4px 0; }
 textarea.json { width: 100%; font: 12px/1.35 ui-monospace, monospace; margin-bottom: 4px; }
 h3.group { margin: 18px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 4px; }
 .modal { position: fixed; inset: 0; background: #0008; display: none; align-items: center; justify-content: center; z-index: 25; padding: 16px; }
@@ -827,20 +831,35 @@ function fieldEditor(kind, d, f) {
 }
 const card = (title, html, cls = "") => `<div class="card ${cls}"><h4>${esc(title)}</h4>${html}</div>`;
 
+// Stat groups: main characteristics first, career counters last.
+const groupRank = (g) => (/principal/i.test(g) ? 0 : /contator/i.test(g) ? 2 : 1);
+// Stat groups the user opened on race pages (kept across saves; until touched, groups with custom values open).
+const openStatGroups = new Set();
 // Races: their own sections (stats, abilities, immunities, needs, body, sexes).
 function raceSections(d) {
   const out = [];
   const ranges = d.stat_ranges ?? {}, bonus = d.stats ?? {};
-  const stats = Object.values(C("stats")).sort((a, b) => (a.group || "").localeCompare(b.group || "") || a.name.localeCompare(b.name));
-  const rows = stats.map((s) => {
-    const r = ranges[s.id] ?? {}, custom = Object.keys(r).length || bonus[s.id] != null;
-    return `<tr data-name="${esc((s.name + " " + s.id + " " + (s.group || "")).toLowerCase())}" data-custom="${custom ? 1 : 0}"><td>${link("stats", s.id)} <span class="muted">${esc(s.group || "")}</span></td>` +
-      `<td class="num">${numInput(["stat_ranges", s.id, "min"], r.min, fmt(s.min))}</td><td class="num">${numInput(["stat_ranges", s.id, "max"], r.max, s.max > 1e6 ? "∞" : fmt(s.max))}</td>` +
-      `<td class="num">${numInput(["stat_ranges", s.id, "initial"], r.initial, fmt(s.default) + (s.spread ? " ± " + fmt(s.spread) : ""))}</td><td class="num">${numInput(["stats", s.id], bonus[s.id], "0")}</td></tr>`;
+  if (openStatGroups.race !== d.id) { openStatGroups.clear(); openStatGroups.touched = false; openStatGroups.race = d.id; }
+  const groups = {};
+  for (const st of Object.values(C("stats"))) (groups[st.group || "Altre"] ??= []).push(st);
+  const head = `<thead><tr><th>Caratteristica</th><th class="num">Minimo</th><th class="num">Massimo</th><th class="num">Iniziale</th><th class="num">Bonus</th></tr></thead>`;
+  const sections = Object.entries(groups).sort((a, b) => groupRank(a[0]) - groupRank(b[0]) || a[0].localeCompare(b[0])).map(([g, list]) => {
+    let customs = 0;
+    const rows = list.sort((a, b) => a.name.localeCompare(b.name)).map((s) => {
+      const r = ranges[s.id] ?? {}, custom = Object.values(r).some((v) => v != null) || bonus[s.id] != null;
+      customs += custom ? 1 : 0;
+      return `<tr data-name="${esc((s.name + " " + s.id).toLowerCase())}" data-custom="${custom ? 1 : 0}"><td>${link("stats", s.id)}</td>` +
+        `<td class="num">${numInput(["stat_ranges", s.id, "min"], r.min, fmt(s.min))}</td><td class="num">${numInput(["stat_ranges", s.id, "max"], r.max, s.max > 1e6 ? "∞" : fmt(s.max))}</td>` +
+        `<td class="num">${numInput(["stat_ranges", s.id, "initial"], r.initial, fmt(s.default) + (s.spread ? " ± " + fmt(s.spread) : ""))}</td><td class="num">${numInput(["stats", s.id], bonus[s.id], "0")}</td></tr>`;
+    }).join("");
+    const open = openStatGroups.has(g) || (!openStatGroups.size && !openStatGroups.touched && customs > 0);
+    return `<details class="statgroup" data-group="${esc(g)}" ${open ? "open" : ""}><summary><b>${esc(g)}</b> <span class="muted">${list.length} caratteristiche${customs ? ` · <span class="ok">${customs} personalizzate</span>` : ""}</span></summary>` +
+      `<table class="ed stattable">${head}<tbody>${rows}</tbody></table></details>`;
   }).join("");
-  out.push(card("Caratteristiche", `<div class="row"><input class="tfilter" placeholder="cerca caratteristica…" size="24"> <label><input type="checkbox" class="tcustom"> solo quelle personalizzate per la razza</label></div>` +
+  out.push(card("Caratteristiche", `<div class="row"><input class="tfilter" placeholder="cerca caratteristica…" size="24"> <label><input type="checkbox" class="tcustom"> solo quelle personalizzate per la razza</label>` +
+    ` <button data-act="groups" data-p="[]" data-v="open">Apri tutte</button> <button data-act="groups" data-p="[]" data-v="close">Chiudi tutte</button></div>` +
     `<div class="muted">Vuoto = vale il valore generale della caratteristica (in grigio). Il bonus si somma sempre; minimo e massimo limitano il valore; l'iniziale è quello alla nascita.</div>` +
-    `<div class="scrollbox"><table class="ed stattable"><thead><tr><th>Caratteristica</th><th class="num">Minimo</th><th class="num">Massimo</th><th class="num">Iniziale</th><th class="num">Bonus</th></tr></thead><tbody>${rows}</tbody></table></div>`, "wide"));
+    sections, "wide"));
   out.push(card("Abilità", refTable("abilities", ["abilities"], d.abilities, "abilities", { label: "Abilità" })));
   out.push(card("Immunità", refTable("statuses", ["immunities"], d.immunities, "statuses", { label: "Stato da cui è immune" })));
   const exempt = d.needs_exempt ?? [], rates = d.need_rates ?? {};
@@ -967,11 +986,27 @@ $("dBody").addEventListener("input", (ev) => {
   const box = ev.target.closest(".card"); if (!box || !ev.target.matches(".tfilter, .tcustom")) return;
   const q = box.querySelector(".tfilter").value.toLowerCase(), only = box.querySelector(".tcustom").checked;
   for (const tr of box.querySelectorAll("tbody tr")) tr.style.display = (!q || tr.dataset.name.includes(q)) && (!only || tr.dataset.custom === "1") ? "" : "none";
+  for (const g of box.querySelectorAll("details.statgroup")) {
+    const any = [...g.querySelectorAll("tbody tr")].some((tr) => tr.style.display !== "none");
+    g.style.display = any ? "" : "none";
+    g.open = q || only ? any : openStatGroups.has(g.dataset.group);
+  }
 });
+// Remember which stat groups are open.
+$("dBody").addEventListener("toggle", (ev) => {
+  const g = ev.target.closest?.("details.statgroup"); if (!g) return;
+  const box = g.closest(".card");
+  if (box.querySelector(".tfilter").value || box.querySelector(".tcustom").checked) return;
+  openStatGroups.touched = true;
+  g.open ? openStatGroups.add(g.dataset.group) : openStatGroups.delete(g.dataset.group);
+}, true);
 $("dBody").addEventListener("click", (ev) => {
   const el = ev.target.closest("button[data-act]"); if (!el || !draft) return;
   const a = el.dataset.act, def = draft.def;
   if (a === "pick") { openPicker(pickers[Number(el.dataset.i)]); return;
+  } else if (a === "groups") {
+    for (const g of $("dBody").querySelectorAll("details.statgroup")) g.open = el.dataset.v === "open";
+    return;
   } else {
     const p = JSON.parse(el.dataset.p);
     if (a === "rm") setAt(def, p, (getAt(def, p) ?? []).filter((x) => x !== el.dataset.v));
@@ -1076,8 +1111,7 @@ async function entityPage(id) {
   const groups = {};
   // Main characteristics first, career counters last, the other sections in between.
   for (const d of Object.values(C("stats"))) if (e.stats?.[d.id] != null) (groups[d.group || "Altre"] ??= []).push([d.id, e.stats[d.id], d]);
-  const rank = (g) => (/principal/i.test(g) ? 0 : /contator/i.test(g) ? 2 : 1);
-  const statCard = Object.entries(groups).sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0])).map(([g, list]) => `<div class="card"><h4>${esc(g)}</h4>${list.map(([k, v, d]) => {
+  const statCard = Object.entries(groups).sort((a, b) => groupRank(a[0]) - groupRank(b[0]) || a[0].localeCompare(b[0])).map(([g, list]) => `<div class="card"><h4>${esc(g)}</h4>${list.map(([k, v, d]) => {
     const max = d?.max > 1000 ? Math.max(v, 1) : (d?.max ?? 100), min = d?.min ?? 0;
     return `<div class="row" style="margin:0">${bar(v - min, max - min)} <span style="min-width:44px;text-align:right">${fmt(v)}</span> <a href="#cat/stats/${k}" class="muted">${esc(d?.name ?? k)}</a></div>`;
   }).join("")}</div>`).join("");
