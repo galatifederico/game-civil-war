@@ -144,7 +144,6 @@ pub fn recompute_stats(
             }
         };
         if let Some(r) = content.races.get(&race.0) {
-            add(&r.stats, &mut eff);
             t.extend(r.tags.iter().cloned());
             t.insert(format!("race:{}", r.id));
         }

@@ -264,7 +264,7 @@ impl Validator<'_> {
         for r in c.races.values() {
             let ctx = format!("razza {}", r.id);
             self.check(&c.body_plans, "piano corporeo", &r.body_plan, &ctx);
-            for s in r.stats.keys().chain(r.stat_ranges.keys()) {
+            for s in r.stat_ranges.keys() {
                 self.stat(s, &ctx);
             }
             for (s, range) in &r.stat_ranges {

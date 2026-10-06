@@ -726,7 +726,8 @@ function statEffects(kind, d) {
   if (kind === "statuses") { map(d.stats); (d.stages ?? []).forEach((s) => map(s.stats, ` (${s.name})`)); walk(d.on_apply); }
   else if (kind === "abilities") walk(d.effects);
   else if (kind === "items") { map(d.carried_stats, " (portato)"); walk(d.on_use); }
-  else if (["classes", "races", "titles", "templates"].includes(kind)) map(d.stats);
+  else if (kind === "races") Object.entries(d.stat_ranges ?? {}).forEach(([k, r]) => r.initial != null && out.push([k, `nasce a ${fmt(r.initial, 2)}${r.spread ? " ± " + fmt(r.spread, 2) : ""}`]));
+  else if (["classes", "titles", "templates"].includes(kind)) map(d.stats);
   return out;
 }
 /** Table of referenced definitions with what they do to stats, a remove button each and a picker. */
@@ -838,19 +839,19 @@ const openStatGroups = new Set();
 // Races: their own sections (stats, abilities, immunities, needs, body, sexes).
 function raceSections(d) {
   const out = [];
-  const ranges = d.stat_ranges ?? {}, bonus = d.stats ?? {};
+  const ranges = d.stat_ranges ?? {};
   if (openStatGroups.race !== d.id) { openStatGroups.clear(); openStatGroups.touched = false; openStatGroups.race = d.id; }
   const groups = {};
   for (const st of Object.values(C("stats"))) (groups[st.group || "Altre"] ??= []).push(st);
-  const head = `<thead><tr><th>Caratteristica</th><th class="num">Minimo</th><th class="num">Massimo</th><th class="num">Iniziale</th><th class="num">Bonus</th></tr></thead>`;
+  const head = `<thead><tr><th>Caratteristica</th><th class="num">Minimo</th><th class="num">Massimo</th><th class="num">Iniziale</th><th class="num">Variazione ±</th></tr></thead>`;
   const sections = Object.entries(groups).sort((a, b) => groupRank(a[0]) - groupRank(b[0]) || a[0].localeCompare(b[0])).map(([g, list]) => {
     let customs = 0;
     const rows = list.sort((a, b) => a.name.localeCompare(b.name)).map((s) => {
-      const r = ranges[s.id] ?? {}, custom = Object.values(r).some((v) => v != null) || bonus[s.id] != null;
+      const r = ranges[s.id] ?? {}, custom = Object.values(r).some((v) => v != null);
       customs += custom ? 1 : 0;
       return `<tr data-name="${esc((s.name + " " + s.id).toLowerCase())}" data-custom="${custom ? 1 : 0}"><td>${link("stats", s.id)}</td>` +
         `<td class="num">${numInput(["stat_ranges", s.id, "min"], r.min, fmt(s.min))}</td><td class="num">${numInput(["stat_ranges", s.id, "max"], r.max, s.max > 1e6 ? "∞" : fmt(s.max))}</td>` +
-        `<td class="num">${numInput(["stat_ranges", s.id, "initial"], r.initial, fmt(s.default) + (s.spread ? " ± " + fmt(s.spread) : ""))}</td><td class="num">${numInput(["stats", s.id], bonus[s.id], "0")}</td></tr>`;
+        `<td class="num">${numInput(["stat_ranges", s.id, "initial"], r.initial, fmt(s.default))}</td><td class="num">${numInput(["stat_ranges", s.id, "spread"], r.spread, fmt(s.spread))}</td></tr>`;
     }).join("");
     const open = openStatGroups.has(g) || (!openStatGroups.size && !openStatGroups.touched && customs > 0);
     return `<details class="statgroup" data-group="${esc(g)}" ${open ? "open" : ""}><summary><b>${esc(g)}</b> <span class="muted">${list.length} caratteristiche${customs ? ` · <span class="ok">${customs} personalizzate</span>` : ""}</span></summary>` +
@@ -858,7 +859,7 @@ function raceSections(d) {
   }).join("");
   out.push(card("Caratteristiche", `<div class="row"><input class="tfilter" placeholder="cerca caratteristica…" size="24"> <label><input type="checkbox" class="tcustom"> solo quelle personalizzate per la razza</label>` +
     ` <button data-act="groups" data-p="[]" data-v="open">Apri tutte</button> <button data-act="groups" data-p="[]" data-v="close">Chiudi tutte</button></div>` +
-    `<div class="muted">Vuoto = vale il valore generale della caratteristica (in grigio). Il bonus si somma sempre; minimo e massimo limitano il valore; l'iniziale è quello alla nascita.</div>` +
+    `<div class="muted">Vuoto = vale il valore generale della caratteristica (in grigio). Alla nascita il valore è l'iniziale ± una variazione casuale; minimo e massimo lo limitano per tutta la vita.</div>` +
     sections, "wide"));
   out.push(card("Abilità", refTable("abilities", ["abilities"], d.abilities, "abilities", { label: "Abilità" })));
   out.push(card("Immunità", refTable("statuses", ["immunities"], d.immunities, "statuses", { label: "Stato da cui è immune" })));

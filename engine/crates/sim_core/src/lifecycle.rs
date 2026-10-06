@@ -63,12 +63,13 @@ pub fn spawn_template(world: &mut World, template: &str, pos: Option<Position>, 
     // Starting value: the race's own when it has one, else the stat's default.
     let ranges = content.races.get(&t.race).map(|r| &r.stat_ranges);
     let start = |s: &crate::content::StatDef| ranges.and_then(|r| r.get(&s.id)).and_then(|r| r.initial).unwrap_or(s.default);
+    let spread = |s: &crate::content::StatDef| ranges.and_then(|r| r.get(&s.id)).and_then(|r| r.spread).unwrap_or(s.spread);
     let mut base: BTreeMap<String, f32> = content.stats.values().map(|s| (s.id.clone(), start(s))).collect();
-    // Everybody is a bit different: stats with a spread vary around their starting value.
-    for s in content.stats.values().filter(|s| s.spread > 0.0 && !t.stats.contains_key(&s.id)) {
+    // Everybody is a bit different: stats with a spread (the race's or the stat's) vary around their starting value.
+    for s in content.stats.values().filter(|s| spread(s) > 0.0 && !t.stats.contains_key(&s.id)) {
         let r = world.resource_mut::<crate::rng::SimRng>().next_f32();
         let (lo, hi) = content.race_stat_bounds(&t.race, &s.id);
-        base.insert(s.id.clone(), (start(s) + (r * 2.0 - 1.0) * s.spread).clamp(lo, hi).round());
+        base.insert(s.id.clone(), (start(s) + (r * 2.0 - 1.0) * spread(s)).clamp(lo, hi).round());
     }
     for (k, v) in &t.stats {
         base.insert(k.clone(), *v);

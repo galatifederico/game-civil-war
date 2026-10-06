@@ -511,19 +511,18 @@ fn console_edits_race_ranges_sexes_and_saves_them() {
     sim.world.insert_resource(sim_core::content::ContentOverrides(Some(file.clone())));
     let mut race = serde_json::to_value(&sim.content().races["fidentino"]).unwrap();
     race["sexes"] = serde_json::json!(["Female"]);
-    race["stat_ranges"] = serde_json::json!({ "forza": { "max": 1.0 }, "carisma": { "initial": 40.0 } });
+    race["stat_ranges"] = serde_json::json!({ "forza": { "max": 1.0 }, "carisma": { "initial": 40.0, "spread": 0.0 } });
     sim.execute(SimCommand::EditContent { kind: "races".into(), def: race }).expect("edit accepted");
     assert_eq!(sim.content().races["fidentino"].sexes, vec![Sex::Female]);
     let saved: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
     assert_eq!(saved["races"][0]["id"], "fidentino");
 
     let tpl = sim.content().templates.values().find(|t| t.race == "fidentino" && !t.unique && !t.virtual_entity && !t.stats.contains_key("carisma")).unwrap().id.clone();
-    let carisma = sim.content().stats["carisma"].clone();
     for _ in 0..5 {
         let e = sim_core::lifecycle::spawn_template(&mut sim.world, &tpl, None, &SpawnOverrides::default()).unwrap();
         assert_eq!(sim.world.get::<Sex>(e), Some(&Sex::Female));
         let c = sim.world.get::<Stats>(e).unwrap().base["carisma"];
-        assert!((c - 40.0).abs() <= carisma.spread + 0.5, "carisma {c} lontano da 40");
+        assert_eq!(c, 40.0, "senza variazione della razza si nasce esattamente al valore iniziale");
     }
     sim.tick();
     for (race, stats) in sim.world.query::<(&sim_core::stats::Race, &Stats)>().iter(&sim.world) {

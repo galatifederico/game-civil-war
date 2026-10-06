@@ -19,7 +19,7 @@
         (id: "polipo", name: "Polipo", body_plan: "cefalopode", sexes: [], tags: ["polipo", "bestia", "fauna", "nerd"],
          needs_exempt: ["fame", "riposo", "svago", "sete"],
          description: "Vive nello Scantinato della Fumetteria da quando qualcuno ci ha buttato un acquario. Ha gusti precisi: punta le donne.",
-         stats: {"forza": 16, "furtivita": 12, "percezione": 8, "attacco": 30, "difesa": 15},
+         stat_ranges: {"forza": (initial: 26), "furtivita": (initial: 12), "percezione": (initial: 18), "attacco": (initial: 50), "difesa": (initial: 35)},
          abilities: ["tentacoli", "nube_d_inchiostro"], immunities: ["diarrea", "std"]),
     ],
     statuses: [

@@ -203,8 +203,6 @@ pub struct RaceDef {
     pub description: String,
     pub body_plan: Id,
     #[serde(default)]
-    pub stats: BTreeMap<Id, f32>,
-    #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
     pub abilities: Vec<Id>,
@@ -223,7 +221,8 @@ pub struct RaceDef {
     /// Sexes members can be born with; empty for races without sex (machines, programs…).
     #[serde(default = "all_sexes")]
     pub sexes: Vec<crate::stats::Sex>,
-    /// Per-race limits and starting value of stats (on top of the stat's own min/max/default).
+    /// Per-race limits, starting value and variation at birth of stats (unset values: the stat's own).
+    /// A race has no fixed bonus: members are born around its starting value and can change from there.
     #[serde(default)]
     pub stat_ranges: BTreeMap<Id, StatRange>,
 }
@@ -239,8 +238,10 @@ fn all_sexes() -> Vec<crate::stats::Sex> {
 pub struct StatRange {
     pub min: Option<f32>,
     pub max: Option<f32>,
-    /// Value members are born with (the stat's spread still applies around it).
+    /// Value members are born with.
     pub initial: Option<f32>,
+    /// Random variation at birth around the starting value (± spread).
+    pub spread: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

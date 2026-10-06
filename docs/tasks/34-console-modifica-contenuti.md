@@ -6,11 +6,14 @@
   `fidenza_world/data/99_console.json`, che si carica per ultimo e quindi vince sui `.ron` (che restano intatti). Si
   modificano caratteristiche, bisogni, corpi, razze, classi, stati, fluidi, oggetti, abilità, lavori, azioni, fazioni,
   edifici, personaggi, generatori, eventi a condizione, collezioni, ruoli, fonti di notizie, circostanze e rifornimenti.
-- **Razze:** `stat_ranges` (minimo, massimo e valore iniziale della razza per ogni caratteristica: l'iniziale sostituisce
-  il default alla nascita, minimo e massimo restringono quelli della caratteristica), `sexes` (sessi possibili; vuoto =
+- **Razze:** `stat_ranges` (minimo, massimo, valore iniziale e variazione alla nascita della razza per ogni
+  caratteristica: si nasce all'iniziale ± una variazione casuale, minimo e massimo restringono quelli della
+  caratteristica per tutta la vita). Niente più bonus fisso di razza (`stats`): la razza è una sola, i bonus restano
+  alle classi (che possono essere più d'una), ai ruoli e agli stati; i vecchi bonus sono diventati valori iniziali
+  (default + bonus). Una pedina che cambia razza (es. diventa maiale) quindi non cambia più le caratteristiche da sola, `sexes` (sessi possibili; vuoto =
   senza sesso, non si riproduce; prende il posto di `sexless`), `need_rates` (bisogni consumati più o meno in fretta).
   Tolto `shapeshifter`: mutaforma è l'abilità `mutaforma`.
-- **Scheda di una razza:** Caratteristiche (tabella di tutte con minimo, massimo, iniziale e bonus; vuoto = valore
+- **Scheda di una razza:** Caratteristiche (sezioni collassabili per gruppo con minimo, massimo, iniziale e variazione; vuoto = valore
   generale, mostrato in grigio; ricerca e «solo personalizzate»), Abilità e Immunità (tabelle con caratteristica e
   modificatore), Bisogni (quelli che la razza ha, con la variazione e il calo effettivo), Corpo (scelta del piano e sue
   parti), Sessi. Poi *Informazioni di gioco* (chi è in gioco, chi la usa) e *Dettaglio* (nome, descrizione, tag, stati
