@@ -70,7 +70,11 @@ pub fn apply_status(world: &mut World, e: Entity, status: &str, severity: f32, s
     let race_immune = world
         .get::<Race>(e)
         .and_then(|r| world.resource::<Content>().races.get(&r.0))
-        .is_some_and(|r| r.immunities.iter().any(|i| i == status));
+        .is_some_and(|r| r.immunities.iter().any(|i| i == status))
+        || world.get::<crate::stats::Tags>(e).is_some_and(|t| {
+            let c = world.resource::<Content>();
+            t.effective.iter().filter_map(|x| x.strip_prefix("ability:")).filter_map(|a| c.abilities.get(a)).any(|a| a.immunities.iter().any(|i| i == status))
+        });
     let Some(se) = world.get::<StatusEffects>(e) else { return false };
     if race_immune || se.immunities.get(status).is_some_and(|until| *until > tick) {
         return false;

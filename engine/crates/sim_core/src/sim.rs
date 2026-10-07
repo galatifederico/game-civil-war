@@ -161,7 +161,7 @@ impl SimBuilder {
             (SimSet::Input, SimSet::Derive, SimSet::Health, SimSet::World, SimSet::Ai, SimSet::Act, SimSet::Economy, SimSet::Social, SimSet::Press, SimSet::Output).chain(),
         );
         schedule.add_systems(crate::commands::apply_commands.in_set(SimSet::Input));
-        schedule.add_systems((crate::stats::stat_recovery, crate::equipment::update, crate::stats::recompute_stats, crate::stats::decay_needs, low_needs).chain().in_set(SimSet::Derive));
+        schedule.add_systems((crate::stats::stat_recovery, crate::equipment::update, crate::abilities::auras, crate::stats::recompute_stats, crate::stats::decay_needs, low_needs).chain().in_set(SimSet::Derive));
         schedule.add_systems((crate::status::tick_statuses, crate::anatomy::natural_healing, crate::hygiene::hygiene_tick).chain().in_set(SimSet::Health));
         schedule.add_systems((crate::dungeon::tethers, crate::dungeon::spawners, crate::dungeon::triggers).chain().in_set(SimSet::World));
         schedule.add_systems((crate::player::wake_up, crate::player::follow_system, crate::ai::think).chain().in_set(SimSet::Ai));

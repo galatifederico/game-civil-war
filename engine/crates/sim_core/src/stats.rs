@@ -120,6 +120,7 @@ pub fn recompute_stats(
             Option<&crate::factions::FactionMember>,
             Option<&crate::ids::SimId>,
             Option<&crate::equipment::Equipment>,
+            Option<&crate::abilities::AuraBonus>,
             &mut Stats,
             &mut Tags,
         ),
@@ -135,9 +136,26 @@ pub fn recompute_stats(
             roles.entry(*h).or_default().push(d);
         }
     }
-    for (race, classes, statuses, inv, member, sid, equipment, mut stats, mut tags) in &mut q {
+    for (race, classes, statuses, inv, member, sid, equipment, aura, mut stats, mut tags) in &mut q {
         let mut eff = stats.base.clone();
         let mut t: BTreeSet<String> = tags.base.clone();
+        // Abilities (from race, classes and roles): permanent modifiers and tags.
+        let mut abilities: BTreeSet<&String> = BTreeSet::new();
+        abilities.extend(content.races.get(&race.0).into_iter().flat_map(|r| r.abilities.iter()));
+        abilities.extend(classes.0.iter().filter_map(|c| content.classes.get(c)).flat_map(|d| d.abilities.iter()));
+        abilities.extend(sid.and_then(|id| roles.get(id)).into_iter().flatten().flat_map(|d| d.abilities.iter()));
+        for a in abilities.iter().filter_map(|a| content.abilities.get(*a)) {
+            for (k, v) in &a.stats {
+                *eff.entry(k.clone()).or_insert(0.0) += v;
+            }
+            t.extend(a.tags.iter().cloned());
+            t.insert(format!("ability:{}", a.id));
+        }
+        if let Some(b) = aura {
+            for (k, v) in &b.0 {
+                *eff.entry(k.clone()).or_insert(0.0) += v;
+            }
+        }
         let add = |m: &BTreeMap<String, f32>, eff: &mut BTreeMap<String, f32>| {
             for (k, v) in m {
                 *eff.entry(k.clone()).or_insert(0.0) += v;
@@ -238,15 +256,18 @@ pub fn stat_recovery(content: Res<Content>, params: Res<crate::params::Params>, 
 }
 
 /// Needs decay, modulated by statuses (`need_rates` multiply the base decay).
-pub fn decay_needs(content: Res<Content>, mut q: Query<(&mut Needs, &StatusEffects, &Race), (With<Pawn>, Without<Dead>)>) {
-    for (mut needs, statuses, race) in &mut q {
+pub fn decay_needs(content: Res<Content>, mut q: Query<(&mut Needs, &StatusEffects, &Race, Option<&Tags>), (With<Pawn>, Without<Dead>)>) {
+    for (mut needs, statuses, race, tags) in &mut q {
         let rdef = content.races.get(&race.0);
+        let abilities: Vec<&crate::content::AbilityDef> =
+            tags.into_iter().flat_map(|t| t.effective.iter()).filter_map(|t| t.strip_prefix("ability:")).filter_map(|a| content.abilities.get(a)).collect();
         for (nid, nd) in &content.needs {
             if rdef.is_some_and(|r| r.needs_exempt.contains(nid)) {
                 needs.0.insert(nid.clone(), 1.0);
                 continue;
             }
             let mut rate = 1.0 + rdef.and_then(|r| r.need_rates.get(nid)).copied().unwrap_or(0.0);
+            rate += abilities.iter().filter_map(|a| a.need_rates.get(nid)).sum::<f32>();
             for (sid, st) in &statuses.active {
                 if let Some(sd) = content.statuses.get(sid) {
                     rate += sd.need_rates.get(nid).copied().unwrap_or(0.0);

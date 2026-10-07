@@ -587,3 +587,47 @@ fn classes_add_up_and_follow_their_own_rules() {
     }
     assert!(!eligible(&mut sim.world, boar).contains(&"agricoltore".to_string()));
 }
+
+/// Abilities are permanent: modifiers on the holder, auras on whoever stands near (while near, or
+/// accumulating). Attacks, spells and transformations are actions with their own effects.
+#[test]
+fn abilities_are_traits_and_actions_have_effects() {
+    use sim_core::map::Position;
+    use sim_core::stats::Stats;
+    let mut sim = sim(1);
+    let tpl = sim.content().templates.values().find(|t| t.race == "fidentino" && !t.unique && !t.virtual_entity).unwrap().id.clone();
+    let (_, someone) = id_of(&mut sim, "scippatore");
+    let p = *sim.world.get::<Position>(someone).unwrap();
+    let spawn = |sim: &mut Simulation, t: &str, pos: Position| sim_core::lifecycle::spawn_template(&mut sim.world, t, Some(pos), &SpawnOverrides::default()).unwrap();
+    let goth = spawn(&mut sim, &tpl, p);
+    let near = spawn(&mut sim, &tpl, Position { x: p.x + 1, ..p });
+    sim_core::classes::take(&mut sim.world, goth, "goth");
+    sim_core::classes::take(&mut sim.world, goth, "barbone");
+    let base = sim.world.get::<Stats>(near).unwrap().base.clone();
+    sim.tick();
+    let s = sim.world.get::<Stats>(near).unwrap();
+    let m = |k: &str| s.effective.get(k).copied().unwrap_or(0.0) - s.base.get(k).copied().unwrap_or(0.0);
+    assert!(m("malinconia") >= 1.0, "aura depressa finché vicino: {}", m("malinconia"));
+    assert!(s.base["puzza"] > base["puzza"], "il tanfo si accumula");
+    // Moving away: the lasting part goes, the accumulated smell stays.
+    let smell = s.base["puzza"];
+    sim.world.entity_mut(near).insert(Position { x: p.x + 30, ..p });
+    sim.world.entity_mut(near).insert(sim_core::movement::Movement::default());
+    sim_core::abilities::auras(&mut sim.world);
+    assert!(sim.world.get::<sim_core::abilities::AuraBonus>(near).unwrap().0.is_empty());
+    assert!(sim.world.get::<Stats>(near).unwrap().base["puzza"] >= smell);
+    // Modifiers on the holder: the robot's armour.
+    let robot_tpl = sim.content().templates.values().find(|t| t.race == "robot").unwrap().id.clone();
+    let robot = spawn(&mut sim, &robot_tpl, p);
+    sim.tick();
+    let s = sim.world.get::<Stats>(robot).unwrap();
+    assert!(s.effective["difesa"] >= s.base["difesa"] + 10.0 - 0.01 || s.effective["difesa"] >= sim.content().stats["difesa"].max);
+    // An action with effects: the reptilian takes a human shape on order, then must wait.
+    let rept_tpl = sim.content().templates.values().find(|t| t.race == "rettiliano" && !t.unique).unwrap().id.clone();
+    let rept = spawn(&mut sim, &rept_tpl, p);
+    let rid = *sim.world.get::<SimId>(rept).unwrap();
+    sim_core::infiltration::revert(&mut sim.world, rept);
+    sim.execute(SimCommand::UseAbility { entity: rid, ability: "mutaforma".into(), target: None }).expect("mutaforma");
+    assert!(sim.world.get::<sim_core::infiltration::Disguise>(rept).is_some());
+    assert!(sim.execute(SimCommand::UseAbility { entity: rid, ability: "mutaforma".into(), target: None }).is_err(), "in attesa");
+}

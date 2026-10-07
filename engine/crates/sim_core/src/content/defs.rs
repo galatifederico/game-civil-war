@@ -460,18 +460,35 @@ pub struct ItemDef {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
+/// A permanent trait of whoever has it (from race, classes or roles): modifiers on the holder and,
+/// optionally, an aura on the pawns around it. Things a pawn *does* are actions, not abilities.
 pub struct AbilityDef {
     pub id: Id,
     pub name: String,
     pub description: String,
-    pub cooldown: u64,
-    pub range: i32,
-    pub requires: Condition,
-    /// Effects: subject = user, target = the selected target.
-    pub effects: Vec<Effect>,
+    /// Stat modifiers on the holder.
+    pub stats: BTreeMap<Id, f32>,
+    /// Extra decay of the holder's needs (0.5 = half again as fast).
+    pub need_rates: BTreeMap<Id, f32>,
+    /// Tags the holder carries.
     pub tags: Vec<String>,
-    /// Using it in view of others is suspicious (lowers cover).
-    pub suspicious: bool,
+    /// Statuses the holder cannot catch.
+    pub immunities: Vec<Id>,
+    pub aura: Option<AuraDef>,
+}
+
+/// What an ability does to the pawns around its holder.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AuraDef {
+    /// Cells around the holder.
+    pub radius: i32,
+    /// Who is affected (subject = the pawn near the holder, target = the holder). Default: everybody.
+    pub affects: Condition,
+    /// Stat modifiers that last while the pawn stays in range.
+    pub stats: BTreeMap<Id, f32>,
+    /// Stat changes added every tick (hour) the pawn is in range, kept after it leaves.
+    pub stats_per_tick: BTreeMap<Id, f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -527,8 +544,9 @@ pub enum ActionKind {
     /// Take the best job from the faction/global JobBoard according to the WorkPriorityMatrix.
     #[default]
     Work,
-    /// Use an ability on a target.
-    Ability { ability: Id, #[serde(default)] target: Selector },
+    /// Apply the action's own effects (subject = the actor, target = the selected target): an attack, a
+    /// spell, a transformation… `range` 0 means on itself or where it stands.
+    Effects { #[serde(default)] target: Selector, #[serde(default)] range: i32, #[serde(default)] effects: Vec<Effect> },
     /// Stand still.
     Idle,
 }
@@ -586,6 +604,10 @@ pub struct ActionDef {
     pub cooldown: u64,
     /// Label for the UI while doing it.
     pub label: String,
+    pub description: String,
+    /// Doing it in view of others is suspicious (lowers cover).
+    pub suspicious: bool,
+    pub tags: Vec<String>,
 }
 
 impl Default for ActionDef {
@@ -600,6 +622,9 @@ impl Default for ActionDef {
             requires: Condition::default(),
             cooldown: 0,
             label: String::new(),
+            description: String::new(),
+            suspicious: false,
+            tags: Vec::new(),
         }
     }
 }
@@ -1026,7 +1051,9 @@ pub struct TitleDef {
     pub vacancy_ticks: u64,
     /// Ticks of a mandate: at the end a new election (or appointment) is held. 0 = for life.
     pub term: u64,
-    /// Ticks a holder may stay below the requirements before losing the role. 0 = never loses it that way.
+    /// When the holder loses the role (besides death, challenges and the end of a mandate). `None`: never.
+    pub loses_when: Option<Condition>,
+    /// Ticks the loss condition must hold before the role is lost (0 = at once).
     pub grace: u64,
     /// Stat compared in a challenge or a coup (`Challenge`, `Coup`).
     pub challenge_stat: Id,

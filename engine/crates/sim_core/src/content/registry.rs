@@ -369,8 +369,18 @@ impl Validator<'_> {
         }
         for a in c.abilities.values() {
             let ctx = format!("abilità {}", a.id);
-            self.cond(&a.requires, &ctx);
-            self.effects(&a.effects, &ctx);
+            for s in a.stats.keys().chain(a.aura.iter().flat_map(|x| x.stats.keys().chain(x.stats_per_tick.keys()))) {
+                self.stat(s, &ctx);
+            }
+            for n in a.need_rates.keys() {
+                self.check(&c.needs, "bisogno", n, &ctx);
+            }
+            for s in &a.immunities {
+                self.check(&c.statuses, "status", s, &ctx);
+            }
+            if let Some(aura) = &a.aura {
+                self.cond(&aura.affects, &ctx);
+            }
         }
         for j in c.jobs.values() {
             let ctx = format!("job {}", j.id);
@@ -387,8 +397,8 @@ impl Validator<'_> {
                     self.check(&c.jobs, "job", job, &ctx);
                     self.selector(target, &ctx);
                 }
-                ActionKind::Ability { ability, target } => {
-                    self.check(&c.abilities, "abilità", ability, &ctx);
+                ActionKind::Effects { target, effects, .. } => {
+                    self.effects(effects, &ctx);
                     self.selector(target, &ctx);
                 }
                 ActionKind::Work | ActionKind::Idle => {}

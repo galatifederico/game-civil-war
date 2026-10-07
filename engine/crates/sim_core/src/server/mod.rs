@@ -342,9 +342,10 @@ async fn ui_actions(State(s): State<AppState>, Path(id): Path<u64>) -> ApiResult
             }
         }
     }
-    for ab in crate::abilities::known(&sim.world, e) {
-        if let Some(d) = content.abilities.get(&ab) {
-            out.push(json!({ "kind": "ability", "id": ab, "name": d.name, "needs_target": if d.range > 0 { "entity" } else { "none" } }));
+    // Actions with effects (attacks, spells…): the order kind stays "ability" for the clients.
+    for a in actions.iter().filter_map(|a| content.actions.get(a)) {
+        if let crate::content::ActionKind::Effects { range, .. } = &a.kind {
+            out.push(json!({ "kind": "ability", "id": a.id, "name": a.name, "needs_target": if *range > 0 { "entity" } else { "none" } }));
         }
     }
     out.push(json!({ "kind": "follow", "id": "follow", "name": "Segui", "needs_target": "entity" }));
@@ -421,9 +422,12 @@ async fn ui_interactions(State(s): State<AppState>, Path((player, target)): Path
             }
         }
         if !building {
-            for ab in crate::abilities::known(&sim.world, me) {
-                if let Some(d) = content.abilities.get(&ab).filter(|d| d.range > 0) {
-                    out.push(json!({ "kind": "ability", "id": ab, "name": d.name, "needs_target": "entity" }));
+            let mine = sim.world.get::<crate::ai::Brain>(me).map(|b| b.actions.clone()).unwrap_or_default();
+            for a in mine.iter().filter_map(|a| content.actions.get(a)) {
+                if let crate::content::ActionKind::Effects { range, .. } = &a.kind
+                    && *range > 0
+                {
+                    out.push(json!({ "kind": "ability", "id": a.id, "name": a.name, "needs_target": "entity" }));
                 }
             }
             out.push(json!({ "kind": "follow", "id": "follow", "name": "Segui", "needs_target": "entity" }));
@@ -471,9 +475,19 @@ async fn admin_describe(State(s): State<AppState>) -> ApiResult {
     let items: serde_json::Map<String, Value> =
         c.items.keys().map(|id| (id.clone(), json!({ "lines": crate::describe::item_effects(c, id), "requires": cond(&c.items[id].requires) }))).collect();
     let abilities: serde_json::Map<String, Value> =
-        c.abilities.values().map(|d| (d.id.clone(), json!({ "effects": effs(&d.effects), "requires": cond(&d.requires) }))).collect();
+        c.abilities.values().map(|d| (d.id.clone(), json!({ "effects": crate::describe::ability(c, d) }))).collect();
     let jobs: serde_json::Map<String, Value> = c.jobs.values().map(|d| (d.id.clone(), json!({ "effects": effs(&d.effects), "requires": cond(&d.requires) }))).collect();
-    let actions: serde_json::Map<String, Value> = c.actions.values().map(|d| (d.id.clone(), json!({ "requires": cond(&d.requires) }))).collect();
+    let actions: serde_json::Map<String, Value> = c
+        .actions
+        .values()
+        .map(|d| {
+            let fx = match &d.kind {
+                crate::content::ActionKind::Effects { effects, .. } => effs(effects),
+                _ => String::new(),
+            };
+            (d.id.clone(), json!({ "requires": cond(&d.requires), "effects": fx }))
+        })
+        .collect();
     let statuses: serde_json::Map<String, Value> = c
         .statuses
         .values()

@@ -95,7 +95,6 @@ pub const DEFAULTS: &[(&str, f64, &str)] = &[
     ("inventory.overweight_slowdown", 0.05, "Velocità persa per ogni unità di peso oltre la capacità"),
     ("classes.check_every", 12.0, "Ogni quanti tick si controllano i requisiti delle classi"),
     ("classes.adopt_chance", 0.35, "Probabilità che una pedina che ha i requisiti di una classe la prenda a ogni controllo"),
-    ("classes.keep_ratio", 0.9, "Quota della soglia sotto cui si perde una classe acquisita (isteresi)"),
     ("titles.check_every", 6.0, "Ogni quanti tick si controllano i ruoli (vacanze, mandati, requisiti)"),
     ("titles.election_luck", 0.3, "Peso della fortuna nelle elezioni (quota del punteggio)"),
     ("titles.challenge_luck", 0.5, "Peso della fortuna nelle sfide e nei colpi di stato"),

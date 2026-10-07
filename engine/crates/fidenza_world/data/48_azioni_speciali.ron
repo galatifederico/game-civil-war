@@ -1,0 +1,8 @@
+// Azioni con effetti che prima erano abilità senza un'azione dell'IA: peso 0, le usano il giocatore e gli ordini.
+(
+    actions: [
+        (id: "mutaforma", name: "Mutaforma", weight: 0.0, kind: Effects(effects: [Shapeshift(race: "fidentino", name: "Un Fidentino qualunque")]), requires: Not(Disguised), cooldown: 48, description: "Assume l'aspetto di un Fidentino qualunque."),
+        (id: "evoca_dinosauro", name: "Evoca Dinosauro", weight: 0.0, kind: Effects(effects: [Spawn(template: "dinosauro", count: 1)]), requires: InZone("#gallerie"), cooldown: 96, description: "Richiama un dinosauro dalle profondità."),
+        (id: "rage_quit", name: "Rage quit", weight: 0.0, kind: Effects(effects: [Stealth(amount: 30, duration: 2), ResetAggro]), cooldown: 24, description: "Sparisce da qualsiasi situazione."),
+    ],
+)

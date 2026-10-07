@@ -318,7 +318,14 @@ pub fn run_jobs(world: &mut World) {
         let content = world.resource::<Content>();
         let pure_move = active.job.is_empty() && active.ability.is_none();
         let (range, def) = match &active.ability {
-            Some(a) => (content.abilities.get(a).map_or(1, |d| d.range), None),
+            // An action with effects: done from within its range.
+            Some(a) => (
+                content.actions.get(a).map_or(1, |d| match &d.kind {
+                    crate::content::ActionKind::Effects { range, .. } => *range,
+                    _ => 1,
+                }),
+                None,
+            ),
             None if pure_move => (if matches!(active.target, JobTarget::Entity(_)) { active.required.max(1.0) as i32 } else { 0 }, None),
             None => match content.jobs.get(&active.job) {
                 Some(d) => (d.range, Some(d.clone())),
@@ -355,7 +362,7 @@ pub fn run_jobs(world: &mut World) {
                     continue;
                 }
         if let Some(ab) = &active.ability {
-            crate::abilities::use_ability(world, e, ab, active.target.entity(world));
+            crate::abilities::use_action(world, e, ab, active.target.entity(world));
             finish(world, e, &active);
             continue;
         }

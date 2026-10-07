@@ -6,7 +6,7 @@
 use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::content::{Condition, Content};
+use crate::content::Content;
 use crate::effects::{eval_condition, EffectCtx};
 use crate::events::{kind, EventBuilder, EventLog};
 use crate::factions::{FactionMember, Leader, Players};
@@ -39,19 +39,6 @@ fn one_or_many<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D:
         OneOrMany::One(o) => o.into_iter().collect(),
         OneOrMany::Many(v) => v,
     })
-}
-
-/// The same condition with every threshold loosened by `ratio` (0.9: "at least 80" becomes "at least 72",
-/// "below 30" becomes "below 33.3").
-pub fn relaxed(c: &Condition, ratio: f32) -> Condition {
-    match c {
-        Condition::All(v) => Condition::All(v.iter().map(|x| relaxed(x, ratio)).collect()),
-        Condition::Any(v) => Condition::Any(v.iter().map(|x| relaxed(x, ratio)).collect()),
-        Condition::StatAtLeast { stat, value } if *value > 0.0 => Condition::StatAtLeast { stat: stat.clone(), value: value * ratio },
-        Condition::StatBelow { stat, value } if *value > 0.0 && ratio > 0.0 => Condition::StatBelow { stat: stat.clone(), value: value / ratio },
-        Condition::MoneyAtLeast(m) => Condition::MoneyAtLeast(m * ratio as f64),
-        other => other.clone(),
-    }
 }
 
 /// Whether `e` meets the requirements to take `class` now.

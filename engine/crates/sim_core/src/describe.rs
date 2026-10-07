@@ -221,3 +221,21 @@ pub fn condition_parts(cond: &Condition) -> Vec<Condition> {
         other => vec![other.clone()],
     }
 }
+
+/// A passive ability in words: modifiers on the holder and its aura.
+pub fn ability(c: &Content, a: &crate::content::AbilityDef) -> String {
+    let stat = |k: &String| c.stats.get(k).map_or(k.as_str(), |s| s.name.as_str()).to_string();
+    let signed = |v: f32| if v >= 0.0 { format!("+{}", num(v)) } else { num(v) };
+    let mut parts: Vec<String> = a.stats.iter().map(|(k, v)| format!("{} {}", stat(k), signed(*v))).collect();
+    parts.extend(a.need_rates.iter().map(|(k, v)| format!("{} consumata {}%", c.needs.get(k).map_or(k.as_str(), |n| n.name.as_str()), signed(v * 100.0))));
+    if !a.immunities.is_empty() {
+        parts.push(format!("immune a {}", a.immunities.iter().map(|s| status(c, s)).collect::<Vec<_>>().join(", ")));
+    }
+    if let Some(aura) = &a.aura {
+        let mut fx: Vec<String> = aura.stats.iter().map(|(k, v)| format!("{} {}", stat(k), signed(*v))).collect();
+        fx.extend(aura.stats_per_tick.iter().map(|(k, v)| format!("{} {} ogni ora", stat(k), signed(*v))));
+        parts.push(format!("aura (raggio {}): {}", aura.radius, fx.join(", ")));
+    }
+    parts.join("; ")
+}
+

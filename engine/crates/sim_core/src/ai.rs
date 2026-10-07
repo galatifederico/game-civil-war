@@ -135,12 +135,7 @@ fn score_action(world: &mut World, e: Entity, a: &ActionDef, tick: u64) -> Optio
             }
             (crate::targeting::resolve(world, e, target)?, None)
         }
-        ActionKind::Ability { ability, target } => {
-            if !crate::abilities::ready(world, e, ability) {
-                return None;
-            }
-            (crate::targeting::resolve(world, e, target)?, None)
-        }
+        ActionKind::Effects { target, .. } => (crate::targeting::resolve(world, e, target)?, None),
         ActionKind::Work => {
             let (_, j) = best_board_job(world, e)?;
             (j.target, Some(j))
@@ -288,11 +283,12 @@ pub fn think(world: &mut World) {
                     start_job(world, e, &j.job, j.target, Some(j.id), j.payload);
                 }
             }
-            ActionKind::Ability { ability, .. } => {
+            ActionKind::Effects { .. } => {
                 start_job(world, e, "", best.target, None, None);
                 if let Some(mut t) = world.get_mut::<Task>(e)
                     && let Some(j) = t.job.as_mut() {
-                        j.ability = Some(ability.clone());
+                        // The action is done on arrival (see `jobs`): its effects, not a job's.
+                        j.ability = Some(best.action.id.clone());
                         j.required = 0.0;
                     }
             }

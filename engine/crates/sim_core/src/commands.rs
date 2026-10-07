@@ -251,7 +251,12 @@ pub fn apply(world: &mut World, cmd: SimCommand) -> Result<String, String> {
         SimCommand::UseAbility { entity: id, ability, target } => {
             let e = entity(world, id)?;
             let t = target.map(|i| entity(world, i)).transpose()?;
-            if crate::abilities::use_ability(world, e, &ability, t) { Ok(format!("{ability} usata")) } else { Err("abilità non disponibile".into()) }
+            // `ability` names an action with effects.
+            if crate::abilities::ready(world, e, &ability) && crate::abilities::use_action(world, e, &ability, t) {
+                Ok(format!("{ability} usata"))
+            } else {
+                Err("azione non disponibile".into())
+            }
         }
         SimCommand::Promote { entity: id, rank } => {
             let e = entity(world, id)?;

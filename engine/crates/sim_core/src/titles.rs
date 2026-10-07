@@ -35,11 +35,12 @@ pub fn eligible(world: &mut World, e: Entity, t: &TitleDef) -> bool {
     eval_condition(world, &EffectCtx::new(Some(e), None, format!("title:{}", t.id)), &t.claim_requires)
 }
 
-/// Whether the holder still deserves the role: the requirements loosened by `classes.keep_ratio`, as for classes.
+/// Whether the holder keeps the role: the role's own loss condition does not hold (no general rule).
 pub fn keeps(world: &mut World, e: Entity, t: &TitleDef) -> bool {
-    let ratio = world.resource::<Params>().get("classes.keep_ratio", 0.9) as f32;
-    let loose = TitleDef { claim_requires: crate::classes::relaxed(&t.claim_requires, ratio), ..t.clone() };
-    eligible(world, e, &loose)
+    match &t.loses_when {
+        Some(c) => !eval_condition(world, &EffectCtx::new(Some(e), None, format!("title:{}", t.id)), c),
+        None => true,
+    }
 }
 
 /// Stats named by a condition (used as the default candidate score).
@@ -202,13 +203,13 @@ pub fn roles_tick(world: &mut World) {
                 vacate(world, &t.id, "è morto");
                 continue;
             }
-            if t.grace > 0 {
+            if t.loses_when.is_some() {
                 if keeps(world, h, t) {
                     world.resource_mut::<Titles>().failing.remove(&t.id);
                 } else {
                     let since = *world.resource_mut::<Titles>().failing.entry(t.id.clone()).or_insert(tick);
                     if tick.saturating_sub(since) >= t.grace {
-                        vacate(world, &t.id, "non ha più i requisiti");
+                        vacate(world, &t.id, "condizione di perdita");
                         continue;
                     }
                 }

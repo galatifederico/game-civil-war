@@ -1,0 +1,17 @@
+// Abilità: tratti permanenti di chi le ha (dalla razza, dalle classi, dai ruoli). Modificano chi le ha e, con
+// un'aura, chi gli sta vicino: «stats» vale finché si resta nel raggio, «stats_per_tick» si accumula ogni ora.
+// Quello che una pedina fa di proposito (attacchi, incantesimi, trasformazioni) è un'azione, non un'abilità.
+(
+    abilities: [
+        (id: "aura_depressa", name: "Aura depressa", description: "Chi sta vicino a una Goth si sente un po' più triste.",
+         aura: Some((radius: 3, affects: Not(HasClass("goth")), stats: {"malinconia": 1}))),
+        (id: "tanfo", name: "Tanfo", description: "Stare vicino a un barbone attacca la puzza, e resta.",
+         aura: Some((radius: 2, affects: Not(HasClass("barbone")), stats_per_tick: {"puzza": 0.5}))),
+        (id: "pace_interiore", name: "Pace interiore", description: "Accanto a un prete ci si calma.",
+         aura: Some((radius: 3, stats: {"stress": -3}))),
+        (id: "sangue_freddo", name: "Sangue freddo", description: "Si muove senza farsi notare e beve poco.",
+         stats: {"furtivita": 5}, need_rates: {"sete": -0.3}),
+        (id: "corazza_metallica", name: "Corazza metallica", description: "Lamiera al posto della pelle.",
+         stats: {"difesa": 10}),
+    ],
+)

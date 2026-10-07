@@ -39,6 +39,7 @@ pub struct Follow {
 pub enum Order {
     Move { pos: Position },
     Job { job: String, #[serde(default)] target: Option<SimId> },
+    /// Do an action with effects (an attack, a spell…): `ability` is the action's id (name kept for clients).
     Ability { ability: String, #[serde(default)] target: Option<SimId> },
     Follow { target: SimId, #[serde(default = "two")] distance: i32 },
     Stop,
@@ -162,7 +163,7 @@ pub fn apply_order(world: &mut World, e: Entity, order: Order) -> Result<String,
         }
         Order::Ability { ability, target } => {
             if !crate::abilities::ready(world, e, ability) {
-                return Err("abilità non disponibile".into());
+                return Err("azione non disponibile".into());
             }
             let t = target.map_or(JobTarget::None, JobTarget::Entity);
             start_job(world, e, "", t, None, None);
