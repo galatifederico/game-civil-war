@@ -436,10 +436,13 @@ const CATALOG = {
     facets: [["Corpo", (d) => d.body_plan], ["Tag", (d) => d.tags]],
     cols: [["Nome", (d) => esc(d.name)], ["Corpo", (d) => esc(d.body_plan)], ["Abilità", (d) => chips(d.abilities?.map((a) => name("abilities", a)))],
       ["Tag", (d) => chips(d.tags)], ["In gioco", (d) => L.byRace[d.id] ?? 0, true]] },
+  action_sets: { title: "Gruppi di azioni", group: "Catalogo",
+    cols: [["Nome", (d) => esc(d.name)], ["Azioni", (d) => (d.actions ?? []).length, true], ["Razze", (d) => chips(Object.values(C("races")).filter((r) => (r.action_sets ?? []).includes(d.id)).map((r) => r.id), "races")],
+      ["Descrizione", (d) => `<span class="muted">${esc(d.description ?? "")}</span>`]] },
   classes: { title: "Classi", group: "Catalogo", sprite: true,
     facets: [["Gruppo", (d) => d.group]],
     cols: [["Nome", (d) => esc(d.name)], ["Gruppo", (d) => esc(d.group)], ["Requisiti", (d) => (d.requires ? esc(D("classes", d.id).requires) : '<span class="muted">non si acquisisce</span>')],
-      ["Poteri", (d) => chips([...(d.abilities ?? []).map((a) => name("abilities", a))])], ["Priorità", (d) => d.priority ?? 0, true], ["In gioco", (d) => L.byClass[d.id] ?? 0, true]] },
+      ["Poteri", (d) => chips([...(d.abilities ?? []).map((a) => name("abilities", a))])], ["Si perde se", (d) => (d.loses_when ? esc(condText(d.loses_when)) : '<span class="muted">mai</span>')], ["In gioco", (d) => L.byClass[d.id] ?? 0, true]] },
   titles: { title: "Ruoli", group: "Catalogo", sprite: true,
     facets: [["Fazione", (d) => d.faction, factionName], ["Come si ottiene", (d) => d.mode, (v) => MODES[v] ?? v]],
     cols: [["Ruolo", (d) => esc(d.name)], ["Fazione", (d) => esc(d.faction ? factionName(d.faction) : "—")], ["Come si ottiene", (d) => esc(MODES[d.mode] ?? d.mode)],
@@ -453,8 +456,8 @@ const CATALOG = {
     cols: [["Nome", (d) => esc(d.name)], ["Calo per tick", (d) => fmt(d.decay, 3), true], ["Soglia bassa", (d) => fmt(d.low_threshold, 2), true],
       ["Media nel mondo", (d) => { const a = agg(L.needs[d.id]); return a.avg == null ? "—" : `${bar(a.avg, 1)} ${fmt(a.avg * 100, 0)}%`; }]] },
   actions: { title: "Azioni (scelte dell'AI)", group: "Catalogo",
-    facets: [["Fa", (d) => actionKindName(d)], ["Per tutti", (d) => (d.universal ? "sì" : "no")]],
-    cols: [["Nome", (d) => esc(d.name)], ["Fa", (d) => actionKind(d)], ["Per tutti", (d) => (d.universal ? "sì" : "")], ["Peso", (d) => fmt(d.weight, 2), true],
+    facets: [["Fa", (d) => actionKindName(d)], ["Gruppo", (d) => setsOf(d.id), (v) => name("action_sets", v)]],
+    cols: [["Nome", (d) => esc(d.name)], ["Fa", (d) => actionKind(d)], ["Gruppi", (d) => chips(setsOf(d.id), "action_sets")], ["Peso", (d) => fmt(d.weight, 2), true],
       ["Attesa", (d) => d.cooldown || "", true], ["Requisiti", (d) => esc(D("actions", d.id).requires || "")], ["Ora in corso", (d) => L.byAction[d.id] ?? 0, true]] },
   jobs: { title: "Lavori ed effetti", group: "Catalogo",
     facets: [["Gestore", (d) => d.handler || "effetti"]],
@@ -489,6 +492,7 @@ const CATALOG = {
   body_plans: { title: "Corpi", group: "Catalogo", cols: [["Id", (d) => esc(d.id)], ["Parti", (d) => chips(d.parts?.map((p) => p.name))]] },
   fluids: { title: "Fluidi", group: "Catalogo", cols: [["Nome", (d) => esc(d.name)], ["Sporcizia", (d) => d.dirtiness, true], ["Porta", (d) => esc(d.carries ?? "")]] },
 };
+const setsOf = (action) => Object.values(C("action_sets")).filter((s) => (s.actions ?? []).includes(action)).map((s) => s.id);
 const MODES = { Seat: "trono", Succession: "successione", Election: "elezione", Appointment: "nomina", Challenge: "sfida", Coup: "colpo di stato", Purchase: "acquisto" };
 function actionKindName(d) {
   const k = d.kind;
@@ -506,7 +510,7 @@ function actionKind(d) {
 function usersOf(kind, id) {
   const out = [];
   const scan = (k, f) => Object.values(C(k)).forEach((d) => f(d) && out.push(link(k, d.id)));
-  if (kind === "actions") { scan("classes", (d) => d.actions?.includes(id)); scan("templates", (d) => d.actions?.includes(id)); scan("titles", (d) => d.actions?.includes(id)); }
+  if (kind === "actions") { scan("action_sets", (d) => d.actions?.includes(id)); scan("races", (d) => d.actions?.includes(id)); scan("classes", (d) => d.actions?.includes(id)); scan("templates", (d) => d.actions?.includes(id)); scan("titles", (d) => d.actions?.includes(id)); }
   if (kind === "abilities") { scan("classes", (d) => d.abilities?.includes(id)); scan("races", (d) => d.abilities?.includes(id)); scan("titles", (d) => d.abilities?.includes(id)); }
   if (kind === "jobs") scan("actions", (d) => d.kind?.Job?.job === id);
   if (kind === "races") scan("templates", (d) => d.race === id);
@@ -880,6 +884,179 @@ function abilityTable(path, list, { op, label = "Abilità", pickOp = "push", pic
     picker(path, pickCands ?? candsOf("abilities", list ?? []), { op: pickOp, kind: "abilities", title: label });
 }
 
+// ── Actions as rows: what the AI does, where, with which effects ─────────────
+const RELATION = { Same: "della sua fazione", Allied: "alleata", Enemy: "nemica", Hostile: "ostile", Other: "di un'altra fazione", Neutral: "neutrale", Any: "" };
+function filterText(f) {
+  if (!f) return "qualunque";
+  const p = [];
+  if (f.pawn === true) p.push("pedina"); else if (f.pawn === false) p.push("edificio");
+  if (f.building) p.push(name("buildings", f.building));
+  if (f.building_tag) p.push(`edificio «${f.building_tag}»`);
+  if (f.template) p.push(name("templates", f.template));
+  if (f.relation && RELATION[f.relation] !== "") p.push(RELATION[f.relation] ?? f.relation);
+  if (f.faction) p.push("di " + factionName(f.faction));
+  if (f.tags_any?.length) p.push("con tag " + f.tags_any.join(" o "));
+  if (f.tags_all?.length) p.push("con tag " + f.tags_all.join(" e "));
+  if (f.tags_none?.length) p.push("senza tag " + f.tags_none.join(", "));
+  if (f.has_item_tag) p.push(`con un oggetto «${f.has_item_tag}»`);
+  if (f.sells_tag) p.push(`che vende «${f.sells_tag}»`);
+  if (f.min_money != null) p.push(`con almeno ${fmt(f.min_money, 0)} €`);
+  if (f.min_wanted != null) p.push("ricercato");
+  if (f.has_status) p.push("con " + name("statuses", f.has_status));
+  if (f.max_distance != null) p.push(`entro ${f.max_distance} caselle`);
+  if (f.visible) p.push("che vede");
+  if (f.not_detained) p.push("non in arresto");
+  if (f.condition) p.push(condText(f.condition));
+  return p.join(", ") || "qualunque";
+}
+function selectorText(sel) {
+  if (sel == null || sel === "None") return "dove si trova";
+  if (sel === "SelfTarget") return "sé";
+  const [k, v] = Object.entries(sel)[0];
+  if (k === "Nearest") return "il più vicino: " + filterText(v);
+  if (k === "Random") return "uno a caso: " + filterText(v);
+  if (k === "Zone") return String(v).startsWith("#") ? `una zona «${v.slice(1)}»` : "zona " + ((S.content?.map?.zones ?? []).find((z) => z.id === v)?.name ?? v);
+  if (k === "Nearby") return `un punto entro ${v} caselle`;
+  if (k === "OwnFactionZone") return `il posto della fazione (${v})`;
+  return k;
+}
+/** {type, where, rows} of an action: rows as for abilities. */
+function actionShape(a) {
+  const k = a.kind, href = `#cat/actions/${encodeURIComponent(a.id)}`;
+  if (k === "Idle") return { type: "sta fermo", where: "", rows: [] };
+  if (k === "Work" || k?.Work !== undefined) return { type: "lavoro dalla bacheca", where: "dove serve", rows: [{ who: "sé", what: "un lavoro della bacheca", mod: "secondo le priorità di lavoro", cond: "" }] };
+  if (k?.Job) {
+    const j = C("jobs")[k.Job.job], jh = `#cat/jobs/${encodeURIComponent(k.Job.job)}`;
+    const rows = j ? effectRows(j.effects, jh) : [];
+    if (j?.handler) rows.push({ who: "", what: `lavoro speciale «${esc(j.handler)}»`, mod: `<a href="${jh}">vedi il lavoro ▸</a>`, cond: "" });
+    if (j?.crime) rows.push({ who: "sé", what: `reato «${esc(j.crime.id)}»`, mod: `gravità ${fmt(j.crime.severity, 1)}`, cond: "se visto" });
+    return { type: `lavoro ${link("jobs", k.Job.job)}${j?.duration ? ` <span class="muted">${fmt(j.duration)} tick</span>` : ""}`, where: selectorText(k.Job.target), rows };
+  }
+  if (k?.Ability) {
+    const ab = C("abilities")[k.Ability.ability];
+    return { type: "abilità " + link("abilities", k.Ability.ability), where: selectorText(k.Ability.target), rows: ab ? effectRows(ab.effects, `#cat/abilities/${encodeURIComponent(ab.id)}`) : [] };
+  }
+  return { type: esc(JSON.stringify(k)), where: "", rows: [{ who: "", what: "vedi la scheda", mod: `<a href="${href}">▸</a>`, cond: "" }] };
+}
+/** Table of actions, one row per effect. */
+function actionTable(path, list, { op, label = "Azione", pickOp = "push", pickCands } = {}) {
+  const body = (list ?? []).map((id) => {
+    const a = C("actions")[id];
+    if (!a) return `<tr><td>${esc(id)}</td><td colspan="8" class="bad">non esiste</td><td class="num">${op ? op(id) : del(path, id)}</td></tr>`;
+    const sh = actionShape(a), rows = sh.rows.length ? sh.rows : [{ who: "", what: '<span class="muted">nessun effetto</span>', mod: "", cond: "" }];
+    const req = a.requires && a.requires !== "Always" ? condText(a.requires) : "";
+    const n = rows.length;
+    return rows.map((r, i) => `<tr class="${i ? "cont" : "first"}">` +
+      (i ? "" : `<td rowspan="${n}">${link("actions", id)}</td><td rowspan="${n}">${sh.type}</td><td rowspan="${n}">${esc(sh.where)}</td>`) +
+      `<td>${esc(r.who)}</td><td>${r.what}</td><td>${r.mod}</td>` +
+      (i ? "" : `<td rowspan="${n}" class="num">${fmt(a.weight, 2)}</td><td rowspan="${n}" class="num">${a.cooldown || ""}</td><td rowspan="${n}" class="muted">${esc(req)}</td><td rowspan="${n}" class="num">${op ? op(id) : del(path, id)}</td>`) + `</tr>`).join("");
+  }).join("");
+  return `<table class="ed abil"><thead><tr><th>${esc(label)}</th><th>Tipo</th><th>Dove / su chi</th><th>Su chi</th><th>Effetto</th><th>Modificatore</th><th class="num">Peso</th><th class="num">Attesa</th><th>Condizione</th><th></th></tr></thead>` +
+    `<tbody>${body || `<tr><td colspan="10" class="muted">nessuna</td></tr>`}</tbody></table>` +
+    picker(path, pickCands ?? candsOf("actions", list ?? []), { op: pickOp, kind: "actions", title: label });
+}
+
+// ── Conditions as rows with math symbols (requirements, loss conditions) ──────
+const COND_KINDS = [
+  ["stat", "Caratteristica", () => ({ StatAtLeast: { stat: Object.keys(C("stats"))[0], value: 0 } })],
+  ["race", "Razza", () => ({ RaceIn: [] })],
+  ["class", "Classe", () => ({ HasClass: Object.keys(C("classes"))[0] })],
+  ["faction", "Fazione", () => ({ MemberOf: Object.keys(C("factions"))[0] })],
+  ["status", "Stato", () => ({ HasStatus: Object.keys(C("statuses"))[0] })],
+  ["tag", "Tag", () => ({ HasTag: "" })],
+  ["item", "Oggetto", () => ({ HasItem: { item: Object.keys(C("items"))[0], qty: 1 } })],
+  ["title", "Ruolo", () => ({ HoldsTitle: Object.keys(C("titles"))[0] })],
+  ["money", "Soldi", () => ({ MoneyAtLeast: 0 })],
+  ["wanted", "Ricercato", () => ({ WantedAtLeast: 1 })],
+  ["need", "Bisogno", () => ({ NeedBelow: { need: Object.keys(C("needs"))[0], value: 0.5 } })],
+  ["sex", "Sesso", () => ({ IsSex: "Female" })],
+];
+const opSel = (path, cur, ops) => `<select data-cop="${P(path)}">${ops.map((o) => `<option ${o === cur ? "selected" : ""}>${o}</option>`).join("")}</select>`;
+const refSel = (path, kind, cur) => `<select data-set="${P(path)}" data-t="str">${candsOf(kind).map(([id, l]) => `<option value="${esc(id)}" ${id === cur ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+/** Cells [subject, operator, value] of one condition at `path`; null when it is not a simple one. */
+function condCells(c, path) {
+  const neg = c && typeof c === "object" && "Not" in c, inner = neg ? c.Not : c, ip = neg ? [...path, "Not"] : path;
+  if (typeof inner === "string") {
+    const lab = { Detained: "In arresto", Disguised: "Travestito", HoldsAnyTitle: "Ha un ruolo" }[inner];
+    return lab ? [lab, opSel(path, neg ? "falso" : "vero", ["vero", "falso"]), ""] : null;
+  }
+  const [k, v] = Object.entries(inner ?? {})[0] ?? [];
+  switch (k) {
+    case "StatAtLeast": case "StatBelow":
+      if (neg) return null;
+      return [refSel([...ip, k, "stat"], "stats", v.stat), opSel(path, k === "StatAtLeast" ? "≥" : "<", ["≥", "<"]), numInput([...ip, k, "value"], v.value, "")];
+    case "MoneyAtLeast": return ["Soldi", opSel(path, neg ? "<" : "≥", ["≥", "<"]), numInput([...ip, k], v, "") + " €"];
+    case "WantedAtLeast": return ["Ricercato", opSel(path, neg ? "<" : "≥", ["≥", "<"]), numInput([...ip, k], v, "")];
+    case "NeedBelow": return neg ? null : [refSel([...ip, k, "need"], "needs", v.need), "<", numInput([...ip, k, "value"], v.value, "") + " (0–1)"];
+    case "StatusTagCount": return [`Stati «${esc(v.tag)}»`, opSel(path, neg ? "<" : "≥", ["≥", "<"]), numInput([...ip, k, "count"], v.count, "")];
+    case "RaceIn": return ["Razza", opSel(path, neg ? "!=" : "=", ["=", "!="]),
+      `<div>${v.map((r) => `<span class="chip">${esc(name("races", r))} ${del([...ip, k], r)}</span>`).join("") || '<span class="bad">nessuna razza</span>'}</div>` + picker([...ip, k], candsOf("races", v), { kind: "races", title: "Razze ammesse" })];
+    case "IsRace": return ["Razza", opSel(path, neg ? "!=" : "=", ["=", "!="]), refSel([...ip, k], "races", v)];
+    case "MemberOf": return ["Fazione", opSel(path, neg ? "!=" : "=", ["=", "!="]), refSel([...ip, k], "factions", v)];
+    case "IsSex": return ["Sesso", opSel(path, neg ? "!=" : "=", ["=", "!="]), `<select data-set="${P([...ip, k])}" data-t="str">${Object.entries(SEX).map(([s, l]) => `<option value="${s}" ${s === v ? "selected" : ""}>${l}</option>`).join("")}</select>`];
+    case "HasClass": return ["Classe " + refSel([...ip, k], "classes", v), opSel(path, neg ? "falso" : "vero", ["vero", "falso"]), ""];
+    case "HasStatus": return ["Stato " + refSel([...ip, k], "statuses", v), opSel(path, neg ? "falso" : "vero", ["vero", "falso"]), ""];
+    case "HoldsTitle": return ["Ruolo " + refSel([...ip, k], "titles", v), opSel(path, neg ? "falso" : "vero", ["vero", "falso"]), ""];
+    case "HasTag": return [`Tag <input data-set="${P([...ip, k])}" data-t="str" value="${esc(v)}" size="14">`, opSel(path, neg ? "falso" : "vero", ["vero", "falso"]), ""];
+    case "HasItem": return ["Oggetto " + refSel([...ip, k, "item"], "items", v.item), opSel(path, neg ? "<" : "≥", ["≥", "<"]), numInput([...ip, k, "qty"], v.qty, "")];
+    default: return null;
+  }
+}
+/** The condition with a new operator. */
+function withOp(c, op) {
+  const neg = c && typeof c === "object" && "Not" in c, inner = neg ? c.Not : c;
+  const k = typeof inner === "object" ? Object.keys(inner)[0] : null;
+  if (k === "StatAtLeast" || k === "StatBelow") return { [op === "≥" ? "StatAtLeast" : "StatBelow"]: inner[k] };
+  return op === "<" || op === "!=" || op === "falso" ? { Not: inner } : inner;
+}
+/** Editor of a condition field: a list joined by "and"/"or", one row per condition. */
+function condEditor(f, cond, { none, start }) {
+  if (cond == null) return `<div class="muted">${esc(none)}</div><button data-cstart="${P([f])}" data-v="${esc(JSON.stringify(start))}">${f === "requires" ? "Rendi acquisibile" : "Aggiungi una condizione di perdita"}</button>`;
+  if (!(typeof cond === "object" && ("All" in cond || "Any" in cond))) { cond = { All: [cond] }; draft.def[f] = cond; }
+  const mode = "All" in cond ? "All" : "Any", list = cond[mode];
+  const rows = list.map((c, i) => {
+    const p = [f, mode, i], cells = condCells(c, p);
+    return `<tr>${cells ? cells.map((x) => `<td>${x}</td>`).join("") : `<td colspan="3">${esc(condText(c))} <span class="muted">(modificabile nel JSON in fondo)</span></td>`}<td class="num">${del([f, mode, i], undefined).replace('data-act="delkey"', 'data-act="cdel"')}</td></tr>`;
+  }).join("");
+  return `<div class="row">Valgono <select data-cmode="${P([f])}"><option value="All" ${mode === "All" ? "selected" : ""}>tutte (e)</option><option value="Any" ${mode === "Any" ? "selected" : ""}>almeno una (o)</option></select> le condizioni:</div>` +
+    `<table class="ed"><thead><tr><th>Cosa</th><th>Condizione</th><th>Valore</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="muted">nessuna condizione</td></tr>`}</tbody></table>` +
+    `<div class="row" style="margin-top:4px"><select data-cadd="${P([f, mode])}"><option value="">+ Aggiungi condizione…</option>${COND_KINDS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>` +
+    `<button data-cnull="${P([f])}">${f === "requires" ? "Rendi non acquisibile" : "Togli: non si perde mai"}</button></div>`;
+}
+/** Classes: how to become one and when it is lost, on top. */
+function classSections(d) {
+  const humanoid = Object.values(C("races")).filter((r) => (r.action_sets ?? []).includes("vita_quotidiana")).map((r) => r.id);
+  return {
+    sections: [
+      card("Requisiti per diventarlo", condEditor("requires", d.requires, { none: "Non si acquisisce: la danno solo il personaggio o un effetto.", start: { All: [{ RaceIn: humanoid }] } })),
+      card("Si perde se", condEditor("loses_when", d.loses_when, { none: "Non si perde mai: una volta presa, resta.", start: { Any: [] } }) +
+        `<div class="muted" style="margin-top:4px">Vale solo per chi l'ha presa da sé; le classi date dal personaggio restano.</div>`),
+    ],
+    used: ["requires", "loses_when"],
+  };
+}
+/** Races: base actions (groups and own). */
+function raceActionSection(d) {
+  const sets = (d.action_sets ?? []).map((s) => `<tr><td>${link("action_sets", s)}</td><td class="muted">${esc(C("action_sets")[s]?.description ?? "")}</td><td class="num">${(C("action_sets")[s]?.actions ?? []).length} azioni</td><td class="num">${del(["action_sets"], s)}</td></tr>`).join("");
+  return card("Azioni di base",
+    `<h4 style="margin:4px 0">Gruppi</h4><table class="ed"><tbody>${sets || '<tr><td class="muted">nessun gruppo</td></tr>'}</tbody></table>` +
+    picker(["action_sets"], candsOf("action_sets", d.action_sets ?? []), { kind: "action_sets", title: "Gruppi di azioni" }) +
+    `<h4 style="margin:12px 0 4px">Azioni proprie della razza</h4>` + actionTable(["actions"], d.actions, { label: "Azione" }) +
+    `<div class="muted" style="margin-top:4px">Le classi, i ruoli e il personaggio aggiungono altre azioni a queste.</div>`);
+}
+$("dBody").addEventListener("change", (ev) => {
+  const el = ev.target; if (!draft) return;
+  if (el.dataset.cop) { const p = JSON.parse(el.dataset.cop); setAt(draft.def, p, withOp(getAt(draft.def, p), el.value)); saveDraft(); }
+  else if (el.dataset.cmode) { const p = JSON.parse(el.dataset.cmode), c = getAt(draft.def, p); setAt(draft.def, p, { [el.value]: c.All ?? c.Any ?? [] }); saveDraft(); }
+  else if (el.dataset.cadd && el.value) { const p = JSON.parse(el.dataset.cadd); setAt(draft.def, p, [...(getAt(draft.def, p) ?? []), COND_KINDS.find(([k]) => k === el.value)[2]()]); saveDraft(); }
+}, true);
+$("dBody").addEventListener("click", (ev) => {
+  const el = ev.target.closest("button"); if (!el || !draft) return;
+  if (el.dataset.cstart) { setAt(draft.def, JSON.parse(el.dataset.cstart), JSON.parse(el.dataset.v)); saveDraft(); }
+  else if (el.dataset.cnull) { setAt(draft.def, JSON.parse(el.dataset.cnull), null); saveDraft(); }
+  else if (el.dataset.act === "cdel") { const p = JSON.parse(el.dataset.p), list = getAt(draft.def, p.slice(0, -1)); list.splice(p[p.length - 1], 1); saveDraft(); ev.stopImmediatePropagation(); }
+}, true);
+
 // What a definition does to stats: [stat, "modifier"] pairs (abilities, statuses, items…).
 function statEffects(kind, d) {
   const out = [];
@@ -901,6 +1078,7 @@ function statEffects(kind, d) {
 /** Table of referenced definitions with what they do to stats, a remove button each and a picker. */
 const STAT_KINDS = ["abilities", "statuses", "items", "classes", "races", "titles", "templates"];
 function refTable(kind, path, list, refKind, { op, label = "Nome", pickOp = "push", pickCands, brief = false } = {}) {
+  if (refKind === "actions" && !brief) return actionTable(path, list, { op, label: label === "Nome" ? "Azione" : label, pickOp, pickCands });
   if (refKind === "abilities" && !brief) return abilityTable(path, list, { op, label: label === "Nome" ? "Abilità" : label, pickOp, pickCands });
   if (brief) {
     const rows = (list ?? []).map((id) => `<tr><td>${link(refKind, id)}</td><td class="num">${op ? op(id) : del(path, id)}</td></tr>`).join("");
@@ -941,7 +1119,7 @@ function jsonBox(path, v, text) {
 }
 
 // How each field is edited, by name.
-const REFLIST = { abilities: "abilities", actions: "actions", classes: "classes", includes: "classes", replaces: "classes", races: "races", titles: "titles",
+const REFLIST = { action_sets: "action_sets", abilities: "abilities", actions: "actions", classes: "classes", includes: "classes", replaces: "classes", races: "races", titles: "titles",
   immunities: "statuses", innate_statuses: "statuses", statuses: "statuses", needs_exempt: "needs", exports: "items", items: "items" };
 const REF = { race: "races", faction: "factions", body_plan: "body_plans", template: "templates", skill: "stats", escalates_to: "statuses", item: "items",
   challenge_stat: "stats", summoner: "templates", author: "templates", carries: "statuses" };
@@ -955,7 +1133,7 @@ const ENUMS = { statuses: ["kind", "stacking"], factions: ["role"], titles: ["mo
 const ENUM_LABEL = { mode: MODES, sex: SEX };
 const LOGIC_TEXT = { requires: "requires", claim_requires: "requires", effects: "effects", on_apply: "on_apply", per_tick: "per_tick" };
 const SECTION = { stats: "Caratteristiche", carried_stats: "Caratteristiche quando è in uso", score: "Punteggio per la successione" };
-const TITLES = { abilities: "abilità", actions: "azioni", includes: "comprende le classi", replaces: "sostituisce le classi", races: "razze", classes: "classi",
+const TITLES = { loses_when: "si perde se", action_sets: "gruppi di azioni", abilities: "abilità", actions: "azioni", includes: "comprende le classi", replaces: "sostituisce le classi", races: "razze", classes: "classi",
   titles: "ruoli", immunities: "immunità", innate_statuses: "stati innati", statuses: "stati", needs_exempt: "bisogni assenti", exports: "esporta", items: "oggetti",
   tags: "tag", grants_tags: "tag che dà", required_tags: "tag richiesti", ideology_tags: "tag ideologici", forbids: "vieta", types: "tipi", zones: "zone",
   work: "lavori (priorità)", stock: "scorte iniziali", cost: "costo di costruzione", passive: "produzione passiva", need_rates: "velocità dei bisogni",
@@ -977,7 +1155,7 @@ function fieldEditor(kind, d, f) {
     return ["value", `<input data-set="${P([f])}" data-t="str" list="zones-dl" value="${esc(v ?? "")}" size="24">`];
   }
   if (Array.isArray(sample) && (sample.length === 0 || typeof sample[0] === "string") && Array.isArray(v ?? [])) {
-    if (REFLIST[f]) return ["refs", refTable(kind, [f], v, REFLIST[f])];
+    if (REFLIST[f]) return ["refs", refTable(kind, [f], v, REFLIST[f], { brief: f === "replaces" })];
     return ["tags", tagList(kind, [f], v, f)];
   }
   if (sample && typeof sample === "object" && !Array.isArray(sample) && Object.values(sample).every((x) => typeof x === "number" || x === null)) {
@@ -1117,7 +1295,8 @@ function renderDetail() {
   const editable = EDITABLE.includes(kind);
   // Main sections: the race's own, else one per list/map field plus a card of single values.
   let main = [], used = ["id", "name", "description"];
-  if (kind === "races") { const r = raceSections(d); main = r.sections; used = [...used, ...r.used]; }
+  if (kind === "races") { const r = raceSections(d); main = r.sections; used = [...used, ...r.used, "action_sets", "actions"]; main.splice(2, 0, raceActionSection(d)); }
+  if (kind === "classes") { const r = classSections(d); main = r.sections; used = [...used, ...r.used]; }
   const values = {}, details = [], logic = [];
   for (const f of Object.keys(d)) {
     if (used.includes(f)) continue;
@@ -1130,7 +1309,7 @@ function renderDetail() {
     else if (type === "logic") logic.push([fieldLabel(f), html]);
     else details.push([fieldLabel(f), html]);
   }
-  if (Object.keys(values).length) main.unshift(card("Valori", kv(values)));
+  if (Object.keys(values).length) main.splice(kind === "classes" ? 2 : 0, 0, card("Valori", kv(values)));
   const live = liveInfo(kind, d);
   $("dBody").innerHTML =
     `<div class="detailhead">${CATALOG[kind]?.sprite ? spriteHtml(kind, d, true) : ""}<div><h2>${esc(d.name || d.id)}</h2><div class="muted">${esc(kind)} · <code>${esc(d.id ?? "")}</code></div>` +
@@ -1148,7 +1327,7 @@ function renderDetail() {
   const statBox = $("dBody").querySelector(".tcustom")?.closest(".card");
   if (statBox) applyStatFilter(statBox);
 }
-const EDITABLE = ["stats", "needs", "body_plans", "races", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
+const EDITABLE = ["stats", "needs", "body_plans", "races", "action_sets", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
   "buildings", "templates", "spawners", "triggers", "collections", "titles", "news_sources", "global_modifiers", "supplies"];
 $("dBody").addEventListener("change", (ev) => {
   const el = ev.target.closest("[data-set]"); if (!el || !draft) return;
