@@ -155,6 +155,8 @@ pub enum Condition {
     InZone(String),
     MemberOf(String),
     IsRace(String),
+    /// The subject's (true) race is one of these.
+    RaceIn(Vec<String>),
     HasClass(String),
     WantedAtLeast(f32),
     Detained,

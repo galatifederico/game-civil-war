@@ -508,7 +508,7 @@ async fn ui_classes(State(s): State<AppState>, Path(player): Path<String>) -> Ap
         let lines = requirement_lines(&mut sim, me, req);
         let eligible = me.is_some_and(|e| crate::classes::meets(&mut sim.world, e, &d.id));
         out.push(json!({
-            "id": d.id, "name": d.name, "description": d.description, "group": d.group, "priority": d.priority,
+            "id": d.id, "name": d.name, "description": d.description, "group": d.group,
             "held": held.contains(&d.id), "eligible": eligible, "requirements": lines,
             "powers": ability_and_action_names(&content, &d.abilities, &d.actions),
         }));

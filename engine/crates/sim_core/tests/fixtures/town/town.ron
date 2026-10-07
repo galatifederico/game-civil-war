@@ -32,8 +32,11 @@
         ]),
     ],
     races: [
-        (id: "human", name: "Human", body_plan: "humanoid"),
-        (id: "lizard", name: "Lizard", body_plan: "humanoid", tags: ["cold_blooded"]),
+        (id: "human", name: "Human", body_plan: "humanoid", action_sets: ["daily_life"]),
+        (id: "lizard", name: "Lizard", body_plan: "humanoid", action_sets: ["daily_life"], tags: ["cold_blooded"]),
+    ],
+    action_sets: [
+        (id: "daily_life", name: "Daily life", actions: ["eat", "buy_food", "work", "idle"]),
     ],
     classes: [
         (id: "citizen", name: "Citizen", actions: [], work: {"labor": 3}),
@@ -68,14 +71,14 @@
         (id: "haul", name: "Haul", work_type: "labor", duration: 3, effects: [ModMoney(2.0)]),
     ],
     actions: [
-        (id: "eat", name: "Eat", universal: true, weight: 1.0, kind: Job(job: "eat"),
+        (id: "eat", name: "Eat", weight: 1.0, kind: Job(job: "eat"),
          requires: HasItemTag("food"),
          considerations: [(input: Need("hunger"), curve: Inverse)]),
-        (id: "buy_food", name: "Buy food", universal: true, weight: 0.9, kind: Job(job: "buy_food", target: Nearest((sells_tag: "food"))),
+        (id: "buy_food", name: "Buy food", weight: 0.9, kind: Job(job: "buy_food", target: Nearest((sells_tag: "food"))),
          requires: All([Not(HasItemTag("food")), MoneyAtLeast(5)]),
          considerations: [(input: Need("hunger"), curve: Step(threshold: 0.5, below: true))]),
-        (id: "work", name: "Work", universal: true, weight: 0.5, kind: Work),
-        (id: "idle", name: "Idle", universal: true, weight: 0.05, kind: Idle),
+        (id: "work", name: "Work", weight: 0.5, kind: Work),
+        (id: "idle", name: "Idle", weight: 0.05, kind: Idle),
         (id: "steal", name: "Steal", weight: 1.0, cooldown: 30,
          kind: Job(job: "steal", target: Nearest((pawn: true, min_money: 10, relation: Other, max_distance: 20))),
          considerations: [(input: Money(max: 100), curve: Inverse)]),

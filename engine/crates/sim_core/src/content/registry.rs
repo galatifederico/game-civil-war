@@ -35,6 +35,7 @@ pub struct ContentData {
     pub needs: BTreeMap<Id, NeedDef>,
     pub body_plans: BTreeMap<Id, BodyPlanDef>,
     pub races: BTreeMap<Id, RaceDef>,
+    pub action_sets: BTreeMap<Id, ActionSetDef>,
     pub classes: BTreeMap<Id, ClassDef>,
     pub statuses: BTreeMap<Id, StatusDef>,
     pub fluids: BTreeMap<Id, FluidDef>,
@@ -69,7 +70,7 @@ fn merge<T, F: Fn(&T) -> &str>(dst: &mut BTreeMap<Id, T>, src: Vec<T>, id: F) {
 
 /// Kinds of definitions (keyed by id) the admin console can replace while the game runs.
 pub const EDITABLE_KINDS: &[&str] = &[
-    "stats", "needs", "body_plans", "races", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
+    "stats", "needs", "body_plans", "races", "action_sets", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
     "buildings", "templates", "spawners", "triggers", "collections", "titles", "news_sources", "global_modifiers", "supplies",
 ];
 
@@ -86,6 +87,7 @@ fn merge_pack(c: &mut ContentData, p: ContentPack) {
     merge(&mut c.needs, p.needs, |d| &d.id);
     merge(&mut c.body_plans, p.body_plans, |d| &d.id);
     merge(&mut c.races, p.races, |d| &d.id);
+    merge(&mut c.action_sets, p.action_sets, |d| &d.id);
     merge(&mut c.classes, p.classes, |d| &d.id);
     merge(&mut c.statuses, p.statuses, |d| &d.id);
     merge(&mut c.fluids, p.fluids, |d| &d.id);
@@ -261,9 +263,20 @@ impl Validator<'_> {
                     }
             }
         }
+        for s in c.action_sets.values() {
+            for a in &s.actions {
+                self.check(&c.actions, "azione", a, &format!("gruppo di azioni {}", s.id));
+            }
+        }
         for r in c.races.values() {
             let ctx = format!("razza {}", r.id);
             self.check(&c.body_plans, "piano corporeo", &r.body_plan, &ctx);
+            for s in &r.action_sets {
+                self.check(&c.action_sets, "gruppo di azioni", s, &ctx);
+            }
+            for a in &r.actions {
+                self.check(&c.actions, "azione", a, &ctx);
+            }
             for s in r.stat_ranges.keys() {
                 self.stat(s, &ctx);
             }
@@ -305,14 +318,14 @@ impl Validator<'_> {
             for a in &cl.actions {
                 self.check(&c.actions, "azione", a, &ctx);
             }
-            for r in &cl.races {
-                self.check(&c.races, "razza", r, &ctx);
-            }
-            for x in cl.includes.iter().chain(&cl.replaces) {
+            for x in &cl.replaces {
                 self.check(&c.classes, "classe", x, &ctx);
             }
             if let Some(req) = &cl.requires {
                 self.cond(req, &ctx);
+            }
+            if let Some(lose) = &cl.loses_when {
+                self.cond(lose, &ctx);
             }
         }
         if let Some(s) = &c.bindings.crime_record {
@@ -731,6 +744,11 @@ impl Validator<'_> {
             Condition::InZone(z) => self.zone(z, ctx),
             Condition::MemberOf(f) => self.check(&c.factions, "fazione", f, ctx),
             Condition::IsRace(r) => self.check(&c.races, "razza", r, ctx),
+            Condition::RaceIn(list) => {
+                for r in list {
+                    self.check(&c.races, "razza", r, ctx);
+                }
+            }
             Condition::HasClass(cl) => self.check(&c.classes, "classe", cl, ctx),
             Condition::TemplateDead(t) | Condition::TemplateAlive(t) => {
                 self.check(&c.templates, "template", t, ctx)

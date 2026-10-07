@@ -1,0 +1,24 @@
+// Gruppi di azioni di base: ogni razza sceglie i suoi (più le azioni sue proprie, nella razza).
+(
+    action_sets: [
+        (id: "vita_quotidiana", name: "Vita quotidiana", description: "Mangiare, dormire, studiare, divertirsi, pregare, sfidare: la vita delle razze umanoidi.",
+         actions: ["adora_san_vitale", "allenati", "barzelletta", "battesimo", "bevi_acqua", "bevi_al_bar", "colleziona",
+                   "colpo_di_stato_anarchico", "coltiva_baffi", "coltiva_erba", "compra_arte", "compra_cibo", "confessati",
+                   "corteggia", "cucina_anolini", "cucina_torta_fritta", "degusta", "deposita_minerali", "diffama", "divertiti",
+                   "dormi", "elemosina", "esplora", "fai_cosplay", "fai_culatello", "fai_fuori_il_boss", "fai_lavoretti",
+                   "fai_sesso", "fuma", "gara_di_bevute", "gioca_azzardo", "gioca_di_ruolo", "girovaga", "graffito", "guarda_cantieri",
+                   "insulta", "jogging", "lancia_oggetto", "lavati", "lavora", "leggi_fumetti", "mangia", "organizza_rave",
+                   "ozia", "partita_al_bar", "passa_canna", "pianta_stendardo", "piscia", "pratica_arti_marziali", "pratica_scherma",
+                   "prega", "prega_per", "propaganda", "raccogli_porcini", "rissa", "rolla_canna", "scendi_nello_scantinato",
+                   "selfie", "sfida_campione", "sfida_capo_nani", "sfida_diablo", "sfida_gran_maestro", "sosta", "spaccia",
+                   "studia_agricoltura", "studia_cucina", "studia_giornalismo", "studia_informatica", "studia_investigazione",
+                   "studia_legge", "studia_magia_bianca", "studia_magia_nera", "studia_medicina", "studia_religione", "studia_storia",
+                   "tira_al_bersaglio", "vai_al_trono", "vai_alle_terme", "vendemmia", "videogioca"]),
+        (id: "istinti_animali", name: "Istinti animali", description: "Mangiare, bere, dormire, girare e attaccar briga.",
+         actions: ["dormi", "mangia", "bevi_acqua", "girovaga", "sosta", "ozia", "esplora", "rissa"]),
+        (id: "routine_macchine", name: "Routine delle macchine", description: "Pattugliare, lavorare, aspettare ordini.",
+         actions: ["girovaga", "sosta", "ozia", "esplora", "lavora", "fai_lavoretti"]),
+        (id: "istinti_non_morti", name: "Istinti dei non morti", description: "Vagare e azzannare.",
+         actions: ["girovaga", "sosta", "ozia", "rissa"]),
+    ],
+)

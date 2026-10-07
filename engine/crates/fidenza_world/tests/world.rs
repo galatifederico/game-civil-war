@@ -537,3 +537,53 @@ fn console_edits_race_ranges_sexes_and_saves_them() {
     assert!(sim.content().races["fidentino"].abilities.is_empty());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Classes add up; races not listed cannot take a class; a class goes only by its own loss condition;
+/// a class that replaces another takes its place and keeps it from coming back.
+#[test]
+fn classes_add_up_and_follow_their_own_rules() {
+    use sim_core::classes::{eligible, keeps, take, ClassState};
+    use sim_core::stats::{Classes, Stats};
+    let mut sim = sim(1);
+    let set = |sim: &mut Simulation, e: Entity, k: &str, v: f32| {
+        let mut s = sim.world.get_mut::<Stats>(e).unwrap();
+        s.base.insert(k.into(), v);
+        s.effective.insert(k.into(), v);
+    };
+    let tpl = sim.content().templates.values().find(|t| t.race == "fidentino" && !t.unique && !t.virtual_entity).unwrap().id.clone();
+    let e = sim_core::lifecycle::spawn_template(&mut sim.world, &tpl, None, &SpawnOverrides::default()).unwrap();
+    for (k, v) in [("con_agricoltura", 40.0), ("resistenza", 15.0), ("con_lavori_manuali", 50.0), ("forza", 20.0)] {
+        set(&mut sim, e, k, v);
+    }
+    let options = eligible(&mut sim.world, e);
+    assert!(options.contains(&"agricoltore".to_string()) && options.contains(&"fabbro".to_string()), "{options:?}");
+    take(&mut sim.world, e, "agricoltore");
+    take(&mut sim.world, e, "fabbro");
+    let held = sim.world.get::<Classes>(e).unwrap().0.clone();
+    assert!(held.contains(&"agricoltore".into()) && held.contains(&"fabbro".into()), "le classi si sommano: {held:?}");
+    assert!(!held.contains(&"normie".into()), "la classe di base se ne va");
+    // A farmer who forgets farming stays a farmer: the class has no loss condition.
+    set(&mut sim, e, "con_agricoltura", 0.0);
+    assert!(keeps(&mut sim.world, e, "agricoltore"));
+    // The tramp's own rule: with 100 € he is no longer a tramp.
+    set(&mut sim, e, "puzza", 90.0);
+    take(&mut sim.world, e, "barbone");
+    sim.world.get_mut::<sim_core::stats::Wallet>(e).unwrap().0 = 500.0;
+    assert!(!keeps(&mut sim.world, e, "barbone"));
+    // Replacing: the Sith takes the Jedi's place and the Jedi cannot come back.
+    take(&mut sim.world, e, "jedi");
+    take(&mut sim.world, e, "sith");
+    let held = sim.world.get::<Classes>(e).unwrap().0.clone();
+    assert!(held.contains(&"sith".into()) && !held.contains(&"jedi".into()), "{held:?}");
+    for (k, v) in [("forza_jedi", 90.0), ("aggressivita", 0.0), ("stress", 0.0)] {
+        set(&mut sim, e, k, v);
+    }
+    assert!(!eligible(&mut sim.world, e).contains(&"jedi".to_string()));
+    assert!(sim.world.get::<ClassState>(e).unwrap().acquired.contains(&"sith".to_string()));
+    // A boar with the same skills cannot become a farmer: its race is not listed.
+    let boar = sim_core::lifecycle::spawn_template(&mut sim.world, "cinghiale", None, &SpawnOverrides::default()).unwrap();
+    for (k, v) in [("con_agricoltura", 40.0), ("resistenza", 15.0)] {
+        set(&mut sim, boar, k, v);
+    }
+    assert!(!eligible(&mut sim.world, boar).contains(&"agricoltore".to_string()));
+}

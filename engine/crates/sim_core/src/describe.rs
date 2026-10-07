@@ -2,6 +2,11 @@
 
 use crate::content::{Condition, Content, Effect, Scope};
 
+fn races(c: &Content, list: &[String]) -> String {
+    let names: Vec<&str> = list.iter().map(|r| c.races.get(r).map_or(r.as_str(), |x| x.name.as_str())).collect();
+    names.join(" o ")
+}
+
 fn signed(v: f32) -> String {
     let n = if (v - v.round()).abs() < 0.05 { format!("{v:.0}") } else { format!("{v:.1}") };
     if v >= 0.0 { format!("+{n}") } else { n }
@@ -155,6 +160,7 @@ pub fn condition(c: &Content, cond: &Condition) -> String {
             Condition::HasStatusTag(t) => format!("nessun malanno di tipo {t}"),
             Condition::HasStatus(s) => format!("non {}", status(c, s)),
             Condition::IsRace(r) => format!("non {}", c.races.get(r).map_or(r.as_str(), |x| x.name.as_str())),
+            Condition::RaceIn(list) => format!("razza diversa da {}", races(c, list)),
             Condition::MemberOf(f) => format!("non membro di {}", c.factions.get(f).map_or(f.as_str(), |x| x.name.as_str())),
             Condition::WantedAtLeast(_) => "non ricercato".into(),
             Condition::MoneyAtLeast(m) => format!("meno di {m:.0} €"),
@@ -180,6 +186,7 @@ pub fn condition(c: &Content, cond: &Condition) -> String {
         Condition::InZone(z) => format!("si trova in {}", c.zone(z).map_or(z.as_str(), |x| x.name.as_str())),
         Condition::MemberOf(f) => format!("membro di {}", c.factions.get(f).map_or(f.as_str(), |x| x.name.as_str())),
         Condition::IsRace(r) => format!("razza {}", c.races.get(r).map_or(r.as_str(), |x| x.name.as_str())),
+        Condition::RaceIn(list) => format!("razza {}", races(c, list)),
         Condition::HasClass(k) => format!("è {}", c.classes.get(k).map_or(k.as_str(), |x| x.name.as_str())),
         Condition::WantedAtLeast(v) => format!("ricercato almeno {}", num(*v)),
         Condition::Detained => "in arresto".into(),

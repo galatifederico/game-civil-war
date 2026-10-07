@@ -193,7 +193,11 @@ pub fn refresh_role(world: &mut World, e: Entity) {
     let content = world.resource::<Content>();
     let classes = world.get::<Classes>(e).map(|c| c.0.clone()).unwrap_or_default();
     let template = world.get::<TemplateId>(e).and_then(|t| content.templates.get(&t.0));
-    let mut actions: Vec<String> = content.actions.values().filter(|a| a.universal).map(|a| a.id.clone()).collect();
+    // Base actions come from the (true) race: its groups and its own.
+    let race = world.get::<crate::stats::Race>(e).and_then(|r| content.races.get(&r.0));
+    let mut actions: Vec<String> = race
+        .map(|r| r.action_sets.iter().filter_map(|s| content.action_sets.get(s)).flat_map(|s| s.actions.iter().cloned()).chain(r.actions.iter().cloned()).collect())
+        .unwrap_or_default();
     let mut work: BTreeMap<String, u8> = BTreeMap::new();
     for c in &classes {
         if let Some(cd) = content.classes.get(c) {

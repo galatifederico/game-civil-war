@@ -532,6 +532,7 @@ pub fn eval_condition(world: &mut World, ctx: &EffectCtx, cond: &Condition) -> b
         }
         Condition::MemberOf(f) => faction_of(world, subj).is_some_and(|x| &x == f),
         Condition::IsRace(r) => subj.and_then(|e| world.get::<Race>(e)).is_some_and(|x| &x.0 == r),
+        Condition::RaceIn(list) => subj.and_then(|e| world.get::<Race>(e)).is_some_and(|x| list.contains(&x.0)),
         Condition::HasClass(c) => subj.and_then(|e| world.get::<Classes>(e)).is_some_and(|x| x.0.contains(c)),
         Condition::WantedAtLeast(v) => subj.and_then(|e| world.get::<crate::crime::Wanted>(e)).is_some_and(|w| w.level >= *v),
         Condition::Detained => subj.is_some_and(|e| world.get::<crate::crime::Detained>(e).is_some()),

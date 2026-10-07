@@ -20,6 +20,7 @@ pub struct ContentPack {
     pub needs: Vec<NeedDef>,
     pub body_plans: Vec<BodyPlanDef>,
     pub races: Vec<RaceDef>,
+    pub action_sets: Vec<ActionSetDef>,
     pub classes: Vec<ClassDef>,
     pub statuses: Vec<StatusDef>,
     pub fluids: Vec<FluidDef>,
@@ -221,6 +222,12 @@ pub struct RaceDef {
     /// Sexes members can be born with; empty for races without sex (machines, programs…).
     #[serde(default = "all_sexes")]
     pub sexes: Vec<crate::stats::Sex>,
+    /// Groups of base actions every member considers (see `ActionSetDef`).
+    #[serde(default)]
+    pub action_sets: Vec<Id>,
+    /// Base actions of this race on top of its groups.
+    #[serde(default)]
+    pub actions: Vec<Id>,
     /// Per-race limits, starting value and variation at birth of stats (unset values: the stat's own).
     /// A race has no fixed bonus: members are born around its starting value and can change from there.
     #[serde(default)]
@@ -244,6 +251,18 @@ pub struct StatRange {
     pub spread: Option<f32>,
 }
 
+/// A named group of base actions shared by races (daily life, animal instincts…).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ActionSetDef {
+    pub id: Id,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub actions: Vec<Id>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClassDef {
@@ -263,25 +282,16 @@ pub struct ClassDef {
     /// Default WorkPriorityMatrix row: work type → priority (1 = highest, 4 = lowest, 0 = disabled).
     #[serde(default)]
     pub work: BTreeMap<Id, u8>,
-    /// Races allowed to take this class (empty = all).
-    #[serde(default)]
-    pub races: Vec<Id>,
-    /// What a pawn needs to take the class on its own (see `classes`). `None`: only given by templates
-    /// and effects, never acquired.
+    /// What a pawn needs to take the class on its own (see `classes`), races allowed included
+    /// (`RaceIn`). `None`: only given by templates and effects, never acquired.
     #[serde(default)]
     pub requires: Option<Condition>,
-    /// Comes with the race or the template and never changes (beasts, the undead…).
+    /// When a pawn that took the class on its own loses it. `None`: never (each class decides).
     #[serde(default)]
-    pub innate: bool,
-    /// Classes kept together with this one (an exorcist is still a priest).
-    #[serde(default)]
-    pub includes: Vec<Id>,
-    /// Classes this one takes over even for pawns that would not otherwise change (a Jedi turning Sith).
+    pub loses_when: Option<Condition>,
+    /// Classes lost when this one is taken, and not taken again while it is held (a Jedi turning Sith).
     #[serde(default)]
     pub replaces: Vec<Id>,
-    /// Higher first when a pawn could take several classes.
-    #[serde(default)]
-    pub priority: i32,
     /// Section of the class list in the UI.
     #[serde(default)]
     pub group: String,
@@ -572,8 +582,6 @@ pub struct ActionDef {
     pub considerations: Vec<Consideration>,
     /// Who may consider this action (default: everybody).
     pub requires: Condition,
-    /// Every pawn considers it (otherwise only pawns whose class/race/template lists it).
-    pub universal: bool,
     /// Ticks before the action can be picked again after it ends.
     pub cooldown: u64,
     /// Label for the UI while doing it.
@@ -590,7 +598,6 @@ impl Default for ActionDef {
             weight: 1.0,
             considerations: Vec::new(),
             requires: Condition::default(),
-            universal: false,
             cooldown: 0,
             label: String::new(),
         }

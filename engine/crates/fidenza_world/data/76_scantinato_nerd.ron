@@ -16,7 +16,7 @@
         ]),
     ],
     races: [
-        (id: "polipo", name: "Polipo", body_plan: "cefalopode", sexes: [], tags: ["polipo", "bestia", "fauna", "nerd"],
+        (id: "polipo", name: "Polipo", body_plan: "cefalopode", action_sets: ["istinti_animali"], sexes: [], tags: ["polipo", "bestia", "fauna", "nerd"],
          needs_exempt: ["fame", "riposo", "svago", "sete"],
          description: "Vive nello Scantinato della Fumetteria da quando qualcuno ci ha buttato un acquario. Ha gusti precisi: punta le donne.",
          stat_ranges: {"forza": (initial: 26), "furtivita": (initial: 12), "percezione": (initial: 18), "attacco": (initial: 50), "difesa": (initial: 35)},
@@ -33,7 +33,7 @@
          effects: [Stealth(amount: 60, duration: 3), ResetAggro, On(Radius(3), ApplyStatus(status: "imbrattato"))]),
     ],
     actions: [
-        (id: "scendi_nello_scantinato", name: "Scende nello Scantinato", universal: true, weight: 0.1, cooldown: 120,
+        (id: "scendi_nello_scantinato", name: "Scende nello Scantinato", weight: 0.1, cooldown: 120,
          requires: StatAtLeast(stat: "con_lore_nerd", value: 40),
          kind: Job(job: "curiosa_nello_scantinato", target: Zone("scantinato_nerd")),
          considerations: [(input: Stat(stat: "curiosita", max: 100), curve: Identity)], label: "Scende nello Scantinato della Fumetteria"),

@@ -13,10 +13,10 @@
     ],
     actions: [
         // I capi delle fazioni (e il campione su ordine) piantano stendardi per conquistare i quartieri.
-        (id: "pianta_stendardo", name: "Pianta lo stendardo", universal: true, weight: 0.04, cooldown: 72,
+        (id: "pianta_stendardo", name: "Pianta lo stendardo", weight: 0.04, cooldown: 72,
          kind: Job(job: "pianta_stendardo"),
          requires: All([MoneyAtLeast(60), HasTag("leader")])),
-        (id: "divertiti", name: "Si diverte", universal: true, weight: 0.7, cooldown: 18,
+        (id: "divertiti", name: "Si diverte", weight: 0.7, cooldown: 18,
          kind: Job(job: "divertiti", target: Nearest((building_tag: "svago", max_distance: 40))),
          requires: MoneyAtLeast(2),
          considerations: [(input: Need("svago"), curve: Logistic(steepness: -10, midpoint: 0.45))],
