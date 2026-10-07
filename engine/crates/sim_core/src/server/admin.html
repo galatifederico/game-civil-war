@@ -464,7 +464,7 @@ const CATALOG = {
     cols: [["Nome", (d) => esc(d.name)], ["Gestore", (d) => esc(d.handler || "effetti")], ["Durata", (d) => fmt(d.duration), true],
       ["Effetti", (d) => esc(D("jobs", d.id).effects || "")], ["Reato", (d) => esc(d.crime?.id ?? "")], ["Ora in corso", (d) => L.byJob[d.id] ?? 0, true]] },
   abilities: { title: "Abilità", group: "Catalogo",
-    cols: [["Nome", (d) => esc(d.name)], ["Attesa", (d) => d.cooldown || "", true], ["Raggio", (d) => d.range || "", true], ["Effetti", (d) => esc(D("abilities", d.id).effects)],
+    cols: [["Nome", (d) => esc(d.name)], ["Effetti", (d) => esc(D("abilities", d.id).effects)], ["Aura", (d) => (d.aura ? `raggio ${d.aura.radius}` : ""), true],
       ["Chi ce l'ha", (d) => L.abilityUsers[d.id] ?? 0, true]] },
   statuses: { title: "Stati e malattie", group: "Catalogo",
     facets: [["Tipo", (d) => d.kind], ["Tag", (d) => d.tags]],
@@ -496,14 +496,14 @@ const setsOf = (action) => Object.values(C("action_sets")).filter((s) => (s.acti
 const MODES = { Seat: "trono", Succession: "successione", Election: "elezione", Appointment: "nomina", Challenge: "sfida", Coup: "colpo di stato", Purchase: "acquisto" };
 function actionKindName(d) {
   const k = d.kind;
-  return k === "Work" || k?.Work !== undefined ? "lavoro" : k === "Idle" ? "niente" : k?.Job ? "job" : k?.Ability ? "abilità" : "altro";
+  return k === "Work" || k?.Work !== undefined ? "lavoro" : k === "Idle" ? "niente" : k?.Job ? "job" : k?.Effects ? "effetti" : "altro";
 }
 function actionKind(d) {
   const k = d.kind;
   if (k === "Work" || k?.Work !== undefined) return "lavoro dalla bacheca";
   if (k === "Idle") return "niente";
   if (k?.Job) return "job " + link("jobs", k.Job.job);
-  if (k?.Ability) return "abilità " + link("abilities", k.Ability.ability);
+  if (k?.Effects) return "effetti: " + esc(effectsType(k.Effects));
   return esc(JSON.stringify(k));
 }
 // Who uses an action/ability/class: definitions that list it.
@@ -844,8 +844,8 @@ function effectRows(effects, href) {
   walk(effects ?? [], "Subject", []);
   return out;
 }
-/** What kind of ability it is: on whom it works, how far, how often. */
-function abilityType(a) {
+/** What kind of action with effects it is: on whom it works and how far. */
+function effectsType(a) {
   const scopes = new Set();
   const walk = (e, scope) => {
     if (Array.isArray(e)) return e.forEach((x) => walk(x, scope));
@@ -866,21 +866,34 @@ function abilityType(a) {
   if (!parts.length) parts.push("su di sé");
   return parts.join(", ");
 }
-/** Table of abilities, one row per effect. */
+/** Rows {who, what, mod, when} of a passive ability. */
+function abilityRows(a) {
+  const rows = [];
+  for (const [k, v] of Object.entries(a.stats ?? {})) rows.push({ who: "chi ce l'ha", what: link("stats", k), mod: sgn(v), when: "sempre" });
+  for (const [k, v] of Object.entries(a.need_rates ?? {})) rows.push({ who: "chi ce l'ha", what: "consumo di " + link("needs", k), mod: sgn(v * 100, 0) + "%", when: "sempre" });
+  for (const st of a.immunities ?? []) rows.push({ who: "chi ce l'ha", what: "immune a " + link("statuses", st), mod: "", when: "sempre" });
+  for (const t of a.tags ?? []) rows.push({ who: "chi ce l'ha", what: `tag «${esc(t)}»`, mod: "", when: "sempre" });
+  if (a.aura) {
+    const who = `chi è entro ${a.aura.radius} caselle` + (a.aura.affects && a.aura.affects !== "Always" && !(a.aura.affects.All?.length === 0) ? ` (${condText(a.aura.affects)})` : "");
+    for (const [k, v] of Object.entries(a.aura.stats ?? {})) rows.push({ who, what: link("stats", k), mod: sgn(v), when: "finché è vicino" });
+    for (const [k, v] of Object.entries(a.aura.stats_per_tick ?? {})) rows.push({ who, what: link("stats", k), mod: sgn(v), when: "ogni ora, e resta" });
+  }
+  return rows;
+}
+/** Table of abilities, one row per modifier. */
 function abilityTable(path, list, { op, label = "Abilità", pickOp = "push", pickCands } = {}) {
   const body = (list ?? []).map((id) => {
     const a = C("abilities")[id];
-    if (!a) return `<tr><td>${esc(id)}</td><td colspan="5" class="bad">non esiste</td><td class="num">${op ? op(id) : del(path, id)}</td></tr>`;
-    const rows = effectRows(a.effects, `#cat/abilities/${encodeURIComponent(id)}`);
-    if (!rows.length) rows.push({ who: "", what: '<span class="muted">nessun effetto</span>', mod: "", cond: "" });
+    if (!a) return `<tr><td>${esc(id)}</td><td colspan="4" class="bad">non esiste</td><td class="num">${op ? op(id) : del(path, id)}</td></tr>`;
+    const rows = abilityRows(a);
+    if (!rows.length) rows.push({ who: "", what: '<span class="muted">nessun effetto</span>', mod: "", when: "" });
     const n = rows.length;
-    return rows.map((r, i) => `<tr class="${i ? "cont" : "first"}">` +
-      (i ? "" : `<td rowspan="${n}">${link("abilities", id)}</td><td rowspan="${n}">${esc(abilityType(a))}${a.cooldown ? `<div class="muted">ogni ${a.cooldown} tick</div>` : ""}</td>`) +
-      `<td>${esc(r.who)}</td><td>${r.what}</td><td>${r.mod}</td><td class="muted">${esc(r.cond)}</td>` +
+    return rows.map((r, i) => `<tr class="${i ? "cont" : "first"}">` + (i ? "" : `<td rowspan="${n}">${link("abilities", id)}</td>`) +
+      `<td>${esc(r.who)}</td><td>${r.what}</td><td>${r.mod}</td><td class="muted">${esc(r.when)}</td>` +
       (i ? "" : `<td rowspan="${n}" class="num">${op ? op(id) : del(path, id)}</td>`) + `</tr>`).join("");
   }).join("");
-  return `<table class="ed abil"><thead><tr><th>${esc(label)}</th><th>Tipo</th><th>Su chi</th><th>Effetto</th><th>Modificatore</th><th>Condizione</th><th></th></tr></thead>` +
-    `<tbody>${body || `<tr><td colspan="7" class="muted">nessuna</td></tr>`}</tbody></table>` +
+  return `<table class="ed abil"><thead><tr><th>${esc(label)}</th><th>Su chi</th><th>Effetto</th><th>Modificatore</th><th>Quando</th><th></th></tr></thead>` +
+    `<tbody>${body || `<tr><td colspan="6" class="muted">nessuna</td></tr>`}</tbody></table>` +
     picker(path, pickCands ?? candsOf("abilities", list ?? []), { op: pickOp, kind: "abilities", title: label });
 }
 
@@ -932,10 +945,7 @@ function actionShape(a) {
     if (j?.crime) rows.push({ who: "sé", what: `reato «${esc(j.crime.id)}»`, mod: `gravità ${fmt(j.crime.severity, 1)}`, cond: "se visto" });
     return { type: `lavoro ${link("jobs", k.Job.job)}${j?.duration ? ` <span class="muted">${fmt(j.duration)} tick</span>` : ""}`, where: selectorText(k.Job.target), rows };
   }
-  if (k?.Ability) {
-    const ab = C("abilities")[k.Ability.ability];
-    return { type: "abilità " + link("abilities", k.Ability.ability), where: selectorText(k.Ability.target), rows: ab ? effectRows(ab.effects, `#cat/abilities/${encodeURIComponent(ab.id)}`) : [] };
-  }
+  if (k?.Effects) return { type: esc(effectsType(k.Effects)), where: selectorText(k.Effects.target), rows: effectRows(k.Effects.effects, href) };
   return { type: esc(JSON.stringify(k)), where: "", rows: [{ who: "", what: "vedi la scheda", mod: `<a href="${href}">▸</a>`, cond: "" }] };
 }
 /** Table of actions, one row per effect. */
@@ -1010,29 +1020,73 @@ function withOp(c, op) {
   return op === "<" || op === "!=" || op === "falso" ? { Not: inner } : inner;
 }
 /** Editor of a condition field: a list joined by "and"/"or", one row per condition. */
-function condEditor(f, cond, { none, start }) {
-  if (cond == null) return `<div class="muted">${esc(none)}</div><button data-cstart="${P([f])}" data-v="${esc(JSON.stringify(start))}">${f === "requires" ? "Rendi acquisibile" : "Aggiungi una condizione di perdita"}</button>`;
-  if (!(typeof cond === "object" && ("All" in cond || "Any" in cond))) { cond = { All: [cond] }; draft.def[f] = cond; }
+function condEditor(f, cond, { none, start, startLabel = "Aggiungi una condizione", nullLabel = "Togli la condizione", nullable = true }) {
+  const base = Array.isArray(f) ? f : [f];
+  if (cond == null) return `<div class="muted">${esc(none)}</div><button data-cstart="${P(base)}" data-v="${esc(JSON.stringify(start))}">${esc(startLabel)}</button>`;
+  if (cond === "Always") { cond = { All: [] }; setAt(draft.def, base, cond); }
+  if (!(typeof cond === "object" && ("All" in cond || "Any" in cond))) { cond = { All: [cond] }; setAt(draft.def, base, cond); }
   const mode = "All" in cond ? "All" : "Any", list = cond[mode];
   const rows = list.map((c, i) => {
-    const p = [f, mode, i], cells = condCells(c, p);
-    return `<tr>${cells ? cells.map((x) => `<td>${x}</td>`).join("") : `<td colspan="3">${esc(condText(c))} <span class="muted">(modificabile nel JSON in fondo)</span></td>`}<td class="num">${del([f, mode, i], undefined).replace('data-act="delkey"', 'data-act="cdel"')}</td></tr>`;
+    const p = [...base, mode, i], cells = condCells(c, p);
+    return `<tr>${cells ? cells.map((x) => `<td>${x}</td>`).join("") : `<td colspan="3">${esc(condText(c))} <span class="muted">(modificabile nel JSON in fondo)</span></td>`}<td class="num">${del(p, undefined).replace('data-act="delkey"', 'data-act="cdel"')}</td></tr>`;
   }).join("");
-  return `<div class="row">Valgono <select data-cmode="${P([f])}"><option value="All" ${mode === "All" ? "selected" : ""}>tutte (e)</option><option value="Any" ${mode === "Any" ? "selected" : ""}>almeno una (o)</option></select> le condizioni:</div>` +
-    `<table class="ed"><thead><tr><th>Cosa</th><th>Condizione</th><th>Valore</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="muted">nessuna condizione</td></tr>`}</tbody></table>` +
-    `<div class="row" style="margin-top:4px"><select data-cadd="${P([f, mode])}"><option value="">+ Aggiungi condizione…</option>${COND_KINDS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>` +
-    `<button data-cnull="${P([f])}">${f === "requires" ? "Rendi non acquisibile" : "Togli: non si perde mai"}</button></div>`;
+  return `<div class="row">Valgono <select data-cmode="${P(base)}"><option value="All" ${mode === "All" ? "selected" : ""}>tutte (e)</option><option value="Any" ${mode === "Any" ? "selected" : ""}>almeno una (o)</option></select> le condizioni:</div>` +
+    `<table class="ed"><thead><tr><th>Cosa</th><th>Condizione</th><th>Valore</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="muted">nessuna condizione${mode === "All" ? " (vale sempre)" : ""}</td></tr>`}</tbody></table>` +
+    `<div class="row" style="margin-top:4px"><select data-cadd="${P([...base, mode])}"><option value="">+ Aggiungi condizione…</option>${COND_KINDS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>` +
+    (nullable ? `<button data-cnull="${P(base)}">${esc(nullLabel)}</button>` : "") + `</div>`;
 }
+const statModCard = (d) => card("Modificatori di caratteristica", mapTable(["stats"], d.stats, "stats", { keyLabel: "Caratteristica", valLabel: "Modificatore" }));
 /** Classes: how to become one and when it is lost, on top. */
 function classSections(d) {
   const humanoid = Object.values(C("races")).filter((r) => (r.action_sets ?? []).includes("vita_quotidiana")).map((r) => r.id);
   return {
     sections: [
-      card("Requisiti per diventarlo", condEditor("requires", d.requires, { none: "Non si acquisisce: la danno solo il personaggio o un effetto.", start: { All: [{ RaceIn: humanoid }] } })),
-      card("Si perde se", condEditor("loses_when", d.loses_when, { none: "Non si perde mai: una volta presa, resta.", start: { Any: [] } }) +
+      card("Requisiti per diventarlo", condEditor("requires", d.requires, { none: "Non si acquisisce: la danno solo il personaggio o un effetto.", start: { All: [{ RaceIn: humanoid }] }, startLabel: "Rendi acquisibile", nullLabel: "Rendi non acquisibile" })),
+      card("Si perde se", condEditor("loses_when", d.loses_when, { none: "Non si perde mai: una volta presa, resta.", start: { Any: [] }, startLabel: "Aggiungi una condizione di perdita", nullLabel: "Togli: non si perde mai" }) +
         `<div class="muted" style="margin-top:4px">Vale solo per chi l'ha presa da sé; le classi date dal personaggio restano.</div>`),
+      statModCard(d),
     ],
-    used: ["requires", "loses_when"],
+    used: ["requires", "loses_when", "stats"],
+  };
+}
+/** Roles: like classes, plus how they change hands. */
+function titleSections(d) {
+  const how = ["faction", "members_only", "mode", "seat_zone", "vacancy_ticks", "term", "grace", "challenge_stat", "challenge_allies", "grants_faction_control", "victory_points", "news"];
+  const vals = {};
+  for (const f of how) { const ed = fieldEditor("titles", d, f); if (ed) vals[fieldLabel(f)] = ed[1]; }
+  return {
+    sections: [
+      card("Requisiti per averlo", condEditor("claim_requires", d.claim_requires, { nullable: false }) +
+        `<div class="muted" style="margin-top:4px">Servono per prenderlo, per candidarsi e per vincere una sfida.</div>`),
+      card("Si perde se", condEditor("loses_when", d.loses_when, { none: "Non si perde per una condizione: solo per morte, sfida, colpo di stato o fine del mandato.", start: { Any: [] }, startLabel: "Aggiungi una condizione di perdita", nullLabel: "Togli: non si perde così" }) +
+        `<div class="muted" style="margin-top:4px">La «tolleranza» qui sotto è per quanto la condizione deve valere prima che il ruolo si perda.</div>`),
+      card("Come si ottiene e passa di mano", kv(vals) + `<h4 style="margin:10px 0 4px">Punteggio dei candidati</h4>` +
+        mapTable(["score"], d.score, "stats", { keyLabel: "Caratteristica", valLabel: "Peso" }) + `<div class="muted">Vuoto: contano le caratteristiche dei requisiti. «money» pesa i soldi.</div>`),
+      statModCard(d),
+    ],
+    used: ["claim_requires", "loses_when", "stats", "score", ...how],
+  };
+}
+/** Abilities: modifiers on the holder and the aura. */
+function abilitySections(d) {
+  const a = d.aura;
+  const aura = a == null
+    ? `<div class="muted">Nessuna aura: l'abilità vale solo per chi ce l'ha.</div><button data-cstart="${P(["aura"])}" data-v="${esc(JSON.stringify({ radius: 3, affects: "Always", stats: {}, stats_per_tick: {} }))}">Aggiungi un'aura</button>`
+    : kv({ "Raggio (caselle)": numInput(["aura", "radius"], a.radius, "") }) +
+      `<h4 style="margin:10px 0 4px">Chi colpisce</h4>` + condEditor(["aura", "affects"], a.affects, { nullable: false }) +
+      `<div class="muted">Le condizioni valgono su chi sta vicino (vuoto: tutti tranne chi ha l'abilità).</div>` +
+      `<h4 style="margin:10px 0 4px">Finché resta vicino</h4>` + mapTable(["aura", "stats"], a.stats, "stats", { keyLabel: "Caratteristica", valLabel: "Modificatore" }) +
+      `<h4 style="margin:10px 0 4px">Ogni ora vicino (si accumula e resta)</h4>` + mapTable(["aura", "stats_per_tick"], a.stats_per_tick, "stats", { keyLabel: "Caratteristica", valLabel: "Per ora" }) +
+      `<div><button data-cnull="${P(["aura"])}">Togli l'aura</button></div>`;
+  return {
+    sections: [
+      card("Su chi ce l'ha", `<h4 style="margin:4px 0">Modificatori di caratteristica</h4>` + mapTable(["stats"], d.stats, "stats", { keyLabel: "Caratteristica", valLabel: "Modificatore" }) +
+        `<h4 style="margin:10px 0 4px">Bisogni</h4>` + mapTable(["need_rates"], d.need_rates, "needs", { keyLabel: "Bisogno", valLabel: "Variazione del consumo" }) +
+        `<div class="muted">+0,5 = consuma il 50% più in fretta, −0,5 = la metà.</div>` +
+        `<h4 style="margin:10px 0 4px">Immunità</h4>` + refTable("abilities", ["immunities"], d.immunities, "statuses", { label: "Stato", brief: true })),
+      card("Aura", aura),
+    ],
+    used: ["stats", "need_rates", "immunities", "aura"],
   };
 }
 /** Races: base actions (groups and own). */
@@ -1069,7 +1123,7 @@ function statEffects(kind, d) {
     Object.values(x).forEach(walk);
   };
   if (kind === "statuses") { map(d.stats); (d.stages ?? []).forEach((s) => map(s.stats, ` (${s.name})`)); walk(d.on_apply); }
-  else if (kind === "abilities") walk(d.effects);
+  else if (kind === "abilities") abilityRows(d).forEach((r) => out.push([r.what.replace(/<[^>]*>/g, ""), `${r.mod} (${r.who}, ${r.when})`]));
   else if (kind === "items") { map(d.carried_stats, " (portato)"); walk(d.on_use); }
   else if (kind === "races") Object.entries(d.stat_ranges ?? {}).forEach(([k, r]) => r.initial != null && out.push([k, `nasce a ${fmt(r.initial, 2)}${r.spread ? " ± " + fmt(r.spread, 2) : ""}`]));
   else if (["classes", "titles", "templates"].includes(kind)) map(d.stats);
@@ -1297,6 +1351,8 @@ function renderDetail() {
   let main = [], used = ["id", "name", "description"];
   if (kind === "races") { const r = raceSections(d); main = r.sections; used = [...used, ...r.used, "action_sets", "actions"]; main.splice(2, 0, raceActionSection(d)); }
   if (kind === "classes") { const r = classSections(d); main = r.sections; used = [...used, ...r.used]; }
+  if (kind === "titles") { const r = titleSections(d); main = r.sections; used = [...used, ...r.used]; }
+  if (kind === "abilities") { const r = abilitySections(d); main = r.sections; used = [...used, ...r.used]; }
   const values = {}, details = [], logic = [];
   for (const f of Object.keys(d)) {
     if (used.includes(f)) continue;
@@ -1309,7 +1365,7 @@ function renderDetail() {
     else if (type === "logic") logic.push([fieldLabel(f), html]);
     else details.push([fieldLabel(f), html]);
   }
-  if (Object.keys(values).length) main.splice(kind === "classes" ? 2 : 0, 0, card("Valori", kv(values)));
+  if (Object.keys(values).length) main.splice(["classes", "titles"].includes(kind) ? 3 : kind === "abilities" ? 2 : 0, 0, card("Valori", kv(values)));
   const live = liveInfo(kind, d);
   $("dBody").innerHTML =
     `<div class="detailhead">${CATALOG[kind]?.sprite ? spriteHtml(kind, d, true) : ""}<div><h2>${esc(d.name || d.id)}</h2><div class="muted">${esc(kind)} · <code>${esc(d.id ?? "")}</code></div>` +
@@ -1396,7 +1452,8 @@ function openPicker(pk) {
   const kind = pk.kind, facets = pickFacets(kind);
   pickState.rows = pk.cands.map(([id, label]) => {
     const d = kind ? C(kind)[id] : null;
-    const fx = d && kind === "abilities" ? effectRows(d.effects, "#").map((r) => `${r.who}: ${r.what.replace(/<[^>]*>/g, "")} ${r.mod.replace(/<[^>]*>/g, "")}${r.cond ? ` (${r.cond})` : ""}`).join("; ")
+    const fx = d && kind === "abilities" ? D("abilities", id).effects
+      : d && kind === "actions" && d.kind?.Effects ? effectRows(d.kind.Effects.effects, "#").map((r) => `${r.who}: ${r.what.replace(/<[^>]*>/g, "")} ${r.mod.replace(/<[^>]*>/g, "")}${r.cond ? ` (${r.cond})` : ""}`).join("; ")
       : d && STAT_KINDS.includes(kind) ? statEffects(kind, d).map(([s, m]) => `${name("stats", s)} ${m}`).join(", ") : "";
     const what = fx || (d ? d.description || D(kind, id).effects || D(kind, id).requires || "" : "");
     const fv = facets.map(([, f]) => (d ? [].concat(f(d) ?? []).map(String) : []));
