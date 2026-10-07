@@ -732,7 +732,12 @@ function statEffects(kind, d) {
 }
 /** Table of referenced definitions with what they do to stats, a remove button each and a picker. */
 const STAT_KINDS = ["abilities", "statuses", "items", "classes", "races", "titles", "templates"];
-function refTable(kind, path, list, refKind, { op, label = "Nome", pickOp = "push", pickCands } = {}) {
+function refTable(kind, path, list, refKind, { op, label = "Nome", pickOp = "push", pickCands, brief = false } = {}) {
+  if (brief) {
+    const rows = (list ?? []).map((id) => `<tr><td>${link(refKind, id)}</td><td class="num">${op ? op(id) : del(path, id)}</td></tr>`).join("");
+    return `<table class="ed"><thead><tr><th>${esc(label)}</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="2" class="muted">nessuna</td></tr>`}</tbody></table>` +
+      picker(path, pickCands ?? candsOf(refKind, list ?? []), { op: pickOp, kind: refKind, title: label });
+  }
   if (!STAT_KINDS.includes(refKind)) {
     const rows = (list ?? []).map((id) => `<tr><td>${link(refKind, id)}</td><td class="muted">${esc(C(refKind)[id]?.description || D(refKind, id).requires || "")}</td><td class="num">${op ? op(id) : del(path, id)}</td></tr>`).join("");
     return `<table class="ed"><thead><tr><th>${esc(label)}</th><th>Descrizione</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="muted">nessuna</td></tr>`}</tbody></table>` +
@@ -862,7 +867,7 @@ function raceSections(d) {
     `<div class="muted">Vuoto = vale il valore generale della caratteristica (in grigio). Alla nascita il valore è l'iniziale ± una variazione casuale; minimo e massimo lo limitano per tutta la vita.</div>` +
     sections, "wide"));
   out.push(card("Abilità", refTable("abilities", ["abilities"], d.abilities, "abilities", { label: "Abilità" })));
-  out.push(card("Immunità", refTable("statuses", ["immunities"], d.immunities, "statuses", { label: "Stato da cui è immune" })));
+  out.push(card("Immunità", refTable("statuses", ["immunities"], d.immunities, "statuses", { label: "Stato da cui è immune", brief: true })));
   const exempt = d.needs_exempt ?? [], rates = d.need_rates ?? {};
   const has = Object.values(C("needs")).filter((n) => !exempt.includes(n.id));
   out.push(card("Bisogni", `<table class="ed"><thead><tr><th>Bisogno</th><th class="num">Calo/tick</th><th class="num">Variazione</th><th class="num">Effettivo</th><th></th></tr></thead><tbody>` +
