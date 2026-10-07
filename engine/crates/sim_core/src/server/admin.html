@@ -97,6 +97,8 @@ details.statgroup { border: 1px solid var(--line); border-radius: 6px; margin-to
 details.statgroup > summary { padding: 6px 10px; cursor: pointer; background: var(--chip); border-radius: 6px; }
 details.statgroup[open] > summary { border-bottom: 1px solid var(--line); border-radius: 6px 6px 0 0; }
 details.statgroup table { margin: 4px 0; }
+table.abil tr.first td { border-top: 2px solid var(--line); }
+table.abil td { vertical-align: top; }
 textarea.json { width: 100%; font: 12px/1.35 ui-monospace, monospace; margin-bottom: 4px; }
 h3.group { margin: 18px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 4px; }
 .modal { position: fixed; inset: 0; background: #0008; display: none; align-items: center; justify-content: center; z-index: 25; padding: 16px; }
@@ -712,6 +714,172 @@ function numInput(path, value, ph, t = "num") {
   return `<input type="number" step="any" class="num" data-set="${P(path)}" data-t="${t}" value="${value == null ? "" : Number(Number(value).toPrecision(6))}" placeholder="${esc(ph ?? "")}">`;
 }
 
+// ── Effects as rows: who is affected, what changes, by how much, under which condition ──
+const sgn = (v, d = 2) => (v > 0 ? "+" : v < 0 ? "−" : "") + fmt(Math.abs(v), d);
+function scopeText(sc) {
+  if (sc === "Subject" || sc == null) return "sé";
+  if (sc === "Target") return "bersaglio";
+  if (sc === "SubjectFaction") return "la sua fazione";
+  if (sc === "TargetFaction") return "la fazione del bersaglio";
+  if (sc === "Everyone") return "tutti";
+  if (sc.Radius != null) return `chi è entro ${sc.Radius} caselle`;
+  if (sc.Zone) return "chi è in " + ((S.content?.map?.zones ?? []).find((z) => z.id === sc.Zone)?.name ?? sc.Zone);
+  if (sc.Template) return "ogni " + name("templates", sc.Template);
+  return JSON.stringify(sc);
+}
+function condText(c) {
+  if (typeof c === "string") return { Always: "sempre", Never: "mai", Detained: "è in arresto", Disguised: "è travestito", HoldsAnyTitle: "ha un ruolo" }[c] ?? c;
+  const [k, v] = Object.entries(c)[0];
+  switch (k) {
+    case "All": return v.map(condText).join(" e ");
+    case "Any": return v.map(condText).join(" o ");
+    case "Not": return "non " + condText(v);
+    case "OnTarget": return "il bersaglio " + condText(v);
+    case "Chance": return `${fmt(v * 100, 0)}%`;
+    case "StatAtLeast": return `${name("stats", v.stat)} ≥ ${fmt(v.value)}`;
+    case "StatBelow": return `${name("stats", v.stat)} < ${fmt(v.value)}`;
+    case "NeedBelow": return `${name("needs", v.need)} < ${fmt(v.value * 100, 0)}%`;
+    case "HasStatus": return "ha " + name("statuses", v);
+    case "HasStatusTag": return `ha uno stato «${v}»`;
+    case "HasTag": return `ha il tag «${v}»`;
+    case "HasItem": return `ha ${v.qty > 1 ? v.qty + "× " : ""}${name("items", v.item)}`;
+    case "HasItemTag": return `ha un oggetto «${v}»`;
+    case "HasItemType": return `ha un oggetto di tipo «${v}»`;
+    case "MoneyAtLeast": return `soldi ≥ ${fmt(v, 0)}`;
+    case "InZone": return "è in " + v;
+    case "MemberOf": return "è di " + factionName(v);
+    case "IsRace": return "è " + name("races", v);
+    case "HasClass": return "è " + name("classes", v);
+    case "WantedAtLeast": return `ricercato ≥ ${fmt(v)}`;
+    case "HpBelow": return `vita < ${fmt(v * 100, 0)}%`;
+    case "IsSex": return "è " + (SEX[v] ?? v);
+    case "HoldsTitle": return "ha il ruolo " + name("titles", v);
+    case "TitleVacant": return name("titles", v) + " è vacante";
+    case "Contest": return "vince il confronto di " + name("stats", v.stat);
+    case "BondAtLeast": return `amicizia ≥ ${fmt(v.friendship)}` + (v.attraction ? `, attrazione ≥ ${fmt(v.attraction)}` : "");
+    case "Custom": return `condizione speciale «${v.id}»`;
+    default: return k + " " + JSON.stringify(v);
+  }
+}
+/** One row (or more) per elementary effect: [what (html), modifier (html)]; null = only in code. */
+function effectCells(k, v) {
+  switch (k) {
+    case "ModStat": return [[link("stats", v.stat), sgn(v.amount)]];
+    case "SetStat": return [[link("stats", v.stat), "= " + fmt(v.value, 2)]];
+    case "ModNeed": return [[link("needs", v.need), sgn(v.amount * 100, 0) + "%"]];
+    case "ApplyStatus": return [["stato " + link("statuses", v.status), "applicato"]];
+    case "RemoveStatus": return [["stato " + link("statuses", v), "tolto"]];
+    case "RemoveStatusTag": return [[`stati «${esc(v)}»`, "tolti"]];
+    case "Immunize": return [["immunità a " + link("statuses", v.status), v.ticks ? `${v.ticks} tick` : "permanente"]];
+    case "AddTag": return [[`tag «${esc(v)}»`, "aggiunto"]];
+    case "RemoveTag": return [[`tag «${esc(v)}»`, "tolto"]];
+    case "GiveItem": return [[link("items", v.item), "+" + v.qty]];
+    case "TakeItem": return [[link("items", v.item), "−" + v.qty]];
+    case "GiveRandomItem": return [["oggetto a caso" + (v.tag ? ` «${esc(v.tag)}»` : ""), "+" + v.qty]];
+    case "ModMoney": return [["soldi", sgn(v, 0) + " €"]];
+    case "ModTreasury": return [["tesoro della fazione", sgn(v, 0) + " €"]];
+    case "ModRelation": return [["rapporto con " + link("factions", v.faction), sgn(v.amount, 0)]];
+    case "AddWanted": return [["ricercato" + (v.crime ? ` (${esc(v.crime)})` : ""), sgn(v.amount)]];
+    case "Damage": return [["vita" + (v.part ? ` (${esc(v.part)})` : ""), "−" + fmt(v.amount)]];
+    case "Heal": return [["vita", "+" + fmt(v)]];
+    case "Transmute": return [["razza", "diventa " + link("races", v)]];
+    case "TransmuteFor": return [["razza", `diventa ${link("races", v.race)} per ${v.ticks} tick`]];
+    case "AddClass": return [["classe " + link("classes", v), "presa"]];
+    case "RemoveClass": return [["classe " + link("classes", v), "persa"]];
+    case "JoinFaction": return [["fazione", "entra in " + link("factions", v)]];
+    case "VictoryPoints": return [["punti vittoria", sgn(v, 0)]];
+    case "ModDissent": return [["dissenso", sgn(v)]];
+    case "Spawn": return [["evoca " + link("templates", v.template), "×" + v.count]];
+    case "MarketShock": return [["mercato " + esc(v.item ? name("items", v.item) : `«${v.tag ?? "tutto"}»`), `domanda ×${fmt(v.demand ?? 1, 2)}, offerta ×${fmt(v.supply ?? 1, 2)}, ${v.duration} tick`]];
+    case "GlobalModifier": return [[`circostanza «${esc(v.name || v.id)}»`, `${v.duration} tick`]];
+    case "SetFlag": return [[`flag «${esc(v.flag)}»`, "= " + fmt(v.value)]];
+    case "ModFlag": return [[`flag «${esc(v.flag)}»`, sgn(v.amount)]];
+    case "Publish": return [["notizia" + (v.truth === "Fake" ? " falsa" : v.truth === "Propaganda" ? " di propaganda" : ""), `<span class="muted">«${esc(v.headline.length > 60 ? v.headline.slice(0, 60) + "…" : v.headline)}»</span>`]];
+    case "Emit": return [[`evento «${esc(v.kind)}»`, "annunciato"]];
+    case "ModCover": return [["copertura", sgn(v)]];
+    case "Stealth": return [["furtività", `+${fmt(v.amount, 0)} per ${v.duration} tick`]];
+    case "Shapeshift": return [["aspetto", "diventa " + (v.race ? link("races", v.race) : "") + (v.name ? ` «${esc(v.name)}»` : "") + (v.faction ? " di " + link("factions", v.faction) : "")]];
+    case "Contaminate": return [["contamina con " + link("statuses", v.status), fmt(v.load, 2)]];
+    case "Spill": return [["versa " + esc(name("fluids", v.fluid)), fmt(v.amount, 2)]];
+    case "Clean": return [["sporcizia", "−" + fmt(v, 2)]];
+    case "DamageBuilding": return [["integrità dell'edificio", "−" + fmt(v)]];
+    case "RepairBuilding": return [["integrità dell'edificio", "+" + fmt(v)]];
+    case "Teleport": return [["posizione", "va in " + esc(v.zone)]];
+    case "PostJob": return [["lavoro " + link("jobs", v.job), "pubblicato"]];
+    case "Log": case "Note": return [["taccuino", "una nota"]];
+    case "ModBond": return [v.friendship ? ["amicizia", sgn(v.friendship, 0)] : null, v.attraction ? ["attrazione", sgn(v.attraction, 0)] : null].filter(Boolean);
+    case "ClaimTitle": return [["ruolo " + link("titles", v), "preso"]];
+    case "LeaveTitle": return [["ruolo " + link("titles", v), "lasciato"]];
+    case "ChallengeTitle": return [["ruolo " + link("titles", v.title), "sfida con " + esc(name("stats", v.stat))]];
+    default: return null;
+  }
+}
+// Effects written in code: a readable name, the details stay on the ability's page.
+const CUSTOM_LABEL = { indaga: (p) => `indaga: ${esc(p.topic ?? "")}`, mount: (p) => "cavalca " + link("templates", p.template), oracle_reveal: () => "rivela la profezia dell'Oracolo" };
+const UNIT_EFFECTS = { Kill: ["vita", "morte"], ClearWanted: ["ricercato", "azzerato"], Expose: ["copertura", "smascherato"], ResetAggro: ["inseguitori", "seminati"],
+  RevertForm: ["aspetto", "torna il suo"], ReleaseTether: ["legame alla zona", "sciolto"] };
+/** Rows {who, what, mod, cond, special} of a list of effects; `href` is where the details are. */
+function effectRows(effects, href) {
+  const out = [];
+  const walk = (e, scope, conds) => {
+    if (Array.isArray(e)) return e.forEach((x) => walk(x, scope, conds));
+    if (typeof e === "string") {
+      const u = UNIT_EFFECTS[e];
+      return out.push({ who: scopeText(scope), what: u ? u[0] : esc(e), mod: u ? u[1] : "", cond: conds.join(", ") });
+    }
+    const [k, v] = Object.entries(e)[0];
+    if (k === "On") return walk(v[1], v[0], conds);
+    if (k === "All") return walk(v, scope, conds);
+    if (k === "Chance") return walk(v[1], scope, [...conds, `${fmt(v[0] * 100, 0)}% di probabilità`]);
+    if (k === "If") return walk(v[1], scope, [...conds, "se " + condText(v[0])]);
+    if (k === "IfElse") { walk(v[1], scope, [...conds, "se " + condText(v[0])]); return walk(v[2], scope, [...conds, "altrimenti"]); }
+    const cells = effectCells(k, v);
+    if (!cells) return out.push({ who: scopeText(scope), what: k === "Custom" && CUSTOM_LABEL[v.id] ? CUSTOM_LABEL[v.id](v.params ?? {}) : `effetto speciale «${esc(v?.id ?? k)}»`, mod: `<a href="${href}">vedi la scheda ▸</a>`, cond: conds.join(", "), special: true });
+    for (const [what, mod] of cells) out.push({ who: scopeText(scope), what, mod, cond: conds.join(", ") });
+  };
+  walk(effects ?? [], "Subject", []);
+  return out;
+}
+/** What kind of ability it is: on whom it works, how far, how often. */
+function abilityType(a) {
+  const scopes = new Set();
+  const walk = (e, scope) => {
+    if (Array.isArray(e)) return e.forEach((x) => walk(x, scope));
+    if (!e || typeof e !== "object") return scopes.add(scope);
+    const [k, v] = Object.entries(e)[0];
+    if (k === "On") return walk(v[1], typeof v[0] === "string" ? v[0] : Object.keys(v[0])[0]);
+    if (k === "All") return walk(v, scope);
+    if (k === "Chance" || k === "If") return walk(v[1], scope);
+    if (k === "IfElse") { walk(v[1], scope); return walk(v[2], scope); }
+    scopes.add(scope);
+  };
+  walk(a.effects ?? [], "Subject");
+  const parts = [];
+  if (scopes.has("Target")) parts.push(a.range > 1 ? `a distanza (gittata ${a.range})` : "corpo a corpo");
+  if (scopes.has("Radius")) parts.push("ad area");
+  if (scopes.has("SubjectFaction") || scopes.has("TargetFaction")) parts.push("sulla fazione");
+  if (scopes.has("Everyone") || scopes.has("Zone") || scopes.has("Template")) parts.push("globale");
+  if (!parts.length) parts.push("su di sé");
+  return parts.join(", ");
+}
+/** Table of abilities, one row per effect. */
+function abilityTable(path, list, { op, label = "Abilità", pickOp = "push", pickCands } = {}) {
+  const body = (list ?? []).map((id) => {
+    const a = C("abilities")[id];
+    if (!a) return `<tr><td>${esc(id)}</td><td colspan="5" class="bad">non esiste</td><td class="num">${op ? op(id) : del(path, id)}</td></tr>`;
+    const rows = effectRows(a.effects, `#cat/abilities/${encodeURIComponent(id)}`);
+    if (!rows.length) rows.push({ who: "", what: '<span class="muted">nessun effetto</span>', mod: "", cond: "" });
+    const n = rows.length;
+    return rows.map((r, i) => `<tr class="${i ? "cont" : "first"}">` +
+      (i ? "" : `<td rowspan="${n}">${link("abilities", id)}</td><td rowspan="${n}">${esc(abilityType(a))}${a.cooldown ? `<div class="muted">ogni ${a.cooldown} tick</div>` : ""}</td>`) +
+      `<td>${esc(r.who)}</td><td>${r.what}</td><td>${r.mod}</td><td class="muted">${esc(r.cond)}</td>` +
+      (i ? "" : `<td rowspan="${n}" class="num">${op ? op(id) : del(path, id)}</td>`) + `</tr>`).join("");
+  }).join("");
+  return `<table class="ed abil"><thead><tr><th>${esc(label)}</th><th>Tipo</th><th>Su chi</th><th>Effetto</th><th>Modificatore</th><th>Condizione</th><th></th></tr></thead>` +
+    `<tbody>${body || `<tr><td colspan="7" class="muted">nessuna</td></tr>`}</tbody></table>` +
+    picker(path, pickCands ?? candsOf("abilities", list ?? []), { op: pickOp, kind: "abilities", title: label });
+}
+
 // What a definition does to stats: [stat, "modifier"] pairs (abilities, statuses, items…).
 function statEffects(kind, d) {
   const out = [];
@@ -733,6 +901,7 @@ function statEffects(kind, d) {
 /** Table of referenced definitions with what they do to stats, a remove button each and a picker. */
 const STAT_KINDS = ["abilities", "statuses", "items", "classes", "races", "titles", "templates"];
 function refTable(kind, path, list, refKind, { op, label = "Nome", pickOp = "push", pickCands, brief = false } = {}) {
+  if (refKind === "abilities" && !brief) return abilityTable(path, list, { op, label: label === "Nome" ? "Abilità" : label, pickOp, pickCands });
   if (brief) {
     const rows = (list ?? []).map((id) => `<tr><td>${link(refKind, id)}</td><td class="num">${op ? op(id) : del(path, id)}</td></tr>`).join("");
     return `<table class="ed"><thead><tr><th>${esc(label)}</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="2" class="muted">nessuna</td></tr>`}</tbody></table>` +
@@ -841,6 +1010,7 @@ const card = (title, html, cls = "") => `<div class="card ${cls}"><h4>${esc(titl
 const groupRank = (g) => (/principal/i.test(g) ? 0 : /contator/i.test(g) ? 2 : 1);
 // Stat groups the user opened on race pages (kept across saves; until touched, groups with custom values open).
 const openStatGroups = new Set();
+let raceOnlyCustom = true;
 // Races: their own sections (stats, abilities, immunities, needs, body, sexes).
 function raceSections(d) {
   const out = [];
@@ -862,10 +1032,10 @@ function raceSections(d) {
     return `<details class="statgroup" data-group="${esc(g)}" ${open ? "open" : ""}><summary><b>${esc(g)}</b> <span class="muted">${list.length} caratteristiche${customs ? ` · <span class="ok">${customs} personalizzate</span>` : ""}</span></summary>` +
       `<table class="ed stattable">${head}<tbody>${rows}</tbody></table></details>`;
   }).join("");
-  out.push(card("Caratteristiche", `<div class="row"><input class="tfilter" placeholder="cerca caratteristica…" size="24"> <label><input type="checkbox" class="tcustom"> solo quelle personalizzate per la razza</label>` +
+  out.push(card("Caratteristiche", `<div class="row"><input class="tfilter" placeholder="cerca caratteristica…" size="24"> <label><input type="checkbox" class="tcustom" ${raceOnlyCustom ? "checked" : ""}> solo quelle personalizzate per la razza</label>` +
     ` <button data-act="groups" data-p="[]" data-v="open">Apri tutte</button> <button data-act="groups" data-p="[]" data-v="close">Chiudi tutte</button></div>` +
     `<div class="muted">Vuoto = vale il valore generale della caratteristica (in grigio). Alla nascita il valore è l'iniziale ± una variazione casuale; minimo e massimo lo limitano per tutta la vita.</div>` +
-    sections, "wide"));
+    `<div class="muted tempty" style="display:none;margin-top:6px">Nessuna caratteristica personalizzata per questa razza: togli la spunta per vederle tutte.</div>` + sections, "wide"));
   out.push(card("Abilità", refTable("abilities", ["abilities"], d.abilities, "abilities", { label: "Abilità" })));
   out.push(card("Immunità", refTable("statuses", ["immunities"], d.immunities, "statuses", { label: "Stato da cui è immune", brief: true })));
   const exempt = d.needs_exempt ?? [], rates = d.need_rates ?? {};
@@ -975,6 +1145,8 @@ function renderDetail() {
     `<details class="card"><summary>Definizione completa (JSON)</summary>${editable ? jsonBox([], d) : `<pre>${esc(JSON.stringify(d, null, 1))}</pre>`}</details>` +
     `<datalist id="zones-dl">${zoneIds().map(([z, n]) => `<option value="${esc(z)}">${esc(n)}</option>`).join("")}</datalist>`;
   for (const el of $("dBody").querySelectorAll(".readonly input, .readonly select, .readonly textarea, .readonly button")) el.disabled = true;
+  const statBox = $("dBody").querySelector(".tcustom")?.closest(".card");
+  if (statBox) applyStatFilter(statBox);
 }
 const EDITABLE = ["stats", "needs", "body_plans", "races", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
   "buildings", "templates", "spawners", "triggers", "collections", "titles", "news_sources", "global_modifiers", "supplies"];
@@ -990,6 +1162,10 @@ $("dBody").addEventListener("change", (ev) => {
 $("dBody").addEventListener("input", (ev) => {
   // Filter of the race stat table (no saving).
   const box = ev.target.closest(".card"); if (!box || !ev.target.matches(".tfilter, .tcustom")) return;
+  if (ev.target.matches(".tcustom")) raceOnlyCustom = ev.target.checked;
+  applyStatFilter(box);
+});
+function applyStatFilter(box) {
   const q = box.querySelector(".tfilter").value.toLowerCase(), only = box.querySelector(".tcustom").checked;
   for (const tr of box.querySelectorAll("tbody tr")) tr.style.display = (!q || tr.dataset.name.includes(q)) && (!only || tr.dataset.custom === "1") ? "" : "none";
   for (const g of box.querySelectorAll("details.statgroup")) {
@@ -997,7 +1173,8 @@ $("dBody").addEventListener("input", (ev) => {
     g.style.display = any ? "" : "none";
     g.open = q || only ? any : openStatGroups.has(g.dataset.group);
   }
-});
+  box.querySelector(".tempty").style.display = only && !q && !box.querySelector("details.statgroup:not([style*='none'])") ? "" : "none";
+}
 // Remember which stat groups are open.
 $("dBody").addEventListener("toggle", (ev) => {
   const g = ev.target.closest?.("details.statgroup"); if (!g) return;
@@ -1040,7 +1217,8 @@ function openPicker(pk) {
   const kind = pk.kind, facets = pickFacets(kind);
   pickState.rows = pk.cands.map(([id, label]) => {
     const d = kind ? C(kind)[id] : null;
-    const fx = d && STAT_KINDS.includes(kind) ? statEffects(kind, d).map(([s, m]) => `${name("stats", s)} ${m}`).join(", ") : "";
+    const fx = d && kind === "abilities" ? effectRows(d.effects, "#").map((r) => `${r.who}: ${r.what.replace(/<[^>]*>/g, "")} ${r.mod.replace(/<[^>]*>/g, "")}${r.cond ? ` (${r.cond})` : ""}`).join("; ")
+      : d && STAT_KINDS.includes(kind) ? statEffects(kind, d).map(([s, m]) => `${name("stats", s)} ${m}`).join(", ") : "";
     const what = fx || (d ? d.description || D(kind, id).effects || D(kind, id).requires || "" : "");
     const fv = facets.map(([, f]) => (d ? [].concat(f(d) ?? []).map(String) : []));
     return { id, label: String(label), what, fv, text: `${label} ${id} ${what}`.toLowerCase() };
