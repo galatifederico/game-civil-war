@@ -163,5 +163,23 @@ pub fn load(world: &mut World, save: &SaveGame) -> Result<(), String> {
     index.set_next(save.next_id);
     world.insert_resource(index);
     world.insert_resource(crate::targeting::TargetIndex::default());
+    needs_to_stats(world);
     Ok(())
+}
+
+/// Older saves kept needs apart (0..1): they become the needs' stats.
+fn needs_to_stats(world: &mut World) {
+    let content = world.resource::<crate::content::Content>().clone();
+    let mut q = world.query::<(Entity, &crate::stats::Needs)>();
+    let old: Vec<(Entity, crate::stats::Needs)> = q.iter(world).map(|(e, n)| (e, n.clone())).collect();
+    for (e, needs) in old {
+        if let Some(mut s) = world.get_mut::<crate::stats::Stats>(e) {
+            for (n, v) in &needs.0 {
+                let stat = content.need_stat(n).to_string();
+                let (lo, hi) = content.stat_bounds(&stat);
+                s.set_base(&stat, lo + v * (hi - lo), (lo, hi));
+            }
+        }
+        world.entity_mut(e).remove::<crate::stats::Needs>();
+    }
 }

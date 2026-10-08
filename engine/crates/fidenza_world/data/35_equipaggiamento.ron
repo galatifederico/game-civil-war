@@ -46,7 +46,7 @@
         (id: "bottiglia_vuota", name: "Bottiglia vuota", category: "lanciabili", stack_max: 10, base_price: 0.3, tags: ["lanciabile"], types: ["lanciabile"],
          damage: 5, range: 5, weight: 0.5),
         (id: "cotechino", name: "Cotechino", category: "lanciabili", stack_max: 5, base_price: 6, tags: ["lanciabile", "cibo", "carne"], types: ["lanciabile"],
-         damage: 4, range: 4, weight: 1, on_use: [ModNeed(need: "fame", amount: 0.7), ModStat(stat: "grasso", amount: 1)],
+         damage: 4, range: 4, weight: 1, on_use: [ModStat(stat: "fame", amount: 70), ModStat(stat: "grasso", amount: 1)],
          description: "Si mangia o si tira. Il Capodanno della Bassa."),
         (id: "boomerang", name: "Boomerang", category: "lanciabili", stack_max: 1, base_price: 30, tags: ["lanciabile"], types: ["lanciabile"],
          damage: 6, range: 8, weight: 0.4, reusable: true, durability: 60, requires: StatAtLeast(stat: "mira", value: 30)),

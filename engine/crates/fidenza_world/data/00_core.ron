@@ -165,13 +165,18 @@
         (id: "c_giorni_digiuno", name: "Digiuni", group: "Contatori", max: 100000, default: 0),
     ],
     needs: [
-        (id: "fame", name: "Fame", decay: 0.007, low_threshold: 0.1,
-         effects_when_low: [ModStat(stat: "morale", amount: -0.6)]),
-        (id: "riposo", name: "Riposo", decay: 0.02),
-        (id: "sete", name: "Sete", decay: 0.012, low_threshold: 0.1,
-         effects_when_low: [ModStat(stat: "morale", amount: -0.4), ModStat(stat: "stress", amount: 0.2)]),
-        (id: "svago", name: "Svago", decay: 0.008, low_threshold: 0.15,
-         effects_when_low: [ModStat(stat: "umore", amount: -0.6), ModStat(stat: "morale", amount: -0.3)]),
+        (id: "fame", name: "Fame", description: "Mangiare: la Fame cala ogni ora, il cibo la rialza.", per_tick: -0.7, thresholds: [
+            (name: "Affamato", below: 10, effects: [ModStat(stat: "morale", amount: -0.6)]),
+            (name: "Denutrito", below: 3, effects: [Damage(amount: 0.5)], stats: {"forza": -5}),
+        ]),
+        (id: "riposo", name: "Riposo", description: "Dormire: il Riposo cala ogni ora, il sonno lo rialza.", per_tick: -2.0),
+        (id: "sete", name: "Sete", description: "Bere: la Sete cala ogni ora, bere la rialza.", per_tick: -1.2, thresholds: [
+            (name: "Assetato", below: 10, effects: [ModStat(stat: "morale", amount: -0.4), ModStat(stat: "stress", amount: 0.2)]),
+            (name: "Disidratato", below: 3, effects: [Damage(amount: 0.8)], stats: {"velocita": -0.3}),
+        ]),
+        (id: "svago", name: "Svago", description: "Divertirsi: lo Svago cala ogni ora, giochi e feste lo rialzano.", per_tick: -0.8, thresholds: [
+            (name: "Annoiato", below: 15, effects: [ModStat(stat: "umore", amount: -0.6), ModStat(stat: "morale", amount: -0.3)]),
+        ]),
     ],
     body_plans: [
         (id: "umanoide", parts: [

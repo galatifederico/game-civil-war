@@ -51,7 +51,7 @@
     ],
     jobs: [
         (id: "curiosa_nello_scantinato", name: "Curiosa nello Scantinato", duration: 3,
-         effects: [ModStat(stat: "con_lore_nerd", amount: 1), ModStat(stat: "curiosita", amount: 0.5), ModNeed(need: "svago", amount: 0.2),
+         effects: [ModStat(stat: "con_lore_nerd", amount: 1), ModStat(stat: "curiosita", amount: 0.5), ModStat(stat: "svago", amount: 20),
                    Chance(0.05, GiveRandomItem(items: ["costume_cosplay", "cerchietto_orecchie", "corazza_cartone"]))]),
     ],
     spawners: [

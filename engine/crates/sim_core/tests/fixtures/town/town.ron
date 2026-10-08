@@ -19,7 +19,7 @@
         (id: "reputation", name: "Reputation", min: -100, default: 0),
     ],
     needs: [
-        (id: "hunger", name: "Hunger", decay: 0.01),
+        (id: "hunger", name: "Hunger", per_tick: -1.0),
     ],
     body_plans: [
         (id: "humanoid", parts: [

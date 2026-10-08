@@ -18,7 +18,7 @@ use crate::jobs::{JobBoard, Task, WorkPriorities};
 use crate::map::{Position, WorldMap};
 use crate::market::Market;
 use crate::press::{Article, Feed, Notebook};
-use crate::stats::{Classes, Dead, DisplayName, Needs, Race, Stats, TemplateId, Virtual, Wallet};
+use crate::stats::{Classes, Dead, DisplayName, Race, Stats, TemplateId, Virtual, Wallet};
 use crate::status::StatusEffects;
 use crate::time::SimClock;
 use crate::victory::Progress;
@@ -304,7 +304,13 @@ pub fn entity_view(world: &World, e: Entity, truth: bool) -> Option<EntityView> 
             cover: world.get::<Cover>(e).map_or(0.0, |c| c.0),
         }),
         stats: visible_stats,
-        needs: world.get::<Needs>(e).map(|n| n.0.iter().map(|(k, v)| (k.clone(), (v * 100.0).round() / 100.0)).collect()).unwrap_or_default(),
+        needs: world
+            .get::<Stats>(e)
+            .map(|s| {
+                let c = world.resource::<Content>();
+                c.needs.keys().map(|k| (k.clone(), (c.need_level(s, k) * 100.0).round() / 100.0)).collect()
+            })
+            .unwrap_or_default(),
         statuses,
         inventory: world.get::<Inventory>(e).map(|i| i.items().map(|(k, v)| (k.clone(), v)).collect()).unwrap_or_default(),
         slots: world

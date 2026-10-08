@@ -16,7 +16,7 @@ use crate::ids::SimId;
 use crate::inventory::Inventory;
 use crate::map::{Position, WorldMap};
 use crate::rng::SimRng;
-use crate::stats::{Classes, Dead, DisplayName, Needs, Pawn, Race, Stats, Tags, TemplateId, Wallet};
+use crate::stats::{Classes, Dead, DisplayName, Pawn, Race, Stats, Tags, TemplateId, Wallet};
 use crate::status::StatusEffects;
 use crate::time::SimClock;
 
@@ -121,8 +121,12 @@ pub fn apply_effect(world: &mut World, ctx: &EffectCtx, effect: &Effect) {
             }
         }
         Effect::ModNeed { need, amount } => {
-            if let Some(mut n) = subj.and_then(|e| world.get_mut::<Needs>(e)) {
-                n.add(need, *amount);
+            // `amount` is a share of the need's stat range (0.4 = 40% of a 0..100 stat).
+            let c = world.resource::<Content>();
+            let stat = c.need_stat(need).to_string();
+            let bounds = c.stat_bounds(&stat);
+            if let Some(mut s) = subj.and_then(|e| world.get_mut::<Stats>(e)) {
+                s.add_base(&stat, amount * (bounds.1 - bounds.0), bounds);
             }
         }
         Effect::ApplyStatus { status, severity } => {
@@ -513,7 +517,10 @@ pub fn eval_condition(world: &mut World, ctx: &EffectCtx, cond: &Condition) -> b
         Condition::Flag { flag, min } => world.resource::<Flags>().0.get(flag).is_some_and(|v| v >= min),
         Condition::StatAtLeast { stat, value } => subj.and_then(|e| world.get::<Stats>(e)).is_some_and(|s| s.get(stat) >= *value),
         Condition::StatBelow { stat, value } => subj.and_then(|e| world.get::<Stats>(e)).is_some_and(|s| s.get(stat) < *value),
-        Condition::NeedBelow { need, value } => subj.and_then(|e| world.get::<Needs>(e)).is_some_and(|n| n.get(need) < *value),
+        Condition::NeedBelow { need, value } => {
+            let c = world.resource::<Content>();
+            subj.and_then(|e| world.get::<Stats>(e)).is_some_and(|s| c.need_level(s, need) < *value)
+        }
         Condition::HasStatus(s) => subj.and_then(|e| world.get::<StatusEffects>(e)).is_some_and(|x| x.has(s)),
         Condition::HasStatusTag(t) => {
             let content = world.resource::<Content>();

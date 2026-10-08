@@ -201,19 +201,20 @@ fn block_building_footprints(world: &mut World) {
     }
 }
 
-/// Needs below their threshold run their `effects_when_low` every tick.
+/// Needs below a threshold run that threshold's effects every tick.
 fn low_needs(world: &mut World) {
     let content = world.resource::<Content>().clone();
-    if content.needs.values().all(|n| n.effects_when_low.is_empty()) {
+    if content.needs.values().all(|n| n.thresholds.iter().all(|t| t.effects.is_empty())) {
         return;
     }
-    for e in crate::sorted_entities::<Needs>(world) {
+    for e in crate::sorted_entities::<crate::stats::Pawn>(world) {
         if world.get::<Dead>(e).is_some() {
             continue;
         }
         for n in content.needs.values() {
-            if !n.effects_when_low.is_empty() && world.get::<Needs>(e).is_some_and(|x| x.get(&n.id) < n.low_threshold) {
-                apply_effects(world, &EffectCtx::new(Some(e), None, format!("need:{}", n.id)), &n.effects_when_low);
+            let Some(v) = world.get::<crate::stats::Stats>(e).and_then(|s| s.base.get(&n.stat).copied()) else { continue };
+            for th in n.thresholds.iter().filter(|th| v < th.below && !th.effects.is_empty()) {
+                apply_effects(world, &EffectCtx::new(Some(e), None, format!("need:{}", n.id)), &th.effects);
             }
         }
     }

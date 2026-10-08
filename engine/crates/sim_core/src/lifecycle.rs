@@ -17,7 +17,7 @@ use crate::map::Position;
 use crate::movement::Movement;
 use crate::press::Notebook;
 use crate::snapshot::ActivityState;
-use crate::stats::{Classes, Dead, DisplayName, Immortal, Needs, Pawn, Race, Stats, Tags, TemplateId, Virtual, Wallet};
+use crate::stats::{Classes, Dead, DisplayName, Immortal, Pawn, Race, Stats, Tags, TemplateId, Virtual, Wallet};
 use crate::status::StatusEffects;
 use crate::time::SimClock;
 
@@ -78,7 +78,6 @@ pub fn spawn_template(world: &mut World, template: &str, pos: Option<Position>, 
     for (item, qty) in &t.items {
         inv.add(&content, item, *qty);
     }
-    let needs = Needs(content.needs.keys().map(|n| (n.clone(), 1.0)).collect());
     world.entity_mut(e).insert((
         DisplayName(name.clone()),
         TemplateId(t.id.clone()),
@@ -86,7 +85,6 @@ pub fn spawn_template(world: &mut World, template: &str, pos: Option<Position>, 
         Classes(t.classes.clone()),
         Tags { base: t.tags.iter().cloned().collect(), effective: Default::default() },
         Stats { effective: base.clone(), base },
-        needs,
         StatusEffects::default(),
         inv,
         Wallet(t.money),

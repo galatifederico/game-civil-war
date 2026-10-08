@@ -12,7 +12,7 @@ pub fn build(content: &Content, params: &Params) -> Value {
         "feed": content.press.feed_name,
         "currency": content.bindings.currency_name,
         "stats": content.stats.values().map(|s| json!({ "id": s.id, "name": s.name, "description": s.description, "min": s.min, "max": s.max })).collect::<Vec<_>>(),
-        "needs": content.needs.values().map(|n| json!({ "id": n.id, "name": n.name, "decay": n.decay })).collect::<Vec<_>>(),
+        "needs": content.needs.values().map(|n| json!({ "id": n.id, "name": n.name, "stat": n.stat, "per_tick": n.per_tick })).collect::<Vec<_>>(),
         "races": content.races.values().map(|r| json!({
             "id": r.id, "name": r.name, "description": r.description, "stats": r.stat_ranges, "tags": r.tags,
             "abilities": r.abilities, "sexes": r.sexes, "immunities": r.immunities,

@@ -91,7 +91,7 @@ impl Stats {
     }
 }
 
-/// Needs in 0..1 (1 = satisfied).
+/// Needs of older saves (0..1): turned into their stats when the save is loaded.
 #[derive(Component, Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Needs(pub BTreeMap<String, f32>);
 
@@ -154,6 +154,15 @@ pub fn recompute_stats(
         if let Some(b) = aura {
             for (k, v) in &b.0 {
                 *eff.entry(k.clone()).or_insert(0.0) += v;
+            }
+        }
+        // Needs below a threshold: its stat modifiers last while below.
+        for n in content.needs.values() {
+            let v = stats.base.get(&n.stat).copied().unwrap_or(f32::MAX);
+            for th in n.thresholds.iter().filter(|th| v < th.below) {
+                for (k, x) in &th.stats {
+                    *eff.entry(k.clone()).or_insert(0.0) += x;
+                }
             }
         }
         let add = |m: &BTreeMap<String, f32>, eff: &mut BTreeMap<String, f32>| {
@@ -256,14 +265,15 @@ pub fn stat_recovery(content: Res<Content>, params: Res<crate::params::Params>, 
 }
 
 /// Needs decay, modulated by statuses (`need_rates` multiply the base decay).
-pub fn decay_needs(content: Res<Content>, mut q: Query<(&mut Needs, &StatusEffects, &Race, Option<&Tags>), (With<Pawn>, Without<Dead>)>) {
-    for (mut needs, statuses, race, tags) in &mut q {
+pub fn decay_needs(content: Res<Content>, mut q: Query<(&mut Stats, &StatusEffects, &Race, Option<&Tags>), (With<Pawn>, Without<Dead>)>) {
+    for (mut stats, statuses, race, tags) in &mut q {
         let rdef = content.races.get(&race.0);
         let abilities: Vec<&crate::content::AbilityDef> =
             tags.into_iter().flat_map(|t| t.effective.iter()).filter_map(|t| t.strip_prefix("ability:")).filter_map(|a| content.abilities.get(a)).collect();
         for (nid, nd) in &content.needs {
+            let bounds = content.stat_bounds(&nd.stat);
             if rdef.is_some_and(|r| r.needs_exempt.contains(nid)) {
-                needs.0.insert(nid.clone(), 1.0);
+                stats.set_base(&nd.stat, bounds.1, bounds);
                 continue;
             }
             let mut rate = 1.0 + rdef.and_then(|r| r.need_rates.get(nid)).copied().unwrap_or(0.0);
@@ -276,7 +286,7 @@ pub fn decay_needs(content: Res<Content>, mut q: Query<(&mut Needs, &StatusEffec
                     }
                 }
             }
-            needs.add(nid, -nd.decay * rate.max(0.0));
+            stats.add_base(&nd.stat, nd.per_tick * rate.max(0.0), bounds);
         }
     }
 }

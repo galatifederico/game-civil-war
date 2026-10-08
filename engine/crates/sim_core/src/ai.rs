@@ -17,7 +17,7 @@ use crate::map::Position;
 use crate::params::Params;
 use crate::press::Notebook;
 use crate::rng::SimRng;
-use crate::stats::{Dead, Needs, Stats, Tags, Virtual, Wallet};
+use crate::stats::{Dead, Stats, Tags, Virtual, Wallet};
 use crate::status::StatusEffects;
 use crate::time::SimClock;
 
@@ -56,7 +56,7 @@ fn input_value(world: &mut World, e: Entity, input: &Input, target: Option<&JobT
     let content = world.resource::<Content>();
     match input {
         Input::Constant(c) => *c,
-        Input::Need(n) => world.get::<Needs>(e).map_or(1.0, |x| x.get(n)),
+        Input::Need(n) => world.get::<Stats>(e).map_or(1.0, |s| world.resource::<Content>().need_level(s, n)),
         Input::Stat { stat, max } => world.get::<Stats>(e).map_or(0.0, |s| s.get(stat) / max.max(0.0001)),
         Input::StatusSeverity { status, max } => {
             world.get::<StatusEffects>(e).map_or(0.0, |s| s.severity(status) / max.max(0.0001))
@@ -223,7 +223,13 @@ pub fn think(world: &mut World) {
             action_ids.retain(|a| {
                 content.actions.get(a).is_some_and(|d| {
                     let wanders = matches!(&d.kind, ActionKind::Job { target: Selector::Zone(_) | Selector::Random(_) | Selector::OwnFactionZone(_), .. });
-                    !wanders && d.considerations.iter().any(|c| matches!(c.input, Input::Need(_)))
+                    // Actions that look after a need (by the need or by the need's stat).
+                    let for_need = |i: &Input| match i {
+                        Input::Need(_) => true,
+                        Input::Stat { stat, .. } => content.needs.values().any(|n| &n.stat == stat),
+                        _ => false,
+                    };
+                    !wanders && d.considerations.iter().any(|c| for_need(&c.input))
                 })
             });
         }

@@ -133,7 +133,7 @@
          tags: ["collezionabile", "santino", "sacro"], carried_stats: {"onore": 2, "resistenza": 1},
          description: "Patrono di Fidenza. Decapitato sul ponte dello Stirone nel 304, raccolse la propria testa e la portò fino al luogo dove oggi sorge il Duomo. Chi lo tiene in tasca non perde la testa (né l'onore)."),
         (id: "santino_02", name: "Sant'Onofrio", category: "santino", stack_max: 10, base_price: 1,
-         tags: ["collezionabile", "santino", "sacro"], on_use: [ModNeed(need: "fame", amount: 0.4), ModNeed(need: "riposo", amount: 0.2)],
+         tags: ["collezionabile", "santino", "sacro"], on_use: [ModStat(stat: "fame", amount: 40), ModStat(stat: "riposo", amount: 20)],
          description: "Eremita nel deserto d'Egitto per sessant'anni, coperto solo dalla barba e dai capelli; un angelo gli portava il pane ogni giorno. Pregandolo arriva il pane, e un po' di pace."),
         (id: "santino_03", name: "San Giuda Taddeo", category: "santino", stack_max: 10, base_price: 2,
          tags: ["collezionabile", "santino", "sacro"], on_use: [ModStat(stat: "morale", amount: 12)],
@@ -187,7 +187,7 @@
          tags: ["collezionabile", "santino", "sacro"], carried_stats: {"forza": 2, "carisma": -1},
          description: "Apostolo scorticato vivo in Armenia, si raffigura con la propria pelle sul braccio e il coltello. Patrono dei macellai e dei conciatori della Bassa: dà la forza di chi lavora la carne, non la bellezza."),
         (id: "santino_20", name: "San Giuseppe", category: "santino", stack_max: 10, base_price: 2,
-         tags: ["collezionabile", "santino", "sacro"], carried_stats: {"destrezza": 2}, on_use: [ModNeed(need: "riposo", amount: 0.3)],
+         tags: ["collezionabile", "santino", "sacro"], carried_stats: {"destrezza": 2}, on_use: [ModStat(stat: "riposo", amount: 30)],
          description: "Il falegname di Nazareth, col giglio fiorito e gli attrezzi; patrono dei lavoratori e della buona morte. In tasca dà mani da artigiano, pregato dà un sonno tranquillo."),
 
         // ── Bustine: si comprano e si aprono subito, dentro c'è un pezzo a caso ──

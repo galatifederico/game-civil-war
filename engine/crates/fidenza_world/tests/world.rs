@@ -239,8 +239,8 @@ fn idle_champion_looks_after_its_needs() {
     let mut sim = sim(9);
     let (_, ce) = id_of(&mut sim, "leader_anarchico");
     sim.run(24 * 6);
-    let needs = sim.world.get::<Needs>(ce).unwrap();
-    assert!(needs.get("fame") > 0.1, "the champion starved: {:?}", needs.0);
+    let fame = sim.world.get::<sim_core::stats::Stats>(ce).unwrap().get("fame");
+    assert!(fame > 10.0, "the champion starved: fame {fame}");
 }
 
 #[test]
@@ -630,4 +630,31 @@ fn abilities_are_traits_and_actions_have_effects() {
     sim.execute(SimCommand::UseAbility { entity: rid, ability: "mutaforma".into(), target: None }).expect("mutaforma");
     assert!(sim.world.get::<sim_core::infiltration::Disguise>(rept).is_some());
     assert!(sim.execute(SimCommand::UseAbility { entity: rid, ability: "mutaforma".into(), target: None }).is_err(), "in attesa");
+}
+
+/// A need moves its stat every tick; below each threshold its effects run every tick and its stat
+/// modifiers last while below; eating (an effect on the need) raises the stat.
+#[test]
+fn needs_move_stats_and_thresholds_bite() {
+    use sim_core::stats::Stats;
+    let mut sim = sim(1);
+    let tpl = sim.content().templates.values().find(|t| t.race == "fidentino" && !t.unique && !t.virtual_entity).unwrap().id.clone();
+    let e = sim_core::lifecycle::spawn_template(&mut sim.world, &tpl, None, &SpawnOverrides::default()).unwrap();
+    assert_eq!(sim.world.get::<Stats>(e).unwrap().get("fame"), 100.0, "si nasce sazi");
+    sim.tick();
+    assert!(sim.world.get::<Stats>(e).unwrap().base["fame"] < 100.0, "la fame cala ogni ora");
+    let content = sim.content().clone();
+    sim.world.get_mut::<Stats>(e).unwrap().set_base("fame", 1.0, (0.0, 100.0));
+    let forza = sim.world.get::<Stats>(e).unwrap().base["forza"];
+    sim.tick();
+    let s = sim.world.get::<Stats>(e).unwrap();
+    assert!(s.effective["forza"] <= forza - 5.0 + 0.01, "denutrito: -5 forza finché sotto 3");
+    assert!(sim.events().all().iter().all(|ev| ev.kind != "error"));
+    // Eating: an effect on the need raises the stat by a share of its range.
+    let ctx = sim_core::effects::EffectCtx::new(Some(e), None, "test");
+    sim_core::effects::apply_effects(&mut sim.world, &ctx, &[sim_core::content::Effect::ModNeed { need: "fame".into(), amount: 0.5 }]);
+    assert!(sim.world.get::<Stats>(e).unwrap().base["fame"] > 50.0);
+    sim.tick();
+    let s = sim.world.get::<Stats>(e).unwrap();
+    assert!(s.effective["forza"] > forza - 5.0 + 0.01 || content.needs["fame"].thresholds.is_empty(), "sopra la soglia il modificatore sparisce");
 }

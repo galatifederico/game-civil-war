@@ -155,16 +155,32 @@ pub struct StatDef {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+/// A need moves a stat every tick (eating keeps "fame" up, time brings it down); below each threshold
+/// something happens every tick and some stats change while the pawn stays below.
 pub struct NeedDef {
     pub id: Id,
     pub name: String,
-    /// Loss per tick (need values live in 0..1, 1 = fully satisfied).
-    pub decay: f32,
-    /// Below this value the pawn suffers `effects_when_low` every tick.
     #[serde(default)]
-    pub low_threshold: f32,
+    pub description: String,
+    /// The stat this need moves (default: the need's own id; created 0..100, full at birth, if missing).
     #[serde(default)]
-    pub effects_when_low: Vec<Effect>,
+    pub stat: Id,
+    /// Change of the stat every tick (negative: it drops), before race, ability and status rates.
+    pub per_tick: f32,
+    #[serde(default)]
+    pub thresholds: Vec<NeedThreshold>,
+}
+
+/// What happens while a need's stat is below `below`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct NeedThreshold {
+    pub name: String,
+    pub below: f32,
+    /// Effects every tick while below (subject = the pawn).
+    pub effects: Vec<Effect>,
+    /// Stat modifiers that last while below.
+    pub stats: BTreeMap<Id, f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

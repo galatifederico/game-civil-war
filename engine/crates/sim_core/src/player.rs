@@ -302,9 +302,14 @@ pub fn wake_up(world: &mut World) {
                     part.hp = part.hp.max(part.max_hp * 0.6);
                 }
             }
-            if let Some(mut n) = world.get_mut::<crate::stats::Needs>(e) {
-                for v in n.0.values_mut() {
-                    *v = v.max(0.5);
+            let content = world.resource::<Content>().clone();
+            if let Some(mut s) = world.get_mut::<crate::stats::Stats>(e) {
+                for n in content.needs.values() {
+                    let (lo, hi) = content.stat_bounds(&n.stat);
+                    let half = lo + (hi - lo) * 0.5;
+                    if s.get(&n.stat) < half {
+                        s.set_base(&n.stat, half, (lo, hi));
+                    }
                 }
             }
             let name = crate::effects::name_of(world, e);

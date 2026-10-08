@@ -68,6 +68,21 @@ fn merge<T, F: Fn(&T) -> &str>(dst: &mut BTreeMap<Id, T>, src: Vec<T>, id: F) {
     }
 }
 
+/// Every need names its stat; a missing one is created (0..100, full at birth, group "Bisogni").
+fn need_stats(c: &mut ContentData) {
+    for n in c.needs.values_mut() {
+        if n.stat.is_empty() {
+            n.stat = n.id.clone();
+        }
+        if !c.stats.contains_key(&n.stat) {
+            c.stats.insert(n.stat.clone(), StatDef {
+                id: n.stat.clone(), name: n.name.clone(), description: format!("Bisogno: {}", n.name), min: 0.0, max: 100.0,
+                default: 100.0, visible: true, rest_value: None, recovery: 0.0, per_day: 0.0, group: "Bisogni".into(), spread: 0.0,
+            });
+        }
+    }
+}
+
 /// Kinds of definitions (keyed by id) the admin console can replace while the game runs.
 pub const EDITABLE_KINDS: &[&str] = &[
     "stats", "needs", "body_plans", "races", "action_sets", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
@@ -142,6 +157,7 @@ impl Content {
         let pack: ContentPack = serde_json::from_value(serde_json::json!({ kind: [def] })).map_err(|e| ContentError::Invalid(vec![format!("{kind}: {e}")]))?;
         let mut c = (*self.0).clone();
         merge_pack(&mut c, pack);
+        need_stats(&mut c);
         let errors = c.validate();
         if errors.is_empty() { Ok(Content(Arc::new(c))) } else { Err(ContentError::Invalid(errors)) }
     }
@@ -155,6 +171,7 @@ impl Content {
         for p in packs {
             merge_pack(&mut c, p);
         }
+        need_stats(&mut c);
         if let Some(m) = c.map.as_mut() {
             for l in m.layers.iter_mut() {
                 if !l.tiles.is_empty() {
@@ -177,6 +194,19 @@ impl Content {
 }
 
 impl ContentData {
+
+    /// The stat a need moves.
+    pub fn need_stat<'a>(&'a self, need: &'a str) -> &'a str {
+        self.needs.get(need).map_or(need, |n| n.stat.as_str())
+    }
+
+    /// How satisfied a need is, 0..1 (its stat within the stat's range).
+    pub fn need_level(&self, stats: &crate::stats::Stats, need: &str) -> f32 {
+        let stat = self.need_stat(need);
+        let (lo, hi) = self.stat_bounds(stat);
+        let v = stats.base.get(stat).copied().unwrap_or(hi);
+        if hi > lo && hi < f32::MAX { ((v - lo) / (hi - lo)).clamp(0.0, 1.0) } else { 1.0 }
+    }
 
     pub fn stat_bounds(&self, stat: &str) -> (f32, f32) {
         self.stats.get(stat).map_or((f32::MIN, f32::MAX), |s| (s.min, s.max))
@@ -253,7 +283,14 @@ impl Validator<'_> {
             }
         }
         for n in c.needs.values() {
-            self.effects(&n.effects_when_low, &format!("bisogno {}", n.id));
+            let ctx = format!("bisogno {}", n.id);
+            self.stat(&n.stat, &ctx);
+            for t in &n.thresholds {
+                self.effects(&t.effects, &ctx);
+                for k in t.stats.keys() {
+                    self.stat(k, &ctx);
+                }
+            }
         }
         for bp in c.body_plans.values() {
             for p in &bp.parts {
