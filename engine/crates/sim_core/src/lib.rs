@@ -30,6 +30,7 @@ pub mod inventory;
 pub mod inventory_ops;
 pub mod jobs;
 pub mod lifecycle;
+pub mod modes;
 pub mod logistics;
 pub mod map;
 pub mod market;

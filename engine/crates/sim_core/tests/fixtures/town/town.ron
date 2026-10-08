@@ -39,7 +39,7 @@
         (id: "daily_life", name: "Daily life", actions: ["eat", "buy_food", "work", "idle"]),
     ],
     classes: [
-        (id: "citizen", name: "Citizen", actions: [], work: {"labor": 3}),
+        (id: "citizen", name: "Citizen", actions: []),
         (id: "thief", name: "Thief", actions: ["steal"], stats: {"stealth": 2}),
         (id: "cop", name: "Cop", actions: ["arrest_wanted", "patrol"], stats: {"speed": 1}),
         (id: "reporter", name: "Reporter", actions: ["publish", "roam"]),

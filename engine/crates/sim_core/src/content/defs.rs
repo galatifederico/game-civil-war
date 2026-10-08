@@ -21,6 +21,7 @@ pub struct ContentPack {
     pub body_plans: Vec<BodyPlanDef>,
     pub races: Vec<RaceDef>,
     pub action_sets: Vec<ActionSetDef>,
+    pub modes: Vec<ModeDef>,
     pub classes: Vec<ClassDef>,
     pub statuses: Vec<StatusDef>,
     pub fluids: Vec<FluidDef>,
@@ -89,6 +90,8 @@ pub struct Bindings {
     pub crime_record: Option<Id>,
     /// Class a pawn falls back to when it loses its last class.
     pub default_class: Option<Id>,
+    /// Mode of pawns whose own choice finds none (see `ModeDef`).
+    pub default_mode: Option<Id>,
     /// Combat stats: damage dealt grows with `attack`, damage taken shrinks with `defense` (both 0..100).
     pub attack: Option<Id>,
     pub defense: Option<Id>,
@@ -114,6 +117,7 @@ impl Default for Bindings {
             currency_name: "crediti".into(),
             crime_record: None,
             default_class: None,
+            default_mode: None,
             attack: None,
             defense: None,
         }
@@ -267,6 +271,45 @@ pub struct StatRange {
     pub spread: Option<f32>,
 }
 
+/// A way of living a pawn is in (one at a time): working, conquering, searching… It weighs the AI's
+/// choice of actions by their tags and sets which board jobs come first. The player's order wins, then
+/// the faction's mode, then the pawn's own choice (`when`, highest `priority` first).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ModeDef {
+    pub id: Id,
+    pub name: String,
+    pub description: String,
+    /// Utility multiplier of actions by tag (an action with several listed tags gets their product).
+    pub weights: BTreeMap<String, f32>,
+    /// Multiplier of actions with none of the listed tags.
+    pub default_weight: f32,
+    /// Stat modifiers while in this mode.
+    pub stats: BTreeMap<Id, f32>,
+    /// Board job priorities by work type (1 = first … 4 = last, 0 = never); unlisted types count 3.
+    pub work: BTreeMap<Id, u8>,
+    /// When a pawn picks this mode on its own.
+    pub when: Condition,
+    /// Higher first among the modes whose `when` holds.
+    pub priority: i32,
+}
+
+impl Default for ModeDef {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            name: String::new(),
+            description: String::new(),
+            weights: BTreeMap::new(),
+            default_weight: 1.0,
+            stats: BTreeMap::new(),
+            work: BTreeMap::new(),
+            when: Condition::Never,
+            priority: 0,
+        }
+    }
+}
+
 /// A named group of base actions shared by races (daily life, animal instincts…).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -295,9 +338,6 @@ pub struct ClassDef {
     /// Utility AI actions this class unlocks.
     #[serde(default)]
     pub actions: Vec<Id>,
-    /// Default WorkPriorityMatrix row: work type → priority (1 = highest, 4 = lowest, 0 = disabled).
-    #[serde(default)]
-    pub work: BTreeMap<Id, u8>,
     /// What a pawn needs to take the class on its own (see `classes`), races allowed included
     /// (`RaceIn`). `None`: only given by templates and effects, never acquired.
     #[serde(default)]
@@ -696,6 +736,8 @@ pub struct FactionDef {
     pub tags: Vec<String>,
     /// Strategic goals pursued by AI-run factions (player factions decide by themselves).
     pub goals: Vec<GoalDef>,
+    /// Mode of its members unless the player orders otherwise.
+    pub mode: Option<Id>,
 }
 
 /// "Get items with this tag that we do not hold": posts faction jobs targeting whoever holds them.

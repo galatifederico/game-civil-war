@@ -1,0 +1,23 @@
+// Modalità: un modo di vivere alla volta. Pesano la scelta delle azioni dell'IA secondo le loro categorie (tag)
+// e decidono quali lavori della bacheca vengono prima. Vince l'ordine del giocatore, poi la modalità della
+// fazione, poi la scelta della pedina («when», a partire dalla «priority» più alta; altrimenti «Lavora»).
+(
+    modes: [
+        (id: "lavora", name: "Lavora", description: "Guadagnare soldi e restare in vita: lavori, spesa, cibo, sonno.",
+         weights: {"lavoro": 2.5, "soldi": 2.0, "sopravvivenza": 1.5, "riposo": 1.2, "studio": 1.2, "violenza": 0.3, "territorio": 0.5, "svago": 0.6},
+         work: {"agricoltura": 2, "allevamento": 2, "chimica": 2, "costruzione": 2, "estrazione": 2, "forgia": 2, "informatica": 2,
+                "logistica": 2, "macelleria": 2, "medicina": 2, "produzione": 2, "pulizia": 3, "trasporto": 2, "sorveglianza": 3,
+                "combattimento": 4, "furto": 0}),
+        (id: "conquista", name: "Conquista", description: "Più rabbiosa: risse, territori, nemici da abbattere, potere.",
+         weights: {"violenza": 3.0, "territorio": 3.0, "potere": 2.0, "crimine": 1.5, "lavoro": 0.5, "svago": 0.5, "studio": 0.5},
+         stats: {"aggressivita": 15}, work: {"combattimento": 1, "sorveglianza": 2, "furto": 3},
+         when: StatAtLeast(stat: "aggressivita", value: 70), priority: 3),
+        (id: "ricerca", name: "Ricerca", description: "Gira per la mappa, indaga, studia, raccoglie informazioni.",
+         weights: {"esplorazione": 3.0, "informazioni": 3.0, "studio": 2.0, "lavoro": 0.6, "violenza": 0.5},
+         stats: {"curiosita": 10}, work: {"informatica": 2, "sorveglianza": 2},
+         when: StatAtLeast(stat: "curiosita", value: 75), priority: 2),
+        (id: "svago", name: "Svago", description: "Divertirsi e stare in compagnia.",
+         weights: {"svago": 3.0, "sociale": 2.0, "lavoro": 0.4, "violenza": 0.5},
+         when: StatBelow(stat: "svago", value: 20), priority: 1),
+    ],
+)

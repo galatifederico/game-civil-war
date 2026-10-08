@@ -121,6 +121,7 @@ pub fn recompute_stats(
             Option<&crate::ids::SimId>,
             Option<&crate::equipment::Equipment>,
             Option<&crate::abilities::AuraBonus>,
+            Option<&crate::modes::Mode>,
             &mut Stats,
             &mut Tags,
         ),
@@ -136,7 +137,7 @@ pub fn recompute_stats(
             roles.entry(*h).or_default().push(d);
         }
     }
-    for (race, classes, statuses, inv, member, sid, equipment, aura, mut stats, mut tags) in &mut q {
+    for (race, classes, statuses, inv, member, sid, equipment, aura, mode, mut stats, mut tags) in &mut q {
         let mut eff = stats.base.clone();
         let mut t: BTreeSet<String> = tags.base.clone();
         // Abilities (from race, classes and roles): permanent modifiers and tags.
@@ -155,6 +156,12 @@ pub fn recompute_stats(
             for (k, v) in &b.0 {
                 *eff.entry(k.clone()).or_insert(0.0) += v;
             }
+        }
+        if let Some(m) = mode.and_then(|m| content.modes.get(&m.current)) {
+            for (k, v) in &m.stats {
+                *eff.entry(k.clone()).or_insert(0.0) += v;
+            }
+            t.insert(format!("mode:{}", m.id));
         }
         // Needs below a threshold: its stat modifiers last while below.
         for n in content.needs.values() {

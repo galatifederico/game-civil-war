@@ -19,7 +19,7 @@ pub fn build(content: &Content, params: &Params) -> Value {
             "body": content.body_plans.get(&r.body_plan).map(|b| b.parts.iter().map(|p| p.name.clone()).collect::<Vec<_>>()),
         })).collect::<Vec<_>>(),
         "classes": content.classes.values().map(|c| json!({
-            "id": c.id, "name": c.name, "description": c.description, "stats": c.stats, "abilities": c.abilities, "work": c.work,
+            "id": c.id, "name": c.name, "description": c.description, "stats": c.stats, "abilities": c.abilities,
         })).collect::<Vec<_>>(),
         "statuses": content.statuses.values().filter(|s| !s.hidden).map(|s| json!({
             "id": s.id, "name": s.name, "description": s.description, "kind": s.kind, "tags": s.tags,

@@ -7,6 +7,7 @@
         description: "Mondo satirico della Bassa: reliquie di San Donnino, Rettiliani al Fidenza Village, Boomer, Vegani e Ubriaconi.",
     ),
     bindings: (
+        default_mode: "lavora",
         morale: "morale",
         perception: "percezione",
         stealth: "furtivita",

@@ -41,6 +41,9 @@ pub struct FactionState {
     /// Allied factions: never hostile to each other (player factions ally instead of merging).
     #[serde(default)]
     pub allies: BTreeSet<String>,
+    /// Mode of the members unless the player orders otherwise (see `modes`).
+    #[serde(default)]
+    pub mode: Option<String>,
 }
 
 #[derive(Resource, Debug, Clone, Default, Serialize, Deserialize)]
@@ -54,7 +57,7 @@ impl Factions {
         for f in c.factions.values() {
             states.insert(
                 f.id.clone(),
-                FactionState { treasury: f.treasury, relations: f.relations.clone(), ..Default::default() },
+                FactionState { treasury: f.treasury, relations: f.relations.clone(), mode: f.mode.clone(), ..Default::default() },
             );
         }
         // Make relations bidirectional: a missing reverse entry mirrors the declared one.

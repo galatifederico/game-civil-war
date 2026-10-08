@@ -36,6 +36,7 @@ pub struct ContentData {
     pub body_plans: BTreeMap<Id, BodyPlanDef>,
     pub races: BTreeMap<Id, RaceDef>,
     pub action_sets: BTreeMap<Id, ActionSetDef>,
+    pub modes: BTreeMap<Id, ModeDef>,
     pub classes: BTreeMap<Id, ClassDef>,
     pub statuses: BTreeMap<Id, StatusDef>,
     pub fluids: BTreeMap<Id, FluidDef>,
@@ -85,7 +86,7 @@ fn need_stats(c: &mut ContentData) {
 
 /// Kinds of definitions (keyed by id) the admin console can replace while the game runs.
 pub const EDITABLE_KINDS: &[&str] = &[
-    "stats", "needs", "body_plans", "races", "action_sets", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
+    "stats", "needs", "body_plans", "races", "action_sets", "modes", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
     "buildings", "templates", "spawners", "triggers", "collections", "titles", "news_sources", "global_modifiers", "supplies",
 ];
 
@@ -103,6 +104,7 @@ fn merge_pack(c: &mut ContentData, p: ContentPack) {
     merge(&mut c.body_plans, p.body_plans, |d| &d.id);
     merge(&mut c.races, p.races, |d| &d.id);
     merge(&mut c.action_sets, p.action_sets, |d| &d.id);
+    merge(&mut c.modes, p.modes, |d| &d.id);
     merge(&mut c.classes, p.classes, |d| &d.id);
     merge(&mut c.statuses, p.statuses, |d| &d.id);
     merge(&mut c.fluids, p.fluids, |d| &d.id);
@@ -298,6 +300,21 @@ impl Validator<'_> {
                     && !bp.parts.iter().any(|q| &q.id == parent) {
                         self.errors.push(format!("piano corporeo {}: parte padre '{parent}' non esiste", bp.id));
                     }
+            }
+        }
+        for m in c.modes.values() {
+            let ctx = format!("modalità {}", m.id);
+            for s in m.stats.keys() {
+                self.stat(s, &ctx);
+            }
+            self.cond(&m.when, &ctx);
+        }
+        if let Some(m) = &c.bindings.default_mode {
+            self.check(&c.modes, "modalità", m, "bindings");
+        }
+        for f in c.factions.values() {
+            if let Some(m) = &f.mode {
+                self.check(&c.modes, "modalità", m, &format!("fazione {}", f.id));
             }
         }
         for s in c.action_sets.values() {

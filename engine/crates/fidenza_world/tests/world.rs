@@ -658,3 +658,41 @@ fn needs_move_stats_and_thresholds_bite() {
     let s = sim.world.get::<Stats>(e).unwrap();
     assert!(s.effective["forza"] > forza - 5.0 + 0.01 || content.needs["fame"].thresholds.is_empty(), "sopra la soglia il modificatore sparisce");
 }
+
+/// Modes: the player's order beats the faction's mode, which beats the pawn's own choice; a pawn kept in a
+/// mode it would not choose grows dissent; the mode weighs actions by tag and sets the work priorities.
+#[test]
+fn modes_order_faction_and_own_choice() {
+    use sim_core::modes::{Mode, ModeSource};
+    use sim_core::stats::Stats;
+    let mut sim = sim(1);
+    let (tid, e) = id_of(&mut sim, "scippatore");
+    let faction = sim.world.get::<sim_core::factions::FactionMember>(e).unwrap().faction.clone();
+    sim_core::modes::update(&mut sim.world);
+    let m = sim.world.get::<Mode>(e).unwrap().clone();
+    assert_eq!((m.current.as_str(), m.source), (m.own.as_str(), ModeSource::Own));
+    // Very aggressive: it chooses conquest by itself, and gets its stats.
+    sim.world.get_mut::<Stats>(e).unwrap().set_base("aggressivita", 90.0, (0.0, 100.0));
+    sim.tick();
+    assert_eq!(sim.world.get::<Mode>(e).unwrap().current, "conquista");
+    // The faction says "work": it works, and dissent grows.
+    let d0 = sim.world.get::<sim_core::factions::Dissent>(e).unwrap().0;
+    sim.execute(SimCommand::SetMode { entity: None, faction: Some(faction), mode: Some("lavora".into()) }).unwrap();
+    let m = sim.world.get::<Mode>(e).unwrap().clone();
+    assert_eq!((m.current.as_str(), m.source), ("lavora", ModeSource::Faction));
+    assert!(sim.world.get::<sim_core::factions::Dissent>(e).unwrap().0 > d0, "forzata contro voglia");
+    // The player's order for the pawn beats the faction.
+    sim.execute(SimCommand::SetMode { entity: Some(tid), faction: None, mode: Some("ricerca".into()) }).unwrap();
+    let m = sim.world.get::<Mode>(e).unwrap().clone();
+    assert_eq!((m.current.as_str(), m.source), ("ricerca", ModeSource::Player));
+    assert_eq!(sim.world.get::<sim_core::jobs::WorkPriorities>(e).unwrap().get("informatica"), 2);
+    // Weights by tag.
+    let content = sim.content().clone();
+    let w = |m: &str, tags: &[&str]| {
+        let mode = Mode { current: m.into(), ..Default::default() };
+        sim_core::modes::weight(&content, Some(&mode), &tags.iter().map(|t| t.to_string()).collect::<Vec<_>>())
+    };
+    assert_eq!(w("conquista", &["violenza"]), 3.0);
+    assert_eq!(w("lavora", &["lavoro", "soldi"]), 5.0);
+    assert_eq!(w("lavora", &["fede"]), 1.0);
+}

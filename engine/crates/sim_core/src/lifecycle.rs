@@ -196,16 +196,15 @@ pub fn refresh_role(world: &mut World, e: Entity) {
     let mut actions: Vec<String> = race
         .map(|r| r.action_sets.iter().filter_map(|s| content.action_sets.get(s)).flat_map(|s| s.actions.iter().cloned()).chain(r.actions.iter().cloned()).collect())
         .unwrap_or_default();
-    let mut work: BTreeMap<String, u8> = BTreeMap::new();
+    // Work priorities come from the pawn's mode.
+    let work: BTreeMap<String, u8> = world
+        .get::<crate::modes::Mode>(e)
+        .and_then(|m| content.modes.get(&m.current))
+        .map(|m| m.work.clone())
+        .unwrap_or_default();
     for c in &classes {
         if let Some(cd) = content.classes.get(c) {
             actions.extend(cd.actions.iter().cloned());
-            for (wt, p) in &cd.work {
-                let cur = work.entry(wt.clone()).or_insert(*p);
-                if *p != 0 && (*cur == 0 || *p < *cur) {
-                    *cur = *p;
-                }
-            }
         }
     }
     if let Some(t) = template {

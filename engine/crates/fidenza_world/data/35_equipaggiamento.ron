@@ -112,9 +112,9 @@
     actions: [
         (id: "lancia_oggetto", name: "Lancia qualcosa", weight: 0.9, cooldown: 4, requires: HasItemType("lanciabile"),
          kind: Job(job: "lancia_oggetto", target: Nearest((pawn: true, relation: Hostile, visible: true, max_distance: 6, not_detained: true))),
-         considerations: [(input: TargetExists), (input: Stat(stat: "mira", max: 60), curve: Linear(slope: 0.6, intercept: 0.4))]),
+         considerations: [(input: TargetExists), (input: Stat(stat: "mira", max: 60), curve: Linear(slope: 0.6, intercept: 0.4))], tags: ["crimine", "violenza"]),
         (id: "tira_al_bersaglio", name: "Tira roba a chi gli sta antipatico", weight: 0.15, cooldown: 48, requires: HasItemType("lanciabile"),
          kind: Job(job: "lancia_oggetto", target: Nearest((pawn: true, relation: Other, visible: true, max_distance: 6, not_detained: true, tags_none: ["bestia"]))),
-         considerations: [(input: TargetExists), (input: Stat(stat: "aggressivita", max: 80), curve: Power(exponent: 2.0))]),
+         considerations: [(input: TargetExists), (input: Stat(stat: "aggressivita", max: 80), curve: Power(exponent: 2.0))], tags: ["crimine", "violenza"]),
     ],
 )

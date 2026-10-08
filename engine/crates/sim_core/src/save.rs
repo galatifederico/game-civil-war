@@ -56,6 +56,7 @@ use crate::abilities::AbilityCooldowns;
 use crate::ai::Brain;
 use crate::anatomy::Body;
 use crate::classes::ClassState;
+use crate::modes::Mode;
 use crate::equipment::Equipment;
 use crate::buildings::{Building, Shop};
 use crate::crime::{Detained, Wanted};
@@ -78,7 +79,7 @@ components!(
     Detained, Brain, Task, PersonalQueue, WorkPriorities, ActivityState, Notebook, Movement, Pawn, Virtual, Position,
     Body, Immortal, Dead, FactionMember, Leader, Controlled, Follow, Disguise, Cover, StealthState, Tethered,
     SpawnedBy, AbilityCooldowns, Building, Shop, Stock, Contaminated, KnockedOut, Transmuted, ManualHold, Sex,
-    ClassState, Bonds, Journal, Equipment,
+    ClassState, Bonds, Journal, Equipment, Mode,
 );
 
 macro_rules! resources {

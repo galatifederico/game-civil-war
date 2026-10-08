@@ -26,6 +26,8 @@ pub enum SimCommand {
     Bribe { faction: String, target: SimId, #[serde(default)] amount: Option<f64> },
     SetParam { key: String, value: f64 },
     SetWorkPriority { entity: SimId, work_type: String, priority: u8 },
+    /// The player's order: the mode of one pawn (`entity`) or of a whole faction (`faction`); no `mode` clears it.
+    SetMode { #[serde(default)] entity: Option<SimId>, #[serde(default)] faction: Option<String>, #[serde(default)] mode: Option<String> },
     CreateSquad { name: String, #[serde(default)] faction: Option<String>, members: Vec<SimId>, #[serde(default)] role: String },
     SquadOrder { squad: u64, order: Option<SquadOrder> },
     SetSalary { faction: String, rank: String, amount: f64 },
@@ -147,6 +149,32 @@ pub fn apply(world: &mut World, cmd: SimCommand) -> Result<String, String> {
         SimCommand::SetParam { key, value } => {
             let old = world.resource_mut::<Params>().set(key.clone(), value);
             Ok(format!("{key} = {value} (prima {})", old.map_or("non impostato".into(), |v| v.to_string())))
+        }
+        SimCommand::SetMode { entity: id, faction, mode } => {
+            if let Some(m) = &mode
+                && !world.resource::<Content>().modes.contains_key(m)
+            {
+                return Err(format!("modalità '{m}' inesistente"));
+            }
+            let what = mode.clone().unwrap_or_else(|| "la sua".into());
+            let msg = match (id, faction) {
+                (Some(id), _) => {
+                    let e = entity(world, id)?;
+                    let mut m = world.get::<crate::modes::Mode>(e).cloned().unwrap_or_default();
+                    m.ordered = mode;
+                    world.entity_mut(e).insert(m);
+                    format!("{id} ora in modalità {what}")
+                }
+                (None, Some(f)) => {
+                    let mut fs = world.resource_mut::<Factions>();
+                    let st = fs.states.get_mut(&f).ok_or_else(|| format!("fazione '{f}' inesistente"))?;
+                    st.mode = mode;
+                    format!("fazione {f} ora in modalità {what}")
+                }
+                (None, None) => return Err("serve una pedina o una fazione".into()),
+            };
+            crate::modes::update(world);
+            Ok(msg)
         }
         SimCommand::SetWorkPriority { entity: id, work_type, priority } => {
             let e = entity(world, id)?;

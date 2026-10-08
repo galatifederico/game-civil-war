@@ -144,7 +144,14 @@ fn score_action(world: &mut World, e: Entity, a: &ActionDef, tick: u64) -> Optio
     };
     let board_score = board.as_ref().map(|_| 1.0);
     let mut factors = Vec::new();
-    let mut score = a.weight.max(0.0);
+    let mode_w = {
+        let content = world.resource::<Content>();
+        crate::modes::weight(content, world.get::<crate::modes::Mode>(e), &a.tags)
+    };
+    if mode_w != 1.0 {
+        factors.push(("modalità".to_string(), mode_w));
+    }
+    let mut score = a.weight.max(0.0) * mode_w;
     let n = a.considerations.len().max(1) as f32;
     let mod_factor = 1.0 - 1.0 / n;
     for c in &a.considerations {

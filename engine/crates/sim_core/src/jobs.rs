@@ -96,7 +96,8 @@ pub struct WorkPriorities {
 
 impl WorkPriorities {
     pub fn get(&self, work_type: &str) -> u8 {
-        self.overrides.get(work_type).or_else(|| self.defaults.get(work_type)).copied().unwrap_or(0)
+        // Work types the mode does not list count as "normal" (3).
+        self.overrides.get(work_type).or_else(|| self.defaults.get(work_type)).copied().unwrap_or(3)
     }
 
     pub fn matrix(&self) -> BTreeMap<String, u8> {
@@ -262,7 +263,9 @@ pub fn best_board_job(world: &mut World, e: Entity) -> Option<(f32, BoardJob)> {
             }
             _ => 0.0,
         };
-        let score = (5 - prio as i32) as f32 / 4.0 * (1.0 + j.priority as f32 * 0.1) * rank_mult / (1.0 + dist / 20.0);
+        // Who is good at a job prefers it (its skill stat, 0..100).
+        let skill = def.skill.as_ref().and_then(|s| world.get::<crate::stats::Stats>(e).map(|x| x.get(s))).unwrap_or(0.0);
+        let score = (5 - prio as i32) as f32 / 4.0 * (1.0 + j.priority as f32 * 0.1) * rank_mult * (1.0 + skill.max(0.0) / 100.0) / (1.0 + dist / 20.0);
         if best.as_ref().is_none_or(|(s, _)| score > *s) {
             best = Some((score.clamp(0.0, 1.0), j));
         }
