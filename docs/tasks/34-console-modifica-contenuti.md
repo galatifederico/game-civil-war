@@ -12,10 +12,10 @@
   alle classi (che possono essere più d'una), ai ruoli e agli stati; i vecchi bonus sono diventati valori iniziali
   (default + bonus). Una pedina che cambia razza (es. diventa maiale) quindi non cambia più le caratteristiche da sola.
   Poi `sexes` (sessi possibili; vuoto = senza sesso, non si riproduce; prende il posto di `sexless`), `need_rates` (bisogni consumati più o meno in fretta).
-  Tolto `shapeshifter`: mutaforma è l'abilità `mutaforma`.
+  Tolto `shapeshifter`: mutaforma è l'azione `mutaforma` (vedi task 36).
 - **Scheda di una razza:** Caratteristiche (sezioni collassabili per gruppo con minimo, massimo, iniziale e variazione; vuoto = valore
-  generale, mostrato in grigio; ricerca e «solo personalizzate»), Abilità e Immunità (tabelle con caratteristica e
-  modificatore), Bisogni (quelli che la razza ha, con la variazione e il calo effettivo), Corpo (scelta del piano e sue
+  generale, mostrato in grigio; ricerca e «solo personalizzate»), Abilità (tabella di cosa fanno, vedi task 36), Immunità
+  (elenco degli stati), Bisogni (quelli che la razza ha, con la variazione e il calo effettivo), Corpo (scelta del piano e sue
   parti), Sessi. Poi *Informazioni di gioco* (chi è in gioco, chi la usa) e *Dettaglio* (nome, descrizione, tag, stati
   innati, JSON completo).
 - **Tutte le altre schede** con lo stesso schema, ricavato dai campi: Valori (numeri, sì/no, scelte da elenco),
