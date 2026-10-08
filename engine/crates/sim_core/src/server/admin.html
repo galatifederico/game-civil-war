@@ -453,7 +453,8 @@ const CATALOG = {
       ["Media nel mondo", (d) => { const a = agg(L.stats[d.id]); return a.avg == null ? "—" : `${bar(a.avg - (d.min ?? 0), (d.max > 1000 ? a.max : d.max) - (d.min ?? 0))} ${fmt(a.avg)}`; }],
       ["Min", (d) => fmt(agg(L.stats[d.id]).min), true], ["Max", (d) => fmt(agg(L.stats[d.id]).max), true]] },
   needs: { title: "Bisogni", group: "Catalogo",
-    cols: [["Nome", (d) => esc(d.name)], ["Calo per tick", (d) => fmt(d.decay, 3), true], ["Soglia bassa", (d) => fmt(d.low_threshold, 2), true],
+    cols: [["Nome", (d) => esc(d.name)], ["Caratteristica", (d) => link("stats", d.stat)], ["Ogni ora", (d) => sgn(d.per_tick, 2), true],
+      ["Soglie", (d) => chips((d.thresholds ?? []).map((t) => `${t.name} < ${fmt(t.below)}`))],
       ["Media nel mondo", (d) => { const a = agg(L.needs[d.id]); return a.avg == null ? "—" : `${bar(a.avg, 1)} ${fmt(a.avg * 100, 0)}%`; }]] },
   actions: { title: "Azioni (scelte dell'AI)", group: "Catalogo",
     facets: [["Fa", (d) => actionKindName(d)], ["Gruppo", (d) => setsOf(d.id), (v) => name("action_sets", v)]],
@@ -1049,6 +1050,30 @@ function classSections(d) {
     used: ["requires", "loses_when", "stats"],
   };
 }
+/** Needs: the stat they move, how fast, and their thresholds. */
+function needSections(d) {
+  const th = (d.thresholds ?? []).map((t, i) => {
+    const p = ["thresholds", i];
+    const rows = effectRows(t.effects, "#");
+    return `<div class="card" style="margin-top:8px">` +
+      kv({ Nome: `<input data-set="${P([...p, "name"])}" data-t="str" value="${esc(t.name ?? "")}" size="20">`,
+        "Quando": `${esc(name("stats", d.stat))} &lt; ${numInput([...p, "below"], t.below, "")}` }) +
+      `<h4 style="margin:10px 0 4px">Ogni ora finché è sotto</h4>` +
+      (rows.length ? `<table class="ed"><thead><tr><th>Su chi</th><th>Effetto</th><th>Modificatore</th><th>Condizione</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.who)}</td><td>${r.what}</td><td>${r.mod}</td><td class="muted">${esc(r.cond)}</td></tr>`).join("")}</tbody></table>` : '<div class="muted">nessun effetto</div>') +
+      `<details><summary class="muted">modifica gli effetti (JSON)</summary>${jsonBox([...p, "effects"], t.effects ?? [])}</details>` +
+      `<h4 style="margin:10px 0 4px">Modificatori finché è sotto</h4>` + mapTable([...p, "stats"], t.stats, "stats", { keyLabel: "Caratteristica", valLabel: "Modificatore" }) +
+      `<div style="margin-top:6px"><button data-act="cdel" data-p="${P(p)}">Togli questa soglia</button></div></div>`;
+  }).join("");
+  return {
+    sections: [
+      card("Caratteristica e ritmo", kv({ Caratteristica: refSel(["stat"], "stats", d.stat) + " " + link("stats", d.stat, "▸"),
+        "Ogni ora": numInput(["per_tick"], d.per_tick, "") + ' <span class="muted">negativo = cala (razza, abilità e stati cambiano il ritmo)</span>' })),
+      card("Soglie", (th || '<div class="muted">nessuna soglia</div>') +
+        `<div style="margin-top:8px"><button data-tadd="${P(["thresholds"])}">+ Aggiungi una soglia</button></div>`),
+    ],
+    used: ["stat", "per_tick", "thresholds"],
+  };
+}
 /** Roles: like classes, plus how they change hands. */
 function titleSections(d) {
   const how = ["faction", "members_only", "mode", "seat_zone", "vacancy_ticks", "term", "grace", "challenge_stat", "challenge_allies", "grants_faction_control", "victory_points", "news"];
@@ -1107,6 +1132,7 @@ $("dBody").addEventListener("change", (ev) => {
 $("dBody").addEventListener("click", (ev) => {
   const el = ev.target.closest("button"); if (!el || !draft) return;
   if (el.dataset.cstart) { setAt(draft.def, JSON.parse(el.dataset.cstart), JSON.parse(el.dataset.v)); saveDraft(); }
+  else if (el.dataset.tadd) { const p = JSON.parse(el.dataset.tadd); setAt(draft.def, p, [...(getAt(draft.def, p) ?? []), { name: "Nuova soglia", below: 10, effects: [], stats: {} }]); saveDraft(); }
   else if (el.dataset.cnull) { setAt(draft.def, JSON.parse(el.dataset.cnull), null); saveDraft(); }
   else if (el.dataset.act === "cdel") { const p = JSON.parse(el.dataset.p), list = getAt(draft.def, p.slice(0, -1)); list.splice(p[p.length - 1], 1); saveDraft(); ev.stopImmediatePropagation(); }
 }, true);
@@ -1272,9 +1298,9 @@ function raceSections(d) {
   out.push(card("Immunità", refTable("statuses", ["immunities"], d.immunities, "statuses", { label: "Stato da cui è immune", brief: true })));
   const exempt = d.needs_exempt ?? [], rates = d.need_rates ?? {};
   const has = Object.values(C("needs")).filter((n) => !exempt.includes(n.id));
-  out.push(card("Bisogni", `<table class="ed"><thead><tr><th>Bisogno</th><th class="num">Calo/tick</th><th class="num">Variazione</th><th class="num">Effettivo</th><th></th></tr></thead><tbody>` +
-    (has.map((n) => `<tr><td>${link("needs", n.id)}</td><td class="num">${fmt(n.decay, 4)}</td><td class="num">${numInput(["need_rates", n.id], rates[n.id], "0")}</td>` +
-      `<td class="num">${fmt(n.decay * Math.max(0, 1 + (rates[n.id] ?? 0)), 4)}</td><td class="num"><button class="x" title="La razza non ha questo bisogno" data-act="push" data-p="${P(["needs_exempt"])}" data-v="${esc(n.id)}">×</button></td></tr>`).join("") ||
+  out.push(card("Bisogni", `<table class="ed"><thead><tr><th>Bisogno</th><th class="num">Ogni ora</th><th class="num">Variazione</th><th class="num">Effettivo</th><th></th></tr></thead><tbody>` +
+    (has.map((n) => `<tr><td>${link("needs", n.id)}</td><td class="num">${sgn(n.per_tick, 2)}</td><td class="num">${numInput(["need_rates", n.id], rates[n.id], "0")}</td>` +
+      `<td class="num">${sgn(n.per_tick * Math.max(0, 1 + (rates[n.id] ?? 0)), 2)}</td><td class="num"><button class="x" title="La razza non ha questo bisogno" data-act="push" data-p="${P(["needs_exempt"])}" data-v="${esc(n.id)}">×</button></td></tr>`).join("") ||
       `<tr><td colspan="5" class="muted">nessun bisogno</td></tr>`) + `</tbody></table>` +
     picker(["needs_exempt"], exempt.map((n) => [n, name("needs", n)]), { op: "rm", kind: "needs", title: "Bisogni" }) +
     `<div class="muted">Variazione: +0,5 = consuma il 50% più in fretta, −0,5 = la metà.</div>`));
@@ -1353,6 +1379,7 @@ function renderDetail() {
   if (kind === "classes") { const r = classSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "titles") { const r = titleSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "abilities") { const r = abilitySections(d); main = r.sections; used = [...used, ...r.used]; }
+  if (kind === "needs") { const r = needSections(d); main = r.sections; used = [...used, ...r.used]; }
   const values = {}, details = [], logic = [];
   for (const f of Object.keys(d)) {
     if (used.includes(f)) continue;
