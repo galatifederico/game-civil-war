@@ -131,6 +131,9 @@ pub struct EntityView {
     pub stats: BTreeMap<String, f32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub needs: BTreeMap<String, f32>,
+    /// Current mode, the one the pawn would choose, the player's order and where the current one comes from.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<crate::modes::Mode>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub statuses: Vec<StatusView>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -304,6 +307,7 @@ pub fn entity_view(world: &World, e: Entity, truth: bool) -> Option<EntityView> 
             cover: world.get::<Cover>(e).map_or(0.0, |c| c.0),
         }),
         stats: visible_stats,
+        mode: world.get::<crate::modes::Mode>(e).cloned(),
         needs: world
             .get::<Stats>(e)
             .map(|s| {

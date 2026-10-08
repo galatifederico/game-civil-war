@@ -392,6 +392,7 @@ function rebuildIndexes() {
   const pawns = living();
   const count = (f) => { const m = {}; for (const e of pawns) for (const k of [].concat(f(e) ?? [])) m[k] = (m[k] ?? 0) + 1; return m; };
   L.byClass = count((e) => e.classes);
+  L.byMode = count((e) => e.mode?.current);
   L.byRace = count((e) => e.truth?.race ?? e.race);
   L.byTemplate = count((e) => e.template);
   L.byFaction = count((e) => e.faction);
@@ -436,6 +437,10 @@ const CATALOG = {
     facets: [["Corpo", (d) => d.body_plan], ["Tag", (d) => d.tags]],
     cols: [["Nome", (d) => esc(d.name)], ["Corpo", (d) => esc(d.body_plan)], ["Abilità", (d) => chips(d.abilities?.map((a) => name("abilities", a)))],
       ["Tag", (d) => chips(d.tags)], ["In gioco", (d) => L.byRace[d.id] ?? 0, true]] },
+  modes: { title: "Modalità", group: "Catalogo",
+    cols: [["Nome", (d) => esc(d.name)], ["Pesi", (d) => chips(Object.entries(d.weights ?? {}).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ×${fmt(v, 2)}`))],
+      ["Quando la sceglie da sola", (d) => (d.when === "Never" ? '<span class="muted">mai (solo di default o per ordine)</span>' : esc(condText(d.when)))], ["Priorità", (d) => d.priority ?? 0, true],
+      ["In gioco", (d) => L.byMode[d.id] ?? 0, true]] },
   action_sets: { title: "Gruppi di azioni", group: "Catalogo",
     cols: [["Nome", (d) => esc(d.name)], ["Azioni", (d) => (d.actions ?? []).length, true], ["Razze", (d) => chips(Object.values(C("races")).filter((r) => (r.action_sets ?? []).includes(d.id)).map((r) => r.id), "races")],
       ["Descrizione", (d) => `<span class="muted">${esc(d.description ?? "")}</span>`]] },
@@ -457,8 +462,8 @@ const CATALOG = {
       ["Soglie", (d) => chips((d.thresholds ?? []).map((t) => `${t.name} < ${fmt(t.below)}`))],
       ["Media nel mondo", (d) => { const a = agg(L.needs[d.id]); return a.avg == null ? "—" : `${bar(a.avg, 1)} ${fmt(a.avg * 100, 0)}%`; }]] },
   actions: { title: "Azioni (scelte dell'AI)", group: "Catalogo",
-    facets: [["Fa", (d) => actionKindName(d)], ["Gruppo", (d) => setsOf(d.id), (v) => name("action_sets", v)]],
-    cols: [["Nome", (d) => esc(d.name)], ["Fa", (d) => actionKind(d)], ["Gruppi", (d) => chips(setsOf(d.id), "action_sets")], ["Peso", (d) => fmt(d.weight, 2), true],
+    facets: [["Categoria", (d) => d.tags], ["Fa", (d) => actionKindName(d)], ["Gruppo", (d) => setsOf(d.id), (v) => name("action_sets", v)]],
+    cols: [["Nome", (d) => esc(d.name)], ["Fa", (d) => actionKind(d)], ["Categorie", (d) => chips(d.tags)], ["Gruppi", (d) => chips(setsOf(d.id), "action_sets")], ["Peso", (d) => fmt(d.weight, 2), true],
       ["Attesa", (d) => d.cooldown || "", true], ["Requisiti", (d) => esc(D("actions", d.id).requires || "")], ["Ora in corso", (d) => L.byAction[d.id] ?? 0, true]] },
   jobs: { title: "Lavori ed effetti", group: "Catalogo",
     facets: [["Gestore", (d) => d.handler || "effetti"]],
@@ -1025,6 +1030,7 @@ function condEditor(f, cond, { none, start, startLabel = "Aggiungi una condizion
   const base = Array.isArray(f) ? f : [f];
   if (cond == null) return `<div class="muted">${esc(none)}</div><button data-cstart="${P(base)}" data-v="${esc(JSON.stringify(start))}">${esc(startLabel)}</button>`;
   if (cond === "Always") { cond = { All: [] }; setAt(draft.def, base, cond); }
+  if (cond === "Never") { cond = { Any: [] }; setAt(draft.def, base, cond); }
   if (!(typeof cond === "object" && ("All" in cond || "Any" in cond))) { cond = { All: [cond] }; setAt(draft.def, base, cond); }
   const mode = "All" in cond ? "All" : "Any", list = cond[mode];
   const rows = list.map((c, i) => {
@@ -1072,6 +1078,26 @@ function needSections(d) {
         `<div style="margin-top:8px"><button data-tadd="${P(["thresholds"])}">+ Aggiungi una soglia</button></div>`),
     ],
     used: ["stat", "per_tick", "thresholds"],
+  };
+}
+/** Modes: when a pawn picks one, how it weighs actions, its modifiers and work priorities. */
+const actionTags = () => [...new Set(Object.values(C("actions")).flatMap((a) => a.tags ?? []))].sort();
+const workTypes = () => [...new Set(Object.values(C("jobs")).map((j) => j.work_type).filter(Boolean))].sort();
+function modeSections(d) {
+  const isDefault = S.content?.bindings?.default_mode === d.id;
+  return {
+    sections: [
+      card("Quando la pedina la sceglie da sola", condEditor("when", d.when, { nullable: false }) +
+        kv({ "Priorità": numInput(["priority"], d.priority, "") + ' <span class="muted">fra quelle le cui condizioni valgono vince la più alta</span>' }) +
+        `<div class="muted">${isDefault ? "È la modalità di default: la prende chi non ne trova un'altra." : "Nessuna condizione con «almeno una» = mai da sola (solo per ordine)."} L'ordine del giocatore vince sulla modalità della fazione, che vince su questa scelta; forzata contro voglia, la pedina accumula malcontento.</div>`),
+      card("Pesi delle azioni per categoria", mapTable(["weights"], d.weights, null, { keyLabel: "Categoria (tag delle azioni)", valLabel: "Moltiplicatore", value: 1, keys: actionTags() }) +
+        kv({ "Azioni senza queste categorie": numInput(["default_weight"], d.default_weight, "1") }) +
+        `<div class="muted">L'utilità di un'azione si moltiplica per il peso delle sue categorie (più categorie: si moltiplicano). Le categorie sono i tag delle azioni.</div>`),
+      statModCard(d),
+      card("Priorità di lavoro (bacheca)", mapTable(["work"], d.work, null, { keyLabel: "Tipo di lavoro", valLabel: "Priorità (1 prima … 4 ultima, 0 mai)", value: 2, keys: workTypes() }) +
+        `<div class="muted">I tipi non elencati valgono 3. Conta anche quanto la pedina è brava nel lavoro; le priorità impostate a mano su una pedina vincono.</div>`),
+    ],
+    used: ["when", "priority", "weights", "default_weight", "stats", "work"],
   };
 }
 /** Roles: like classes, plus how they change hands. */
@@ -1181,9 +1207,9 @@ function refTable(kind, path, list, refKind, { op, label = "Nome", pickOp = "pus
     picker(path, pickCands ?? candsOf(refKind, list ?? []), { op: pickOp, kind: refKind, title: label });
 }
 /** Editable map id → number (stats, items, needs…). */
-function mapTable(path, m, keyKind, { keyLabel = "Voce", valLabel = "Valore", value = 0 } = {}) {
+function mapTable(path, m, keyKind, { keyLabel = "Voce", valLabel = "Valore", value = 0, keys = null } = {}) {
   const rows = Object.entries(m ?? {}).map(([k, v]) => `<tr><td>${keyKind ? link(keyKind, k) : esc(k)}</td><td class="num">${typeof v === "number" || v == null ? numInput([...path, k], v, "", "num") : `<code>${esc(JSON.stringify(v))}</code>`}</td><td class="num">${del([...path, k])}</td></tr>`).join("");
-  const cands = keyKind ? candsOf(keyKind, Object.keys(m ?? {})) : [];
+  const cands = keyKind ? candsOf(keyKind, Object.keys(m ?? {})) : (keys ?? []).filter((k) => !(k in (m ?? {}))).map((k) => [k, k]);
   return `<table class="ed"><thead><tr><th>${esc(keyLabel)}</th><th class="num">${esc(valLabel)}</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="muted">nessuna</td></tr>`}</tbody></table>` +
     picker(path, cands, { op: "key", free: !keyKind, value, kind: keyKind, title: keyLabel });
 }
@@ -1201,7 +1227,7 @@ function jsonBox(path, v, text) {
 // How each field is edited, by name.
 const REFLIST = { action_sets: "action_sets", abilities: "abilities", actions: "actions", classes: "classes", includes: "classes", replaces: "classes", races: "races", titles: "titles",
   immunities: "statuses", innate_statuses: "statuses", statuses: "statuses", needs_exempt: "needs", exports: "items", items: "items" };
-const REF = { race: "races", faction: "factions", body_plan: "body_plans", template: "templates", skill: "stats", escalates_to: "statuses", item: "items",
+const REF = { mode: "modes", race: "races", faction: "factions", body_plan: "body_plans", template: "templates", skill: "stats", escalates_to: "statuses", item: "items",
   challenge_stat: "stats", summoner: "templates", author: "templates", carries: "statuses" };
 const STATMAP = new Set(["stats", "carried_stats", "score"]);
 const KEYMAP = { items: "items", stock: "items", cost: "items", passive: "items", need_rates: "needs", relations: "factions", capacities: null, ideology: null, work: null };
@@ -1354,6 +1380,9 @@ function liveInfo(kind, d) {
     extra["Tesoro"] = fmt(f?.treasury, 0) + " €"; extra["Punti"] = S.state?.scores?.[d.id] ?? "";
     extra["Rapporti"] = chips(Object.entries(f?.relations ?? {}).sort((a, b) => a[1] - b[1]).map(([k, v]) => `${name("factions", k)} ${fmt(v, 0)}`));
     cards.push(["Membri", pawnsWhere((e) => e.faction === d.id)]);
+    extra["Modalità ora"] = f?.mode ? link("modes", f.mode) : '<span class="muted">nessuna: ogni membro sceglie da sé</span>';
+  } else if (kind === "modes") {
+    cards.push(["Chi è in questa modalità", pawnsWhere((e) => e.mode?.current === d.id)]);
   } else if (kind === "buildings") {
     cards.push(["In gioco", entities().filter((e) => e.building?.def === d.id && !e.dead).map(elink).join("") || '<span class="muted">nessuno</span>']);
   }
@@ -1380,6 +1409,7 @@ function renderDetail() {
   if (kind === "titles") { const r = titleSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "abilities") { const r = abilitySections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "needs") { const r = needSections(d); main = r.sections; used = [...used, ...r.used]; }
+  if (kind === "modes") { const r = modeSections(d); main = r.sections; used = [...used, ...r.used]; }
   const values = {}, details = [], logic = [];
   for (const f of Object.keys(d)) {
     if (used.includes(f)) continue;
@@ -1410,7 +1440,7 @@ function renderDetail() {
   const statBox = $("dBody").querySelector(".tcustom")?.closest(".card");
   if (statBox) applyStatFilter(statBox);
 }
-const EDITABLE = ["stats", "needs", "body_plans", "races", "action_sets", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
+const EDITABLE = ["stats", "needs", "body_plans", "races", "action_sets", "modes", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
   "buildings", "templates", "spawners", "triggers", "collections", "titles", "news_sources", "global_modifiers", "supplies"];
 $("dBody").addEventListener("change", (ev) => {
   const el = ev.target.closest("[data-set]"); if (!el || !draft) return;
@@ -1549,6 +1579,11 @@ function applyPick() {
 }
 $("pkOk").onclick = applyPick;
 
+async function setMode(id, mode) {
+  if (!mode) return;
+  try { await command({ type: "set_mode", entity: id, mode: mode === "-" ? null : mode }); } catch (e) { return; }
+  S.state = await api("/api/state?truth=true"); rebuildIndexes(); entityPage(id);
+}
 async function entityPage(id) {
   $("dCrumb").textContent = "Entità #" + id;
   let e, ai;
@@ -1570,6 +1605,8 @@ async function entityPage(id) {
     : { Razza: link("races", e.truth?.race ?? e.race), Sesso: esc({ Male: "uomo", Female: "donna", NonBinary: "non binario" }[e.sex] ?? "—"), Classi: chips(e.classes, "classes"),
         Fazione: e.faction ? link("factions", e.faction) : "—", Rango: esc(e.rank ?? ""), Ruoli: chips(e.titles), Template: e.template ? link("templates", e.template) : "—",
         Attività: esc(e.activity?.label ?? ""), Umore: esc(e.activity?.mood ?? ""), Salute: `${bar(e.health, 1)} ${fmt(e.health * 100, 0)}%` + (e.missing_parts?.length ? ` · manca: ${esc(e.missing_parts.join(", "))}` : ""),
+        Modalità: e.mode ? `${link("modes", e.mode.current)} <span class="muted">${{ Own: "scelta da sé", Faction: "della fazione", Player: "ordinata" }[e.mode.source] ?? ""}${e.mode.own && e.mode.own !== e.mode.current ? ` · vorrebbe ${esc(name("modes", e.mode.own))}` : ""}</span> ` +
+          `<select onchange="setMode(${e.id}, this.value)"><option value="">ordina…</option>${candsOf("modes").map(([m, l]) => `<option value="${esc(m)}">${esc(l)}</option>`).join("")}<option value="-">togli l'ordine</option></select>` : "",
         Soldi: fmt(e.money, 0) + " €", Ricercato: fmt(e.wanted), Dissenso: fmt(e.dissent), Dove: posText(e.pos),
         Stati: chips((e.statuses ?? []).map((s) => s.name + (s.stage ? " · " + s.stage : ""))), "In uso": chips(e.equipped),
         "Vera identità": e.truth ? esc(`${e.truth.name} (${e.truth.race}, ${factionName(e.truth.faction)}) · copertura ${fmt(e.truth.cover, 0)}`) : "" };
