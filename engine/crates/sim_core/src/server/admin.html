@@ -473,8 +473,9 @@ const CATALOG = {
     cols: [["Nome", (d) => esc(d.name)], ["Effetti", (d) => esc(D("abilities", d.id).effects)], ["Aura", (d) => (d.aura ? `raggio ${d.aura.radius}` : ""), true],
       ["Chi ce l'ha", (d) => L.abilityUsers[d.id] ?? 0, true]] },
   statuses: { title: "Stati e malattie", group: "Catalogo",
-    facets: [["Tipo", (d) => d.kind], ["Tag", (d) => d.tags]],
-    cols: [["Nome", (d) => esc(d.name)], ["Tipo", (d) => esc(d.kind)], ["Durata", (d) => d.duration || (d.progression ? "progressiva" : "—")], ["Tag", (d) => chips(d.tags)],
+    facets: [["Categoria", (d) => d.tags], ["Contagioso", (d) => (d.contagion ? "sì" : "no")]],
+    cols: [["Nome", (d) => esc(d.name)], ["Categorie", (d) => chips(d.tags)], ["Ogni ora", (d) => (d.per_tick ? sgn(d.per_tick, 2) : "—"), true],
+      ["Dose", (d) => fmt(d.intensity ?? 100), true], ["Soglie", (d) => chips((d.thresholds ?? []).map((t) => `${t.name} ≥ ${fmt(t.above)}`))],
       ["Effetti", (d) => esc(Object.entries(d.stats ?? {}).map(([k, v]) => `${name("stats", k)} ${v > 0 ? "+" : ""}${v}`).join(", "))], ["Colpiti ora", (d) => L.byStatus[d.id] ?? 0, true]] },
   items: { title: "Oggetti", group: "Catalogo", sprite: true,
     facets: [["Categoria", (d) => d.category], ["Tipo", (d) => d.types]],
@@ -1100,6 +1101,41 @@ function modeSections(d) {
     used: ["when", "priority", "weights", "default_weight", "stats", "work"],
   };
 }
+/** Statuses: intensity, what they do while active, thresholds, contagion. */
+function statusSections(d) {
+  const effTable = (list) => { const rows = effectRows(list, "#"); return rows.length ? `<table class="ed"><thead><tr><th>Su chi</th><th>Effetto</th><th>Modificatore</th><th>Condizione</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.who)}</td><td>${r.what}</td><td>${r.mod}</td><td class="muted">${esc(r.cond)}</td></tr>`).join("")}</tbody></table>` : '<div class="muted">nessun effetto</div>'; };
+  const resist = `<select data-set="${P(["resist_stat"])}" data-t="strnull"><option value="">—</option>${candsOf("stats").map(([id, l]) => `<option value="${esc(id)}" ${id === d.resist_stat ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+  const dose = d.intensity ?? 100, per = d.per_tick ?? 0;
+  const lasts = per < 0 ? `una dose dura circa ${fmt(dose / -per, 0)} ore senza resistenza` : per > 0 ? "peggiora da sola fino a 100" : "non cambia da sola: finisce solo se tolta";
+  const th = (d.thresholds ?? []).map((t, i) => {
+    const p = ["thresholds", i];
+    return `<div class="card" style="margin-top:8px">` +
+      kv({ Nome: `<input data-set="${P([...p, "name"])}" data-t="str" value="${esc(t.name ?? "")}" size="20">`, "Da intensità": numInput([...p, "above"], t.above, "") }) +
+      `<h4 style="margin:10px 0 4px">Modificatori</h4>` + mapTable([...p, "stats"], t.stats, "stats", { keyLabel: "Caratteristica", valLabel: "Modificatore" }) +
+      `<h4 style="margin:10px 0 4px">Bisogni</h4>` + mapTable([...p, "need_rates"], t.need_rates, "needs", { keyLabel: "Bisogno", valLabel: "Variazione del consumo" }) +
+      `<h4 style="margin:10px 0 4px">Ogni ora</h4>` + effTable(t.effects) + `<details><summary class="muted">modifica (JSON)</summary>${jsonBox([...p, "effects"], t.effects ?? [])}</details>` +
+      `<h4 style="margin:10px 0 4px">Quando la raggiunge</h4>` + effTable(t.on_enter) + `<details><summary class="muted">modifica (JSON)</summary>${jsonBox([...p, "on_enter"], t.on_enter ?? [])}</details>` +
+      `<div style="margin-top:6px"><button data-act="cdel" data-p="${P(p)}">Togli questa soglia</button></div></div>`;
+  }).join("");
+  const c = d.contagion;
+  return {
+    sections: [
+      card("Intensità", kv({ "Una dose dà": numInput(["intensity"], d.intensity, "100", "numnull"), "Ogni ora": numInput(["per_tick"], d.per_tick, "0") + ` <span class="muted">${esc(lasts)}</span>`,
+        "Resistenza": resist + " " + numInput(["resist_per_point"], d.resist_per_point, "0") + ' <span class="muted">in meno ogni ora per ogni punto</span>' }) +
+        `<div class="muted">L'intensità va da 0 a 100; a 0 lo stato finisce. Tutto è deterministico.</div>`),
+      card("Finché è attivo", `<h4 style="margin:4px 0">Modificatori di caratteristica</h4>` + mapTable(["stats"], d.stats, "stats", { keyLabel: "Caratteristica", valLabel: "Modificatore" }) +
+        `<h4 style="margin:10px 0 4px">Bisogni</h4>` + mapTable(["need_rates"], d.need_rates, "needs", { keyLabel: "Bisogno", valLabel: "Variazione del consumo" }) +
+        `<h4 style="margin:10px 0 4px">Ogni ora</h4>` + effTable(d.effects) + `<details><summary class="muted">modifica (JSON)</summary>${jsonBox(["effects"], d.effects ?? [])}</details>`),
+      card("Soglie", (th || '<div class="muted">nessuna soglia</div>') + `<div class="muted" style="margin-top:6px">Vale la soglia più alta raggiunta.</div>` +
+        `<div style="margin-top:8px"><button data-tadd="${P(["thresholds"])}" data-v="${esc(JSON.stringify({ name: "Nuova soglia", above: 50, stats: {}, effects: [], on_enter: [] }))}">+ Aggiungi una soglia</button></div>`),
+      card("Contagio", c == null
+        ? `<div class="muted">Non contagioso.</div><button data-cstart="${P(["contagion"])}" data-v="${esc(JSON.stringify({ radius: 1, per_tick: 5, shedding: 0 }))}">Rendi contagioso</button>`
+        : kv({ "Raggio (caselle)": numInput(["contagion", "radius"], c.radius, ""), "Intensità passata ogni ora": numInput(["contagion", "per_tick"], c.per_tick, "") + ' <span class="muted">con il malato a 100; ridotta dalla resistenza di chi la riceve</span>',
+            "Lasciata a terra ogni ora": numInput(["contagion", "shedding"], c.shedding, "") + ' <span class="muted">contamina la cella (e l\'acqua)</span>' }) + `<div><button data-cnull="${P(["contagion"])}">Non più contagioso</button></div>`),
+    ],
+    used: ["intensity", "per_tick", "resist_stat", "resist_per_point", "stats", "need_rates", "effects", "thresholds", "contagion"],
+  };
+}
 /** Roles: like classes, plus how they change hands. */
 function titleSections(d) {
   const how = ["faction", "members_only", "mode", "seat_zone", "vacancy_ticks", "term", "grace", "challenge_stat", "challenge_allies", "grants_faction_control", "victory_points", "news"];
@@ -1158,7 +1194,7 @@ $("dBody").addEventListener("change", (ev) => {
 $("dBody").addEventListener("click", (ev) => {
   const el = ev.target.closest("button"); if (!el || !draft) return;
   if (el.dataset.cstart) { setAt(draft.def, JSON.parse(el.dataset.cstart), JSON.parse(el.dataset.v)); saveDraft(); }
-  else if (el.dataset.tadd) { const p = JSON.parse(el.dataset.tadd); setAt(draft.def, p, [...(getAt(draft.def, p) ?? []), { name: "Nuova soglia", below: 10, effects: [], stats: {} }]); saveDraft(); }
+  else if (el.dataset.tadd) { const p = JSON.parse(el.dataset.tadd); setAt(draft.def, p, [...(getAt(draft.def, p) ?? []), el.dataset.v ? JSON.parse(el.dataset.v) : { name: "Nuova soglia", below: 10, effects: [], stats: {} }]); saveDraft(); }
   else if (el.dataset.cnull) { setAt(draft.def, JSON.parse(el.dataset.cnull), null); saveDraft(); }
   else if (el.dataset.act === "cdel") { const p = JSON.parse(el.dataset.p), list = getAt(draft.def, p.slice(0, -1)); list.splice(p[p.length - 1], 1); saveDraft(); ev.stopImmediatePropagation(); }
 }, true);
@@ -1174,7 +1210,7 @@ function statEffects(kind, d) {
     if (x.SetStat) out.push([x.SetStat.stat, `= ${fmt(x.SetStat.value, 2)}`]);
     Object.values(x).forEach(walk);
   };
-  if (kind === "statuses") { map(d.stats); (d.stages ?? []).forEach((s) => map(s.stats, ` (${s.name})`)); walk(d.on_apply); }
+  if (kind === "statuses") { map(d.stats); (d.thresholds ?? []).forEach((s) => map(s.stats, ` (${s.name})`)); walk(d.on_apply); }
   else if (kind === "abilities") abilityRows(d).forEach((r) => out.push([r.what.replace(/<[^>]*>/g, ""), `${r.mod} (${r.who}, ${r.when})`]));
   else if (kind === "items") { map(d.carried_stats, " (portato)"); walk(d.on_use); }
   else if (kind === "races") Object.entries(d.stat_ranges ?? {}).forEach(([k, r]) => r.initial != null && out.push([k, `nasce a ${fmt(r.initial, 2)}${r.spread ? " ± " + fmt(r.spread, 2) : ""}`]));
@@ -1410,6 +1446,7 @@ function renderDetail() {
   if (kind === "abilities") { const r = abilitySections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "needs") { const r = needSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "modes") { const r = modeSections(d); main = r.sections; used = [...used, ...r.used]; }
+  if (kind === "statuses") { const r = statusSections(d); main = r.sections; used = [...used, ...r.used]; }
   const values = {}, details = [], logic = [];
   for (const f of Object.keys(d)) {
     if (used.includes(f)) continue;
