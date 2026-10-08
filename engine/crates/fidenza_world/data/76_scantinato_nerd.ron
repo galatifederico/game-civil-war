@@ -23,8 +23,7 @@
          immunities: ["diarrea", "std"], actions: ["avvinghia_donna", "avvinghia_chiunque", "nube_d_inchiostro"]),
     ],
     statuses: [
-        (id: "avvinghiato", name: "Avvinghiato", kind: Debuff, duration: 3, ai_speed: 0.5, tags: ["presa"],
-         description: "Stretto dai tentacoli: non scappa e si muove a fatica.", stats: {"velocita": -1, "destrezza": -5, "stress": 10}),
+        (id: "avvinghiato", name: "Avvinghiato", description: "Stretto dai tentacoli: non scappa e si muove a fatica.", tags: ["presa", "penalità"], per_tick: -33.333, stats: {"velocita": -1, "destrezza": -5, "stress": 10}),
     ],
     actions: [
         (id: "scendi_nello_scantinato", name: "Scende nello Scantinato", weight: 0.1, cooldown: 120,

@@ -214,7 +214,7 @@ pub fn think(world: &mut World) {
         if forced {
             continue;
         }
-        let speed = world.get::<StatusEffects>(e).map_or(1.0, |s| s.ai_speed(&content));
+        let speed = 1.0;
         {
             let mut b = world.get_mut::<Brain>(e).unwrap();
             b.momentum = (b.momentum - decay).max(0.0);

@@ -5,12 +5,11 @@ use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::anatomy::Body;
-use crate::content::{Content, Vector};
+use crate::content::Content;
 use crate::map::{Environment, Position, WorldMap};
 use crate::params::Params;
-use crate::rng::SimRng;
 use crate::stats::{Dead, Pawn};
-use crate::status::{apply_status, StatusEffects};
+use crate::status::StatusEffects;
 
 /// Poisoned stock (food/water) of a building: buyers catch the status.
 #[derive(Component, Debug, Clone, Serialize, Deserialize)]
@@ -81,65 +80,56 @@ pub fn hygiene_tick(world: &mut World) {
                 spill(world, pos, b, 0.1 * bleeding as f32);
             }
         }
-        let active: Vec<String> = world.get::<StatusEffects>(*e).map(|s| s.active.keys().cloned().collect()).unwrap_or_default();
-        for sid in active {
-            let Some(sd) = content.statuses.get(&sid) else { continue };
-            if let Some((fluid, amount)) = &sd.spills {
-                spill(world, pos, fluid, *amount);
-            }
-            if let Some(c) = &sd.contagion
+        let active: Vec<(String, f32)> = world.get::<StatusEffects>(*e).map(|s| s.active.iter().map(|(k, v)| (k.clone(), v.severity)).collect()).unwrap_or_default();
+        for (sid, intensity) in active {
+            if let Some(c) = content.statuses.get(&sid).and_then(|d| d.contagion.as_ref())
                 && c.shedding > 0.0 {
-                    *world.resource_mut::<Environment>().cell_mut(pos).pathogens.entry(sid.clone()).or_insert(0.0) += c.shedding;
+                    *world.resource_mut::<Environment>().cell_mut(pos).pathogens.entry(sid.clone()).or_insert(0.0) += c.shedding * intensity / 100.0;
                 }
         }
     }
-    // 2. Direct contagion (contact / air).
+    // Resistance of a pawn to a status: its share of 100 cuts what it catches.
+    let protection = |world: &World, e: Entity, sid: &str| -> f32 {
+        let stat = content.statuses.get(sid).and_then(|d| d.resist_stat.clone());
+        let v = stat.and_then(|s| world.get::<crate::stats::Stats>(e).map(|x| x.get(&s))).unwrap_or(0.0);
+        (1.0 - v / 100.0).clamp(0.0, 1.0)
+    };
+    // 2. Contagion as an aura: pawns near a carrier gain intensity every tick.
     let mut infections: Vec<(Entity, String, f32, Entity)> = Vec::new();
     for carrier in &pawns {
         let Some(cpos) = world.get::<Position>(*carrier).copied() else { continue };
-        let active: Vec<String> = world.get::<StatusEffects>(*carrier).map(|s| s.active.keys().cloned().collect()).unwrap_or_default();
-        for sid in active {
+        let active: Vec<(String, f32)> = world.get::<StatusEffects>(*carrier).map(|s| s.active.iter().map(|(k, v)| (k.clone(), v.severity)).collect()).unwrap_or_default();
+        for (sid, intensity) in active {
             let Some(c) = content.statuses.get(&sid).and_then(|d| d.contagion.clone()) else { continue };
-            let radius = if c.vectors.contains(&Vector::Air) { c.radius } else if c.vectors.contains(&Vector::Contact) { 1 } else { continue };
+            if c.radius <= 0 || c.per_tick <= 0.0 {
+                continue;
+            }
             for other in &pawns {
-                if other == carrier {
-                    continue;
-                }
-                if world.get::<Position>(*other).is_some_and(|p| p.within(&cpos, radius))
-                    && world.get::<StatusEffects>(*other).is_some_and(|s| !s.has(&sid))
-                    && world.resource_mut::<SimRng>().chance(c.chance)
-                {
-                    infections.push((*other, sid.clone(), c.initial_severity, *carrier));
+                if other != carrier && world.get::<Position>(*other).is_some_and(|p| p.within(&cpos, c.radius)) {
+                    let amount = c.per_tick * intensity / 100.0 * protection(world, *other, &sid);
+                    infections.push((*other, sid.clone(), amount, *carrier));
                 }
             }
         }
     }
-    // 3. Fluids and contaminated cells, water networks.
+    // 3. Contaminated cells and water networks: intensity in proportion to the load.
     let map = world.resource::<WorldMap>().clone();
     let env = world.resource::<Environment>().clone();
     for e in &pawns {
         let Some(pos) = world.get::<Position>(*e).copied() else { continue };
-        if let Some(cell) = env.cell(&pos) {
-            for (sid, load) in &cell.pathogens {
-                let fluid_vector = content.statuses.get(sid).and_then(|d| d.contagion.as_ref()).is_none_or(|c| c.vectors.contains(&Vector::Fluid));
-                if fluid_vector && world.resource_mut::<SimRng>().chance(load * scale) {
-                    infections.push((*e, sid.clone(), 1.0, *e));
-                }
-            }
+        let mut loads: Vec<(String, f32)> = env.cell(&pos).map(|c| c.pathogens.iter().map(|(k, v)| (k.clone(), *v)).collect()).unwrap_or_default();
+        for n in map.networks.iter().filter(|n| n.zones.iter().any(|z| map.zones[*z].contains(&pos))) {
+            loads.extend(env.network_load.get(&n.id).into_iter().flatten().map(|(k, v)| (k.clone(), *v)));
         }
-        for n in &map.networks {
-            if !n.zones.iter().any(|z| map.zones[*z].contains(&pos)) {
-                continue;
-            }
-            for (sid, load) in env.network_load.get(&n.id).into_iter().flatten() {
-                if world.resource_mut::<SimRng>().chance(load * scale) {
-                    infections.push((*e, sid.clone(), 1.0, *e));
-                }
-            }
+        for (sid, load) in loads {
+            let dose = content.statuses.get(&sid).map_or(100.0, |d| d.dose());
+            let amount = load * scale * dose * protection(world, *e, &sid);
+            infections.push((*e, sid, amount, *e));
         }
     }
-    for (e, sid, sev, src) in infections {
-        if apply_status(world, e, &sid, sev, (src != e).then_some(src)) {
+    for (e, sid, amount, src) in infections {
+        let new = world.get::<StatusEffects>(e).is_some_and(|s| !s.has(&sid));
+        if crate::status::add_intensity(world, e, &sid, amount, (src != e).then_some(src)) && new {
             let tick = world.resource::<crate::time::SimClock>().tick;
             let id = world.get::<crate::ids::SimId>(e).copied();
             let name = crate::effects::name_of(world, e);

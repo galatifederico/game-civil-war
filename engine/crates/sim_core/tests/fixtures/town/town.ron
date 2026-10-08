@@ -45,11 +45,14 @@
         (id: "reporter", name: "Reporter", actions: ["publish", "roam"]),
     ],
     statuses: [
-        (id: "tipsy", name: "Tipsy", kind: Intoxication, duration: 6, stacking: Intensify, stats: {"perception": -2},
-         escalates_to: "wasted", escalate_at: 3),
-        (id: "wasted", name: "Wasted", kind: Intoxication, duration: 12, stats: {"perception": -6, "strength": 3}),
-        (id: "flu", name: "Flu", kind: Disease, progression: 0.1, contagion: (vectors: [Contact], chance: 1.0),
-         stages: [(name: "Sneezing", at: 1.0), (name: "Fever", at: 2.0, stats: {"strength": -5})]),
+        (id: "tipsy", name: "Tipsy", tags: ["intossicazione"], intensity: 35, per_tick: -5.833, stats: {"perception": -2}, thresholds: [
+            (name: "Al limite", above: 90, on_enter: [RemoveStatus("tipsy"), ApplyStatus(status: "wasted")]),
+         ]),
+        (id: "wasted", name: "Wasted", tags: ["intossicazione"], per_tick: -8.333, stats: {"perception": -6, "strength": 3}),
+        (id: "flu", name: "Flu", tags: ["malattia"], intensity: 25, per_tick: 2.5, thresholds: [
+            (name: "Sneezing", above: 25),
+            (name: "Fever", above: 50, stats: {"strength": -5}),
+         ], contagion: Some((radius: 1, per_tick: 100))),
     ],
     items: [
         (id: "bread", name: "Bread", category: "food", stack_max: 5, base_price: 5, tags: ["food"],

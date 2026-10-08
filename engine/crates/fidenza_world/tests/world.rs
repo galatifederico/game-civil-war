@@ -696,3 +696,45 @@ fn modes_order_faction_and_own_choice() {
     assert_eq!(w("lavora", &["lavoro", "soldi"]), 5.0);
     assert_eq!(w("lavora", &["fede"]), 1.0);
 }
+
+/// Statuses are deterministic: intensity moves by `per_tick`, ends at 0, thresholds switch on; contagion
+/// is an aura cut by resistance.
+#[test]
+fn statuses_are_deterministic_intensities() {
+    use sim_core::map::Position;
+    use sim_core::stats::Stats;
+    use sim_core::status::StatusEffects;
+    let mut sim = sim(1);
+    let tpl = sim.content().templates.values().find(|t| t.race == "fidentino" && !t.unique && !t.virtual_entity).unwrap().id.clone();
+    let (_, someone) = id_of(&mut sim, "scippatore");
+    let p = *sim.world.get::<Position>(someone).unwrap();
+    let spawn = |sim: &mut Simulation, pos: Position| sim_core::lifecycle::spawn_template(&mut sim.world, &tpl, Some(pos), &SpawnOverrides::default()).unwrap();
+    let a = spawn(&mut sim, p);
+    // A dose of "stordito" (100) lasts 3 ticks.
+    assert!(sim_core::status::apply_status(&mut sim.world, a, "stordito", 1.0, None));
+    let sev = |sim: &Simulation, e, s: &str| sim.world.get::<StatusEffects>(e).unwrap().severity(s);
+    assert_eq!(sev(&sim, a, "stordito"), 100.0);
+    sim_core::status::tick_statuses(&mut sim.world);
+    assert!((sev(&sim, a, "stordito") - 66.667).abs() < 0.01);
+    sim_core::status::tick_statuses(&mut sim.world);
+    sim_core::status::tick_statuses(&mut sim.world);
+    assert!(!sim.world.get::<StatusEffects>(a).unwrap().has("stordito"), "finisce a 0");
+    // Three drinks: tipsy goes over 90 and becomes wasted.
+    for _ in 0..3 {
+        sim_core::status::apply_status(&mut sim.world, a, "brillo", 1.0, None);
+    }
+    let se = sim.world.get::<StatusEffects>(a).unwrap();
+    assert!(se.has("schifoso") && !se.has("brillo"), "{:?}", se.active.keys().collect::<Vec<_>>());
+    // Contagion: a neighbour of a sick pawn gains intensity; a tougher one gains less.
+    let sick = spawn(&mut sim, p);
+    let weak = spawn(&mut sim, Position { x: p.x + 1, ..p });
+    let tough = spawn(&mut sim, Position { x: p.x - 1, ..p });
+    sim.world.get_mut::<Stats>(weak).unwrap().set_base("resistenza", 0.0, (0.0, 100.0));
+    sim.world.get_mut::<Stats>(tough).unwrap().set_base("resistenza", 60.0, (0.0, 100.0));
+    let contagious = sim.content().statuses.values().find(|s| s.contagion.as_ref().is_some_and(|c| c.radius > 0 && c.per_tick > 0.0)).unwrap().id.clone();
+    // Two doses: sick but below the last threshold.
+    assert!(sim_core::status::apply_status(&mut sim.world, sick, &contagious, 2.0, None));
+    sim_core::hygiene::hygiene_tick(&mut sim.world);
+    let (w, t) = (sev(&sim, weak, &contagious), sev(&sim, tough, &contagious));
+    assert!(w > 0.0 && t < w, "debole {w}, resistente {t}");
+}

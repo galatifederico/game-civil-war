@@ -5,8 +5,8 @@
 // Slot: armi, armature e copricapi stanno da soli (stack_max 1); le cose da lanciare si accumulano.
 (
     statuses: [
-        (id: "ustionato", name: "Ustionato", kind: Debuff, duration: 4, per_tick: [Damage(amount: 1.5)], tags: ["fuoco"]),
-        (id: "imbrattato", name: "Imbrattato", kind: Debuff, duration: 12, stats: {"bellezza": -15, "puzza": 20}, description: "Colpito da qualcosa di schifoso."),
+        (id: "ustionato", name: "Ustionato", tags: ["fuoco", "penalità"], per_tick: -25, effects: [Damage(amount: 1.5)]),
+        (id: "imbrattato", name: "Imbrattato", description: "Colpito da qualcosa di schifoso.", tags: ["penalità"], per_tick: -8.333, stats: {"bellezza": -15, "puzza": 20}),
     ],
     items: [
         // ── Armi da impugnare ──

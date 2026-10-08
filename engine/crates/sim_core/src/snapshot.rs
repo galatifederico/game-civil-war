@@ -260,14 +260,11 @@ pub fn entity_view(world: &World, e: Entity, truth: bool) -> Option<EntityView> 
                 .iter()
                 .filter_map(|(k, v)| {
                     let d = content.statuses.get(k)?;
-                    if d.hidden && !truth {
-                        return None;
-                    }
                     Some(StatusView {
                         id: k.clone(),
                         name: d.name.clone(),
                         severity: v.severity,
-                        stage: v.stage.and_then(|i| d.stages.get(i)).map(|s| s.name.clone()),
+                        stage: v.stage.and_then(|i| d.thresholds.get(i)).map(|s| s.name.clone()),
                     })
                 })
                 .collect()

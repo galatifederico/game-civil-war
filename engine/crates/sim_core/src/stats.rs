@@ -193,9 +193,8 @@ pub fn recompute_stats(
                 add(&sd.stats, &mut eff);
                 t.extend(sd.grants_tags.iter().cloned());
                 t.extend(sd.tags.iter().map(|x| format!("status:{x}")));
-                if let Some(stage) = st.stage.and_then(|i| sd.stages.get(i)) {
-                    add(&stage.stats, &mut eff);
-                    t.extend(stage.grants_tags.iter().cloned());
+                if let Some(th) = st.stage.and_then(|i| sd.thresholds.get(i)) {
+                    add(&th.stats, &mut eff);
                 }
             }
         }
@@ -288,8 +287,8 @@ pub fn decay_needs(content: Res<Content>, mut q: Query<(&mut Stats, &StatusEffec
             for (sid, st) in &statuses.active {
                 if let Some(sd) = content.statuses.get(sid) {
                     rate += sd.need_rates.get(nid).copied().unwrap_or(0.0);
-                    if let Some(stage) = st.stage.and_then(|i| sd.stages.get(i)) {
-                        rate += stage.need_rates.get(nid).copied().unwrap_or(0.0);
+                    if let Some(th) = st.stage.and_then(|i| sd.thresholds.get(i)) {
+                        rate += th.need_rates.get(nid).copied().unwrap_or(0.0);
                     }
                 }
             }

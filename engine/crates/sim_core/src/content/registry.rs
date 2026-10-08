@@ -390,23 +390,18 @@ impl Validator<'_> {
         }
         for s in c.statuses.values() {
             let ctx = format!("status {}", s.id);
-            for k in s.stats.keys().chain(s.stages.iter().flat_map(|st| st.stats.keys())) {
+            for k in s.stats.keys().chain(s.thresholds.iter().flat_map(|st| st.stats.keys())).chain(s.resist_stat.iter()) {
                 self.stat(k, &ctx);
             }
-            for k in s.need_rates.keys().chain(s.stages.iter().flat_map(|st| st.need_rates.keys())) {
+            for k in s.need_rates.keys().chain(s.thresholds.iter().flat_map(|st| st.need_rates.keys())) {
                 self.check(&c.needs, "bisogno", k, &ctx);
             }
-            if let Some(e) = &s.escalates_to {
-                self.check(&c.statuses, "status", e, &ctx);
-            }
-            if let Some((f, _)) = &s.spills {
-                self.check(&c.fluids, "fluido", f, &ctx);
-            }
             self.effects(&s.on_apply, &ctx);
-            self.effects(&s.per_tick, &ctx);
+            self.effects(&s.effects, &ctx);
             self.effects(&s.on_expire, &ctx);
-            for st in &s.stages {
+            for st in &s.thresholds {
                 self.effects(&st.on_enter, &ctx);
+                self.effects(&st.effects, &ctx);
             }
         }
         for f in c.fluids.values() {

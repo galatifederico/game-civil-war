@@ -491,7 +491,7 @@ async fn admin_describe(State(s): State<AppState>) -> ApiResult {
     let statuses: serde_json::Map<String, Value> = c
         .statuses
         .values()
-        .map(|d| (d.id.clone(), json!({ "on_apply": effs(&d.on_apply), "per_tick": effs(&d.per_tick) })))
+        .map(|d| (d.id.clone(), json!({ "on_apply": effs(&d.on_apply), "per_tick": effs(&d.effects) })))
         .collect();
     Ok(Json(json!({ "classes": classes, "titles": titles, "items": items, "abilities": abilities, "jobs": jobs, "actions": actions, "statuses": statuses })))
 }

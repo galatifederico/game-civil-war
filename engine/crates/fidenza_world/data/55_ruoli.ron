@@ -20,12 +20,11 @@
          money: 5000, stats: {"carisma": 20, "reputazione": 60, "eta": 70, "eloquenza": 70}, titles: ["gran_maestro_loggia"], tags: ["leader"]),
     ],
     statuses: [
-        (id: "in_crociata", name: "In crociata", kind: Buff, duration: 24, stats: {"forza": 4, "onore": 5, "aggressivita": 15}),
-        (id: "scomunicato", name: "Scomunicato", kind: Debuff, duration: 240, tags: ["mistico"], stats: {"santita": -20, "morale": -5},
-         description: "Fuori dalla Chiesa finché dura."),
-        (id: "notte_di_san_vitale", name: "Notte di San Vitale", kind: Buff, duration: 12, stats: {"mistica": 10, "furtivita": 5, "malinconia": 10}),
-        (id: "dieta_imposta", name: "Dieta imposta", kind: Debuff, duration: 48, stats: {"forza": -1}, need_rates: {"fame": 0.5}),
-        (id: "in_rivolta", name: "In rivolta", kind: Buff, duration: 12, stats: {"aggressivita": 20, "fanatismo_leader": 15, "forza": 2}),
+        (id: "in_crociata", name: "In crociata", tags: ["potenziamento"], per_tick: -4.167, stats: {"forza": 4, "onore": 5, "aggressivita": 15}),
+        (id: "scomunicato", name: "Scomunicato", description: "Fuori dalla Chiesa finché dura.", tags: ["mistico", "penalità"], per_tick: -0.417, stats: {"santita": -20, "morale": -5}),
+        (id: "notte_di_san_vitale", name: "Notte di San Vitale", tags: ["potenziamento"], per_tick: -8.333, stats: {"mistica": 10, "furtivita": 5, "malinconia": 10}),
+        (id: "dieta_imposta", name: "Dieta imposta", tags: ["penalità"], per_tick: -2.083, stats: {"forza": -1}, need_rates: {"fame": 0.5}),
+        (id: "in_rivolta", name: "In rivolta", tags: ["potenziamento"], per_tick: -8.333, stats: {"aggressivita": 20, "fanatismo_leader": 15, "forza": 2}),
     ],
     jobs: [
         // Sfide per i ruoli: si sfida chi li tiene (vedi ChallengeTitle).

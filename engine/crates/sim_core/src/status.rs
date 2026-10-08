@@ -1,12 +1,14 @@
-//! StatusEffectSystem, PathogenEngine and MutationFramework: timed or permanent buffs/debuffs with
-//! severity, stages, escalation chains (e.g. tipsy → wasted), immunities and race transmutation.
+//! Statuses: an intensity 0..100 on a pawn. A dose adds the status's `intensity`; every tick the
+//! intensity changes by `per_tick`, lowered by the resistance stat; at 0 the status ends. The highest
+//! intensity threshold reached adds its modifiers and effects. No randomness: contagion is an aura (see
+//! `hygiene`). Also immunities and race transmutation.
 
 use std::collections::BTreeMap;
 
 use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::content::{Content, Stacking};
+use crate::content::Content;
 use crate::effects::{apply_effects, EffectCtx};
 use crate::events::{kind, EventBuilder, EventLog};
 use crate::ids::SimId;
@@ -16,10 +18,10 @@ use crate::time::SimClock;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ActiveStatus {
+    /// Intensity, 0..100.
     pub severity: f32,
     pub applied: u64,
-    /// Ticks left (None = indefinite).
-    pub remaining: Option<u64>,
+    /// Index of the highest threshold reached.
     pub stage: Option<usize>,
 }
 
@@ -42,64 +44,52 @@ impl StatusEffects {
     pub fn has_tag(&self, content: &Content, tag: &str) -> bool {
         self.active.keys().any(|s| content.statuses.get(s).is_some_and(|d| d.tags.iter().any(|t| t == tag)))
     }
-
-    /// Multiplier on AI thinking speed from active statuses.
-    pub fn ai_speed(&self, content: &Content) -> f32 {
-        self.active
-            .keys()
-            .filter_map(|s| content.statuses.get(s)?.ai_speed)
-            .fold(1.0, |acc, x| acc * x)
-    }
 }
 
-fn stage_for(def: &crate::content::StatusDef, severity: f32) -> Option<usize> {
-    def.stages.iter().enumerate().filter(|(_, s)| severity >= s.at).map(|(i, _)| i).next_back()
+fn stage_for(def: &crate::content::StatusDef, intensity: f32) -> Option<usize> {
+    def.thresholds.iter().enumerate().filter(|(_, t)| intensity >= t.above).map(|(i, _)| i).next_back()
 }
 
 fn sim_id(world: &World, e: Entity) -> Option<SimId> {
     world.get::<SimId>(e).copied()
 }
 
-/// Applies (or re-applies) a status. Returns false when the carrier is immune or the status unknown.
-pub fn apply_status(world: &mut World, e: Entity, status: &str, severity: f32, source: Option<Entity>) -> bool {
+/// Whether `e` cannot catch `status` (race, abilities, temporary immunity).
+pub fn immune(world: &World, e: Entity, status: &str) -> bool {
+    let c = world.resource::<Content>();
+    let tick = world.resource::<SimClock>().tick;
+    world.get::<Race>(e).and_then(|r| c.races.get(&r.0)).is_some_and(|r| r.immunities.iter().any(|i| i == status))
+        || world.get::<crate::stats::Tags>(e).is_some_and(|t| {
+            t.effective.iter().filter_map(|x| x.strip_prefix("ability:")).filter_map(|a| c.abilities.get(a)).any(|a| a.immunities.iter().any(|i| i == status))
+        })
+        || world.get::<StatusEffects>(e).is_some_and(|s| s.immunities.get(status).is_some_and(|until| *until > tick))
+}
+
+/// Gives `doses` doses of a status (each adds the status's intensity). Returns false when the carrier is
+/// immune or the status unknown.
+pub fn apply_status(world: &mut World, e: Entity, status: &str, doses: f32, source: Option<Entity>) -> bool {
+    let Some(def) = world.resource::<Content>().statuses.get(status).cloned() else { return false };
+    add_intensity(world, e, status, def.dose() * doses, source)
+}
+
+/// Adds raw intensity to a status (contagion uses this), starting it if needed.
+pub fn add_intensity(world: &mut World, e: Entity, status: &str, amount: f32, source: Option<Entity>) -> bool {
     let tick = world.resource::<SimClock>().tick;
     let Some(def) = world.resource::<Content>().statuses.get(status).cloned() else { return false };
-    if world.get::<Dead>(e).is_some() {
+    if world.get::<Dead>(e).is_some() || world.get::<StatusEffects>(e).is_none() || immune(world, e, status) || amount <= 0.0 {
         return false;
     }
-    let race_immune = world
-        .get::<Race>(e)
-        .and_then(|r| world.resource::<Content>().races.get(&r.0))
-        .is_some_and(|r| r.immunities.iter().any(|i| i == status))
-        || world.get::<crate::stats::Tags>(e).is_some_and(|t| {
-            let c = world.resource::<Content>();
-            t.effective.iter().filter_map(|x| x.strip_prefix("ability:")).filter_map(|a| c.abilities.get(a)).any(|a| a.immunities.iter().any(|i| i == status))
-        });
-    let Some(se) = world.get::<StatusEffects>(e) else { return false };
-    if race_immune || se.immunities.get(status).is_some_and(|until| *until > tick) {
-        return false;
-    }
-    let existing = se.active.get(status).cloned();
-    let new_state = match (&existing, def.stacking) {
-        (Some(_), Stacking::Ignore) => return false,
-        (Some(cur), Stacking::Refresh) => ActiveStatus {
-            severity: cur.severity.max(severity),
-            remaining: def.duration,
-            ..cur.clone()
-        },
-        (Some(cur), Stacking::Intensify) => ActiveStatus {
-            severity: cur.severity + severity,
-            remaining: def.duration,
-            ..cur.clone()
-        },
-        (None, _) => ActiveStatus { severity, applied: tick, remaining: def.duration, stage: None },
+    let existing = world.get::<StatusEffects>(e).and_then(|s| s.active.get(status).cloned());
+    let state = match &existing {
+        Some(cur) => ActiveStatus { severity: (cur.severity + amount).min(100.0), ..cur.clone() },
+        None => ActiveStatus { severity: amount.min(100.0), applied: tick, stage: None },
     };
-    world.get_mut::<StatusEffects>(e).unwrap().active.insert(status.to_string(), new_state);
+    world.get_mut::<StatusEffects>(e).unwrap().active.insert(status.to_string(), state);
     if existing.is_none() {
         let pos = world.get::<Position>(e).copied();
         let (actor, target) = (source.and_then(|s| sim_id(world, s)), sim_id(world, e));
         let disease_news = world.resource::<crate::params::Params>().get("press.disease_news", 0.2) as f32;
-        let news = if def.kind == crate::content::StatusKind::Disease || def.kind == crate::content::StatusKind::Mutation { disease_news } else { 0.0 };
+        let news = if def.tags.iter().any(|t| t == "malattia" || t == "mutazione") { disease_news } else { 0.0 };
         let who = world_name(world, e);
         world.resource_mut::<EventLog>().push(
             tick,
@@ -144,76 +134,64 @@ pub fn remove_status(world: &mut World, e: Entity, status: &str, expired: bool) 
     }
 }
 
-/// Recomputes the stage of a status, running `on_enter` of newly reached stages and escalating.
+/// Recomputes the highest threshold reached, running `on_enter` of a newly reached one.
 fn update_stage(world: &mut World, e: Entity, status: &str) {
     let Some(def) = world.resource::<Content>().statuses.get(status).cloned() else { return };
     let Some(cur) = world.get::<StatusEffects>(e).and_then(|s| s.active.get(status).cloned()) else { return };
-    if let (Some(next), Some(at)) = (&def.escalates_to, def.escalate_at)
-        && cur.severity >= at {
-            remove_status(world, e, status, false);
-            apply_status(world, e, next, 1.0, None);
-            return;
-        }
     let stage = stage_for(&def, cur.severity);
-    if stage != cur.stage {
-        if let Some(mut se) = world.get_mut::<StatusEffects>(e)
-            && let Some(a) = se.active.get_mut(status) {
-                a.stage = stage;
-            }
-        if let Some(i) = stage.filter(|i| cur.stage.is_none_or(|c| *i > c)) {
-            let st = &def.stages[i];
-            let tick = world.resource::<SimClock>().tick;
-            let target = sim_id(world, e);
-            let pos = world.get::<Position>(e).copied();
-            let who = world_name(world, e);
-            world.resource_mut::<EventLog>().push(
-                tick,
-                EventBuilder::new(kind::STATUS_STAGE, format!("{who}: {} → {}", def.name, st.name))
-                    .target(target)
-                    .pos(pos)
-                    .news(if def.kind == crate::content::StatusKind::Mutation { 0.5 } else { 0.1 })
-                    .tags([status.to_string()]),
-            );
-            let ctx = EffectCtx::new(Some(e), None, format!("status:{status}"));
-            apply_effects(world, &ctx, &st.on_enter);
-        }
+    if stage == cur.stage {
+        return;
+    }
+    if let Some(mut se) = world.get_mut::<StatusEffects>(e)
+        && let Some(a) = se.active.get_mut(status)
+    {
+        a.stage = stage;
+    }
+    if let Some(i) = stage.filter(|i| cur.stage.is_none_or(|c| *i > c)) {
+        let th = &def.thresholds[i];
+        let tick = world.resource::<SimClock>().tick;
+        let target = sim_id(world, e);
+        let pos = world.get::<Position>(e).copied();
+        let who = world_name(world, e);
+        world.resource_mut::<EventLog>().push(
+            tick,
+            EventBuilder::new(kind::STATUS_STAGE, format!("{who}: {} → {}", def.name, th.name))
+                .target(target)
+                .pos(pos)
+                .news(if def.tags.iter().any(|t| t == "mutazione") { 0.5 } else { 0.1 })
+                .tags([status.to_string()]),
+        );
+        let ctx = EffectCtx::new(Some(e), None, format!("status:{status}"));
+        apply_effects(world, &ctx, &th.on_enter);
     }
 }
 
-/// Tick of every active status: duration, progression, stages, per-tick effects, expiry.
+/// Every tick: effects, intensity change (and resistance), thresholds, end at 0.
 pub fn tick_statuses(world: &mut World) {
     let entities: Vec<Entity> = crate::sorted_entities::<StatusEffects>(world);
     for e in entities {
         if world.get::<Dead>(e).is_some() {
             continue;
         }
-        let actives: Vec<(String, ActiveStatus)> = world
-            .get::<StatusEffects>(e)
-            .map(|s| s.active.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-            .unwrap_or_default();
-        for (sid, _) in actives {
+        let actives: Vec<String> = world.get::<StatusEffects>(e).map(|s| s.active.keys().cloned().collect()).unwrap_or_default();
+        for sid in actives {
             let Some(def) = world.resource::<Content>().statuses.get(&sid).cloned() else { continue };
-            if !def.per_tick.is_empty() {
-                let ctx = EffectCtx::new(Some(e), None, format!("status:{sid}"));
-                apply_effects(world, &ctx, &def.per_tick);
+            let Some(cur) = world.get::<StatusEffects>(e).and_then(|s| s.active.get(&sid).cloned()) else { continue };
+            let ctx = EffectCtx::new(Some(e), None, format!("status:{sid}"));
+            apply_effects(world, &ctx, &def.effects);
+            if let Some(th) = cur.stage.and_then(|i| def.thresholds.get(i)) {
+                apply_effects(world, &ctx, &th.effects);
             }
-            let mut expired = false;
-            if let Some(mut se) = world.get_mut::<StatusEffects>(e) {
-                if let Some(a) = se.active.get_mut(&sid) {
-                    a.severity += def.progression;
-                    if let Some(r) = a.remaining.as_mut() {
-                        *r = r.saturating_sub(1);
-                        expired |= *r == 0;
-                    }
-                    expired |= def.progression < 0.0 && a.severity <= 0.0;
-                    if let Some(max) = def.max_severity {
-                        a.severity = a.severity.min(max);
-                    }
-                } else {
-                    continue;
-                }
-            }
-            if expired {
+            let resist = def.resist_stat.as_ref().and_then(|s| world.get::<crate::stats::Stats>(e).map(|x| x.get(s))).unwrap_or(0.0).max(0.0);
+            let change = def.per_tick - resist * def.resist_per_point;
+            let ended = {
+                let Some(mut se) = world.get_mut::<StatusEffects>(e) else { continue };
+                let Some(a) = se.active.get_mut(&sid) else { continue };
+                a.severity = (a.severity + change).min(100.0);
+                // Below a hundredth it is over (durations written as 100/D do not add up exactly).
+                a.severity < 0.01
+            };
+            if ended {
                 remove_status(world, e, &sid, true);
             } else {
                 update_stage(world, e, &sid);

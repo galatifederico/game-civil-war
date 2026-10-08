@@ -353,77 +353,56 @@ pub struct ClassDef {
     pub group: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum StatusKind {
-    #[default]
-    Buff,
-    Debuff,
-    Disease,
-    Drug,
-    Intoxication,
-    Mutation,
-    Vaccine,
-    Trait,
-    Power,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum Stacking {
-    /// Re-applying resets the duration and keeps the highest severity.
-    #[default]
-    Refresh,
-    /// Re-applying adds severity.
-    Intensify,
-    /// Re-applying is ignored.
-    Ignore,
-}
-
+/// A status is an intensity 0..100 on a pawn: taking it adds `intensity` per dose, every tick it changes by
+/// `per_tick` (less each point of the resistance stat), at 0 it ends. Its modifiers last while it is active;
+/// the highest threshold reached adds its own. Everything is deterministic.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct StatusDef {
     pub id: Id,
     pub name: String,
     pub description: String,
-    pub kind: StatusKind,
+    /// Categories ("malattia", "droga", "mutazione"…), also seen by conditions on status tags.
     pub tags: Vec<String>,
-    /// Ticks before it wears off (None = until cured or it escalates).
-    pub duration: Option<u64>,
-    pub stacking: Stacking,
-    /// Severity added per tick (diseases progress, drugs wear off with negative values).
-    pub progression: f32,
-    /// Severity at which the status is removed when progression is negative.
-    pub max_severity: Option<f32>,
-    /// Modifiers applied while active (scaled by nothing: stages add their own).
+    /// Intensity one dose adds (default 100).
+    pub intensity: Option<f32>,
+    /// Intensity change every tick (negative: it heals by itself; positive: it gets worse).
+    pub per_tick: f32,
+    /// Stat that fights the status: each point lowers the intensity by `resist_per_point` every tick and
+    /// cuts the contagion received by its share of 100.
+    pub resist_stat: Option<Id>,
+    pub resist_per_point: f32,
+    /// Stat modifiers while active.
     pub stats: BTreeMap<Id, f32>,
     pub need_rates: BTreeMap<Id, f32>,
-    pub capacities: BTreeMap<Id, f32>,
-    /// Tags granted to the carrier while active (e.g. an aura that some powers can detect).
+    /// Tags the carrier gets while active.
     pub grants_tags: Vec<String>,
-    pub stages: Vec<StageDef>,
+    /// Effects every tick while active (subject = the carrier).
+    pub effects: Vec<Effect>,
     pub on_apply: Vec<Effect>,
-    pub per_tick: Vec<Effect>,
     pub on_expire: Vec<Effect>,
-    /// When severity reaches `escalate_at`, this status is replaced by `escalates_to` (Brillo → Schifoso).
-    pub escalates_to: Option<Id>,
-    pub escalate_at: Option<f32>,
+    /// Intensity thresholds, low to high: the highest one reached adds its modifiers and effects.
+    pub thresholds: Vec<StatusThreshold>,
     pub contagion: Option<ContagionDef>,
-    /// Hidden until a faction analyzes it (medical framework).
-    pub hidden: bool,
-    /// Fluid spilled per tick by carriers (hygiene).
-    pub spills: Option<(Id, f32)>,
-    /// Makes the utility AI think faster (>1) or slower (<1).
-    pub ai_speed: Option<f32>,
+}
+
+impl StatusDef {
+    pub fn dose(&self) -> f32 {
+        self.intensity.unwrap_or(100.0)
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct StageDef {
+pub struct StatusThreshold {
     pub name: String,
-    pub at: f32,
+    /// Reached at this intensity or more.
+    pub above: f32,
     pub stats: BTreeMap<Id, f32>,
     pub need_rates: BTreeMap<Id, f32>,
-    pub capacities: BTreeMap<Id, f32>,
-    pub grants_tags: Vec<String>,
+    /// Effects every tick while this is the highest threshold reached.
+    pub effects: Vec<Effect>,
+    /// Effects once, when the threshold is reached.
     pub on_enter: Vec<Effect>,
 }
 
@@ -443,20 +422,14 @@ pub enum Vector {
     Injection,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// Contagion as an aura: pawns within `radius` of a carrier gain `per_tick` × (carrier's intensity / 100)
+/// every tick, cut by their resistance; the carrier also leaves `shedding` on its cell (water and ground).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct ContagionDef {
-    pub vectors: Vec<Vector>,
-    /// Chance per tick per exposure.
-    pub chance: f32,
-    #[serde(default = "one_i")]
     pub radius: i32,
-    /// Pathogen load left on the carrier's cell per tick.
-    #[serde(default)]
+    pub per_tick: f32,
     pub shedding: f32,
-    /// Severity given to new victims.
-    #[serde(default = "one_f")]
-    pub initial_severity: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1291,9 +1264,6 @@ fn yes() -> bool {
 }
 fn one_f() -> f32 {
     1.0
-}
-fn one_i() -> i32 {
-    1
 }
 fn one_u32() -> u32 {
     1

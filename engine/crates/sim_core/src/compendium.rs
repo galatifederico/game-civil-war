@@ -21,10 +21,9 @@ pub fn build(content: &Content, params: &Params) -> Value {
         "classes": content.classes.values().map(|c| json!({
             "id": c.id, "name": c.name, "description": c.description, "stats": c.stats, "abilities": c.abilities,
         })).collect::<Vec<_>>(),
-        "statuses": content.statuses.values().filter(|s| !s.hidden).map(|s| json!({
-            "id": s.id, "name": s.name, "description": s.description, "kind": s.kind, "tags": s.tags,
-            "stages": s.stages.iter().map(|st| st.name.clone()).collect::<Vec<_>>(),
-            "escalates_to": s.escalates_to.as_ref().and_then(|e| content.statuses.get(e)).map(|e| e.name.clone()),
+        "statuses": content.statuses.values().map(|s| json!({
+            "id": s.id, "name": s.name, "description": s.description, "tags": s.tags,
+            "stages": s.thresholds.iter().map(|st| st.name.clone()).collect::<Vec<_>>(),
             "contagious": s.contagion.is_some(),
         })).collect::<Vec<_>>(),
         "items": content.items.values().map(|i| json!({

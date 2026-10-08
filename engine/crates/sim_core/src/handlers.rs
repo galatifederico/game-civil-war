@@ -319,7 +319,7 @@ fn analyze(world: &mut World, ctx: &JobCtx) -> JobResult {
     let Some(f) = world.get::<FactionMember>(ctx.actor).map(|m| m.faction.clone()) else { return JobResult::fail("senza fazione") };
     let found: Vec<String> = world.get::<StatusEffects>(t).map(|s| s.active.keys().cloned().collect()).unwrap_or_default();
     let content = world.resource::<Content>().clone();
-    let diseases: Vec<String> = found.into_iter().filter(|s| content.statuses.get(s).is_some_and(|d| d.contagion.is_some() || d.hidden)).collect();
+    let diseases: Vec<String> = found.into_iter().filter(|s| content.statuses.get(s).is_some_and(|d| d.contagion.is_some() || d.tags.iter().any(|t| t == "malattia"))).collect();
     if let Some(s) = world.resource_mut::<Factions>().states.get_mut(&f) {
         s.known_pathogens.extend(diseases.iter().cloned());
     }
