@@ -461,7 +461,7 @@ const CATALOG = {
     cols: [["Nome", (d) => esc(d.name)], ["Caratteristica", (d) => link("stats", d.stat)], ["Ogni ora", (d) => sgn(d.per_tick, 2), true],
       ["Soglie", (d) => chips((d.thresholds ?? []).map((t) => `${t.name} < ${fmt(t.below)}`))],
       ["Media nel mondo", (d) => { const a = agg(L.needs[d.id]); return a.avg == null ? "—" : `${bar(a.avg, 1)} ${fmt(a.avg * 100, 0)}%`; }]] },
-  actions: { title: "Azioni (scelte dell'AI)", group: "Catalogo",
+  actions: { title: "Azioni", group: "Catalogo",
     facets: [["Categoria", (d) => d.tags], ["Fa", (d) => actionKindName(d)], ["Gruppo", (d) => setsOf(d.id), (v) => name("action_sets", v)]],
     cols: [["Nome", (d) => esc(d.name)], ["Fa", (d) => actionKind(d)], ["Categorie", (d) => chips(d.tags)], ["Gruppi", (d) => chips(setsOf(d.id), "action_sets")], ["Peso", (d) => fmt(d.weight, 2), true],
       ["Attesa", (d) => d.cooldown || "", true], ["Requisiti", (d) => esc(D("actions", d.id).requires || "")], ["Ora in corso", (d) => L.byAction[d.id] ?? 0, true]] },
