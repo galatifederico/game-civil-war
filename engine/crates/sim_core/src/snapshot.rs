@@ -401,7 +401,7 @@ pub fn snapshot(world: &mut World, truth: bool) -> WorldSnapshot {
             .collect(),
         players: serde_json::to_value(&world.resource::<Players>().players).unwrap_or_default(),
         titles: world.resource::<Titles>().holders.clone(),
-        modifiers: world.resource::<GlobalModifiers>().active.iter().map(|m| m.name.clone()).collect(),
+        modifiers: world.resource::<GlobalModifiers>().names(world.resource::<Content>()),
         open_jobs: world.resource::<JobBoard>().jobs.len(),
         winner: world.resource::<Progress>().winner.clone(),
         scores,

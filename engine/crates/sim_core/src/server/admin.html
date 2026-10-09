@@ -498,7 +498,10 @@ const CATALOG = {
       ["Ogni (ore)", (d) => d.every || "una volta", true], ["Da chi", (d) => (d.by ? link("templates", d.by) : "")]] },
   collections: { title: "Collezioni", group: "Catalogo", cols: [["Nome", (d) => esc(d.name)], ["Pezzi", (d) => (d.items ?? []).length || d.count, true], ["Punti", (d) => d.victory_points, true]] },
   supplies: { title: "Rifornimenti", group: "Catalogo", cols: [["Nome", (d) => esc(d.name)], ["Oggetto", (d) => link("items", d.item)], ["Al giorno max", (d) => d.max_per_day, true]] },
-  global_modifiers: { title: "Circostanze globali", group: "Catalogo", cols: [["Nome", (d) => esc(d.name)], ["Morale", (d) => d.morale ?? "", true]] },
+  global_modifiers: { title: "Circostanze globali", group: "Catalogo",
+    cols: [["Nome", (d) => esc(d.name)], ["Ogni ora", (d) => (d.per_tick ? sgn(d.per_tick, 2) : "—"), true], ["Dura", (d) => (d.per_tick < 0 ? `${fmt((d.intensity ?? 100) / -d.per_tick, 0)} ore` : "finché non tolta")],
+      ["Su tutte le pedine", (d) => statMapChips(d.stats)], ["Prezzi", (d) => chips(Object.entries(d.prices ?? {}).map(([k, v]) => `${k} ×${fmt(v, 2)}`))],
+      ["Rifornimenti", (d) => chips(Object.entries(d.supply ?? {}).map(([k, v]) => `${k} ×${fmt(v, 2)}`))], ["Ritardi", (d) => (d.logistics_disruption ? fmt(d.logistics_disruption, 2) : ""), true]] },
   body_plans: { title: "Corpi", group: "Catalogo", cols: [["Id", (d) => esc(d.id)], ["Parti", (d) => chips(d.parts?.map((p) => p.name))]] },
   fluids: { title: "Fluidi", group: "Catalogo", cols: [["Nome", (d) => esc(d.name)], ["Sporcizia", (d) => d.dirtiness, true], ["Porta", (d) => esc(d.carries ?? "")]] },
 };
@@ -839,7 +842,7 @@ function effectCells(k, v) {
     case "ModDissent": return [["dissenso", sgn(v)]];
     case "Spawn": return [["evoca " + link("templates", v.template) + (v.zone ? ` in ${esc(v.zone)}` : "") + (v.faction ? " per " + link("factions", v.faction) : ""), "×" + (v.count ?? 1) + (v.max_alive ? ` (al massimo ${v.max_alive} vivi)` : "")]];
     case "MarketShock": return [["mercato " + esc(v.item ? name("items", v.item) : `«${v.tag ?? "tutto"}»`), `domanda ×${fmt(v.demand ?? 1, 2)}, offerta ×${fmt(v.supply ?? 1, 2)}, ${v.duration} tick`]];
-    case "GlobalModifier": return [[`circostanza «${esc(v.name || v.id)}»`, `${v.duration} tick`]];
+    case "GlobalModifier": return [["circostanza " + link("global_modifiers", v.id), (v.doses ?? 1) === 1 ? "avviata" : `avviata ×${v.doses}`]];
     case "SetFlag": return [[`flag «${esc(v.flag)}»`, "= " + fmt(v.value)]];
     case "ModFlag": return [[`flag «${esc(v.flag)}»`, sgn(v.amount)]];
     case "Publish": return [["notizia" + (v.truth === "Fake" ? " falsa" : v.truth === "Propaganda" ? " di propaganda" : ""), `<span class="muted">«${esc(v.headline.length > 60 ? v.headline.slice(0, 60) + "…" : v.headline)}»</span>`]];
@@ -1232,6 +1235,25 @@ function eventSections(d) {
     used: ["when", "every", "from_tick", "by", "news", "effects"],
   };
 }
+const statMapChips = (m) => chips(Object.entries(m ?? {}).map(([k, v]) => `${name("stats", k)} ${sgn(v, 1)}`));
+const itemTags = () => [...new Set(Object.values(C("items")).flatMap((i) => [...(i.tags ?? []), i.category]).filter(Boolean))].sort();
+/** Circumstances: a status of the whole world. */
+function circSections(d) {
+  const dose = d.intensity ?? 100, per = d.per_tick ?? 0;
+  const lasts = per < 0 ? `una volta avviata dura circa ${fmt(dose / -per, 0)} ore` : per > 0 ? "cresce da sola" : "non finisce da sola";
+  return {
+    sections: [
+      card("Intensità", kv({ "Avviarla dà": numInput(["intensity"], d.intensity, "100", "numnull"), "Ogni ora": numInput(["per_tick"], d.per_tick, "0") + ` <span class="muted">${esc(lasts)}</span>` }) +
+        `<div class="muted">Come uno stato, ma della città: va da 0 a 100 e a 0 finisce. Gli effetti «Evento globale» la avviano.</div>` +
+        `<div style="margin-top:8px"><button onclick="window.command({ type: 'apply_effect', effect: { GlobalModifier: { id: '${esc(d.id)}' } } })">Avviala ora</button></div>`),
+      card("Finché è attiva", `<h4 style="margin:4px 0">Su tutte le pedine</h4>` + mapTable(["stats"], d.stats, "stats", { keyLabel: "Caratteristica", valLabel: "Modificatore" }) +
+        `<h4 style="margin:10px 0 4px">Prezzi</h4>` + mapTable(["prices"], d.prices, null, { keyLabel: "Categoria di oggetti", valLabel: "Moltiplicatore", value: 1, keys: itemTags() }) +
+        `<h4 style="margin:10px 0 4px">Rifornimenti da fuori</h4>` + mapTable(["supply"], d.supply, null, { keyLabel: "Oggetto o categoria («*» = tutto)", valLabel: "Moltiplicatore", value: 1, keys: ["*", ...itemTags()] }) +
+        kv({ "Ritardi nelle consegne": numInput(["logistics_disruption"], d.logistics_disruption, "0") + ' <span class="muted">0–1</span>' })),
+    ],
+    used: ["intensity", "per_tick", "stats", "prices", "supply", "logistics_disruption"],
+  };
+}
 /** Roles: like classes, plus how they change hands. */
 function titleSections(d) {
   const how = ["faction", "members_only", "mode", "seat_zone", "vacancy_ticks", "term", "grace", "challenge_stat", "challenge_allies", "grants_faction_control", "victory_points", "news"];
@@ -1549,6 +1571,7 @@ function renderDetail() {
   if (kind === "modes") { const r = modeSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "statuses") { const r = statusSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "events") { const r = eventSections(d); main = r.sections; used = [...used, ...r.used]; }
+  if (kind === "global_modifiers") { const r = circSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "actions") { const j = actionJobSection(d); if (j) main.push(j); used = [...used, "how"]; }
   const values = {}, details = [], logic = [];
   for (const f of Object.keys(d)) {

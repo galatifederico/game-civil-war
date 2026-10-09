@@ -54,6 +54,9 @@
             (name: "Fever", above: 50, stats: {"strength": -5}),
          ], contagion: Some((radius: 1, per_tick: 100))),
     ],
+    global_modifiers: [
+        (id: "delays", name: "Delivery delays", per_tick: -4.167, logistics_disruption: 0.5),
+    ],
     items: [
         (id: "bread", name: "Bread", category: "food", stack_max: 5, base_price: 5, tags: ["food"],
          on_use: [ModNeed(need: "hunger", amount: 0.6)]),
@@ -106,7 +109,7 @@
          stock: {"bread": 30, "beer": 10}),
         (id: "jail", name: "Jail", hp: 200, tags: ["jail"]),
         (id: "warehouse", name: "Warehouse", hp: 50,
-         consequences: [(below: 0.5, name: "Deliveries late", effects: [GlobalModifier(id: "delays", name: "Delivery delays", duration: 24, logistics_disruption: 0.5)])]),
+         consequences: [(below: 0.5, name: "Deliveries late", effects: [GlobalModifier(id: "delays")])]),
     ],
     map: (
         layers: [(id: "surface", name: "Surface", width: 40, height: 40)],

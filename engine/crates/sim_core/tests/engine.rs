@@ -84,7 +84,7 @@ fn structural_damage_triggers_global_modifier() {
     let wh = sim.snapshot(true).entities.iter().find(|e| e.building.as_ref().is_some_and(|b| b.def == "warehouse")).unwrap().id;
     sim.execute(SimCommand::ApplyEffect { subject: Some(wh), target: None, effect: Effect::DamageBuilding(30.0) }).unwrap();
     sim.run(3);
-    assert!(sim.world.resource::<GlobalModifiers>().logistics_disruption() > 0.0);
+    assert!(sim.world.resource::<GlobalModifiers>().logistics_disruption(sim.content()) > 0.0);
     assert!(sim.world.resource::<Market>().disruption > 0.0);
 }
 

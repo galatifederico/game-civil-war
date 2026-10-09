@@ -95,7 +95,8 @@ pub enum Effect {
         duration: u64,
     },
     /// Activates a named global modifier (market disruption, morale…) for some ticks.
-    GlobalModifier { id: String, #[serde(default)] name: String, duration: u64, #[serde(default)] logistics_disruption: f32, #[serde(default)] morale: f32 },
+    /// Starts (or strengthens) a circumstance of the whole world, by doses of its intensity.
+    GlobalModifier { id: String, #[serde(default = "one")] doses: f32 },
     SetFlag { flag: String, value: f64 },
     ModFlag { flag: String, amount: f64 },
     Publish { headline: String, #[serde(default)] truth: Truth, #[serde(default)] topics: Vec<String> },

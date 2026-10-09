@@ -40,37 +40,44 @@ pub struct Shop {
     pub markup: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ActiveModifier {
-    pub id: String,
-    pub name: String,
-    pub until: u64,
-    pub logistics_disruption: f32,
-    pub morale: f32,
-    /// Outside supply multipliers: (item id or tag, factor), "*" = everything.
-    #[serde(default)]
-    pub supply: Vec<(String, f32)>,
-}
-
-/// Global simulation events with a duration (delivery delays, morale crises, price spikes…).
+/// Circumstances of the whole world (strikes, fog, festivals…): intensity 0..100 each, like statuses.
 #[derive(Resource, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GlobalModifiers {
-    pub active: Vec<ActiveModifier>,
+    #[serde(default)]
+    pub levels: BTreeMap<String, f32>,
 }
 
 impl GlobalModifiers {
-    pub fn logistics_disruption(&self) -> f32 {
-        self.active.iter().map(|m| m.logistics_disruption).sum()
+    fn active<'a>(&'a self, content: &'a Content) -> impl Iterator<Item = &'a crate::content::GlobalModifierDef> {
+        self.levels.keys().filter_map(|id| content.global_modifiers.get(id))
+    }
+
+    pub fn logistics_disruption(&self, content: &Content) -> f32 {
+        self.active(content).map(|m| m.logistics_disruption).sum()
     }
 
     /// Combined outside-supply factor for an item (by id or one of its tags).
-    pub fn supply_factor(&self, item: &str, tags: &[String]) -> f32 {
-        self.active
-            .iter()
+    pub fn supply_factor(&self, content: &Content, item: &str, tags: &[String]) -> f32 {
+        self.active(content)
             .flat_map(|m| m.supply.iter())
-            .filter(|(k, _)| k == "*" || k == item || tags.contains(k))
+            .filter(|(k, _)| *k == "*" || *k == item || tags.contains(k))
             .map(|(_, f)| *f)
             .product()
+    }
+
+    /// Stat modifiers every pawn gets from the active circumstances.
+    pub fn stats(&self, content: &Content) -> BTreeMap<String, f32> {
+        let mut out = BTreeMap::new();
+        for m in self.active(content) {
+            for (k, v) in &m.stats {
+                *out.entry(k.clone()).or_insert(0.0) += v;
+            }
+        }
+        out
+    }
+
+    pub fn names(&self, content: &Content) -> Vec<String> {
+        self.active(content).map(|m| m.name.clone()).collect()
     }
 }
 
@@ -121,46 +128,52 @@ pub fn repair_building(world: &mut World, e: Entity, amount: f32) {
     }
 }
 
-pub fn activate_modifier(world: &mut World, id: &str, name: &str, duration: u64, disruption: f32, morale: f32) {
+/// Starts (or strengthens) a circumstance: `doses` × its intensity (default 100), at most 100.
+pub fn activate_modifier(world: &mut World, id: &str, doses: f32) {
     let tick = world.resource::<SimClock>().tick;
-    let def = world.resource::<Content>().global_modifiers.get(id).cloned();
-    let (name, disruption, morale) = match &def {
-        Some(d) => (
-            if name.is_empty() { d.name.clone() } else { name.to_string() },
-            if disruption == 0.0 { d.logistics_disruption } else { disruption },
-            if morale == 0.0 { d.morale } else { morale },
-        ),
-        None => (if name.is_empty() { id.to_string() } else { name.to_string() }, disruption, morale),
-    };
-    {
+    let Some(def) = world.resource::<Content>().global_modifiers.get(id).cloned() else { return };
+    let new = {
         let mut gm = world.resource_mut::<GlobalModifiers>();
-        gm.active.retain(|m| m.id != id);
-        let supply = def.as_ref().map(|d| d.supply.clone()).unwrap_or_default();
-        gm.active.push(ActiveModifier { id: id.to_string(), name: name.clone(), until: tick + duration, logistics_disruption: disruption, morale, supply });
+        let lvl = gm.levels.entry(id.to_string()).or_insert(0.0);
+        let new = *lvl <= 0.0;
+        *lvl = (*lvl + def.intensity.unwrap_or(100.0) * doses).min(100.0);
+        new
+    };
+    if new {
+        let lasts = if def.per_tick < 0.0 { format!(" (circa {:.0} ore)", 100.0 / -def.per_tick) } else { String::new() };
+        world.resource_mut::<EventLog>().push(
+            tick,
+            EventBuilder::new(kind::GLOBAL_MODIFIER, format!("Evento globale: {}{lasts}", def.name))
+                .news(0.7)
+                .tags(["global".to_string(), id.to_string()]),
+        );
     }
-    if morale != 0.0 {
-        let stat = world.resource::<Content>().bindings.morale.clone();
-        let ctx = EffectCtx::new(None, None, format!("modifier:{id}"));
-        let eff = crate::content::Effect::On(crate::content::Scope::Everyone, Box::new(crate::content::Effect::ModStat { stat, amount: morale }));
-        crate::effects::apply_effect(world, &ctx, &eff);
-    }
-    if let Some(d) = def {
-        for (tag, mult) in &d.price_tags {
-            crate::market::add_shock(world, None, Some(tag), *mult, 1.0, duration, id);
+}
+
+/// Circumstances: intensity moves by `per_tick`, they end at 0; while active their prices hold.
+pub fn circumstances_tick(world: &mut World) {
+    let content = world.resource::<Content>().clone();
+    let levels = world.resource::<GlobalModifiers>().levels.clone();
+    for (id, lvl) in levels {
+        let Some(def) = content.global_modifiers.get(&id) else {
+            world.resource_mut::<GlobalModifiers>().levels.remove(&id);
+            continue;
+        };
+        let next = (lvl + def.per_tick).min(100.0);
+        if next < 0.01 {
+            world.resource_mut::<GlobalModifiers>().levels.remove(&id);
+            continue;
+        }
+        world.resource_mut::<GlobalModifiers>().levels.insert(id.clone(), next);
+        for (tag, mult) in &def.prices {
+            crate::market::add_shock(world, None, Some(tag), *mult, 1.0, 2, &format!("circostanza:{id}"));
         }
     }
-    world.resource_mut::<EventLog>().push(
-        tick,
-        EventBuilder::new(kind::GLOBAL_MODIFIER, format!("Evento globale: {name} ({duration} tick)"))
-            .news(0.7)
-            .tags(["global".to_string(), id.to_string()]),
-    );
 }
 
 /// Production posting, passive output, damage consequences, modifier expiry.
 pub fn buildings_tick(world: &mut World) {
     let tick = world.resource::<SimClock>().tick;
-    world.resource_mut::<GlobalModifiers>().active.retain(|m| m.until > tick);
     let content = world.resource::<Content>().clone();
     let process_job = content.jobs.values().find(|j| j.handler == "process").map(|j| j.id.clone());
     let buildings = crate::sorted_entities::<Building>(world);

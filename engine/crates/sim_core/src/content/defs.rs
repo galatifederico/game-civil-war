@@ -1232,11 +1232,17 @@ pub struct GlobalModifierDef {
     pub id: Id,
     pub name: String,
     pub description: String,
+    /// Intensity a start gives (default 100); every tick it changes by `per_tick`; at 0 it is over.
+    pub intensity: Option<f32>,
+    pub per_tick: f32,
+    /// While active: stat modifiers on every pawn.
+    pub stats: BTreeMap<Id, f32>,
+    /// While active: price multipliers by item tag.
+    pub prices: BTreeMap<String, f32>,
+    /// While active: outside supply multipliers by item id or tag ("*" = everything).
+    pub supply: BTreeMap<String, f32>,
+    /// While active: delays in deliveries (0..1).
     pub logistics_disruption: f32,
-    pub morale: f32,
-    pub price_tags: Vec<(String, f32)>,
-    /// Multipliers of the outside supply while active: (item id or item tag, factor). "*" = everything.
-    pub supply: Vec<(String, f32)>,
 }
 
 /// Steady flow of goods from outside the world: every `interval` ticks the shops that sell `item` are

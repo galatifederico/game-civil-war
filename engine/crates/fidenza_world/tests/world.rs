@@ -121,7 +121,7 @@ fn warehouse_damage_delays_gifts_and_raises_prices() {
     sim.execute(SimCommand::ApplyEffect { subject: Some(cap), target: None, effect: Effect::DamageBuilding(100.0) }).unwrap();
     sim.run(20);
     let gm = sim.world.resource::<GlobalModifiers>();
-    assert!(gm.active.iter().any(|m| m.id == "ritardo_regali"));
+    assert!(gm.levels.contains_key("ritardo_regali"));
     let after = sim.world.resource::<Market>().price("regalo_di_natale").unwrap();
     assert!(after > before * 1.1, "gift price {before} -> {after}");
 }

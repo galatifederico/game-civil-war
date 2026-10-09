@@ -110,6 +110,7 @@ impl Needs {
 pub fn recompute_stats(
     content: Res<Content>,
     titles: Res<crate::factions::Titles>,
+    circumstances: Res<crate::buildings::GlobalModifiers>,
     params: Res<crate::params::Params>,
     mut q: Query<
         (
@@ -130,6 +131,8 @@ pub fn recompute_stats(
 ) {
     let police = &content.bindings.police_tag;
     let press = &content.bindings.press_tag;
+    // Circumstances of the world weigh on everybody.
+    let world_stats = circumstances.stats(&content);
     // Roles held, by holder.
     let mut roles: BTreeMap<crate::ids::SimId, Vec<&crate::content::TitleDef>> = BTreeMap::new();
     for (t, h) in &titles.holders {
@@ -140,6 +143,9 @@ pub fn recompute_stats(
     for (race, classes, statuses, inv, member, sid, equipment, aura, mode, mut stats, mut tags) in &mut q {
         let mut eff = stats.base.clone();
         let mut t: BTreeSet<String> = tags.base.clone();
+        for (k, v) in &world_stats {
+            *eff.entry(k.clone()).or_insert(0.0) += v;
+        }
         // Abilities (from race, classes and roles): permanent modifiers and tags.
         let mut abilities: BTreeSet<&String> = BTreeSet::new();
         abilities.extend(content.races.get(&race.0).into_iter().flat_map(|r| r.abilities.iter()));

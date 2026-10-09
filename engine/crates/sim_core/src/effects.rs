@@ -323,8 +323,8 @@ pub fn apply_effect(world: &mut World, ctx: &EffectCtx, effect: &Effect) {
         Effect::MarketShock { item, tag, demand, supply, duration } => {
             crate::market::add_shock(world, item.as_deref(), tag.as_deref(), *demand, *supply, *duration, &ctx.origin);
         }
-        Effect::GlobalModifier { id, name, duration, logistics_disruption, morale } => {
-            crate::buildings::activate_modifier(world, id, name, *duration, *logistics_disruption, *morale);
+        Effect::GlobalModifier { id, doses } => {
+            crate::buildings::activate_modifier(world, id, *doses);
         }
         Effect::SetFlag { flag, value } => {
             world.resource_mut::<Flags>().0.insert(flag.clone(), *value);

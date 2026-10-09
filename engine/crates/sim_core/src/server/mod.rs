@@ -688,10 +688,15 @@ async fn ui_economy(State(s): State<AppState>) -> ApiResult {
     let wallets: f64 = sim.world.query::<&crate::stats::Wallet>().iter(&sim.world).map(|w| w.0).sum();
     let treasuries: f64 = sim.world.resource::<Factions>().states.values().map(|f| f.treasury).sum();
     let mods = sim.world.resource::<crate::buildings::GlobalModifiers>().clone();
+    let morale_stat = content.bindings.morale.clone();
     let circumstances: Vec<Value> = mods
-        .active
+        .levels
         .iter()
-        .map(|m| json!({ "id": m.id, "name": m.name, "ticks_left": m.until.saturating_sub(tick), "disruption": m.logistics_disruption, "morale": m.morale }))
+        .filter_map(|(id, lvl)| content.global_modifiers.get(id).map(|m| (m, lvl)))
+        .map(|(m, lvl)| {
+            let left = if m.per_tick < 0.0 { (lvl / -m.per_tick).ceil() as u64 } else { 0 };
+            json!({ "id": m.id, "name": m.name, "intensity": lvl, "ticks_left": left, "disruption": m.logistics_disruption, "morale": m.stats.get(&morale_stat).copied().unwrap_or(0.0) })
+        })
         .collect();
     let supply = sim.world.resource::<crate::supply::SupplyStats>().clone();
     let local: Vec<Value> = content

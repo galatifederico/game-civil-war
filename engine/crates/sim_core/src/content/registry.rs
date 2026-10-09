@@ -767,6 +767,7 @@ impl Validator<'_> {
                 }
             }
             Effect::MarketShock { item: Some(i), .. } => self.check(&c.items, "oggetto", i, ctx),
+            Effect::GlobalModifier { id, .. } => self.check(&c.global_modifiers, "circostanza", id, ctx),
             Effect::Shapeshift { race, faction, .. } => {
                 if let Some(r) = race {
                     self.check(&c.races, "razza", r, ctx);

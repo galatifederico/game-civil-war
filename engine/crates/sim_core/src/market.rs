@@ -126,7 +126,7 @@ pub fn update_market(world: &mut World) {
             *sellers.entry(item.clone()).or_insert(0) += 1;
         }
     }
-    let disruption = world.resource::<GlobalModifiers>().logistics_disruption();
+    let disruption = world.resource::<GlobalModifiers>().logistics_disruption(world.resource::<Content>());
     let content = world.resource::<Content>().clone();
     let mut events = Vec::new();
     {

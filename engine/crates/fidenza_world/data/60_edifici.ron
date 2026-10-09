@@ -77,9 +77,9 @@
          recipes: [(id: "impacchetta", name: "Impacchetta regali", inputs: {"giocattolo": 2}, outputs: {"regalo_di_natale": 2}, work: 2, work_type: "logistica")],
          consequences: [
             (below: 0.7, name: "Ritardi nelle consegne dei regali",
-             effects: [GlobalModifier(id: "ritardo_regali", duration: 72)]),
+             effects: [GlobalModifier(id: "ritardo_regali")]),
             (below: 0.3, name: "Il Natale d'Agosto è cancellato",
-             effects: [GlobalModifier(id: "natale_cancellato", duration: 168), SetFlag(flag: "natale_cancellato", value: 1)]),
+             effects: [GlobalModifier(id: "natale_cancellato"), SetFlag(flag: "natale_cancellato", value: 1)]),
          ]),
         (id: "gnomo_da_giardino", name: "Gnomo da Giardino", hp: 10, tags: ["gnomo", "telecamera"], vision: 6,
          description: "Mini-computer spia dei Boomer: rimuove la nebbia di guerra."),
@@ -99,11 +99,8 @@
         (id: "acquedotto", name: "Serbatoio dell'acquedotto", footprint: (1, 2), hp: 200, tags: ["acqua", "infrastruttura"]),
     ],
     global_modifiers: [
-        (id: "ritardo_regali", name: "Ritardi nelle consegne dei regali", logistics_disruption: 0.4, morale: -8,
-         price_tags: [("regalo", 1.8), ("merce", 1.3)]),
-        (id: "natale_cancellato", name: "Natale d'Agosto cancellato", logistics_disruption: 0.8, morale: -20,
-         price_tags: [("regalo", 3.0), ("lusso", 1.5)]),
-        (id: "proibizionismo", name: "Proibizionismo vegano", logistics_disruption: 0.1, morale: -5, price_tags: [("alcol", 2.0), ("carne", 1.5)],
-         supply: [("alcol", 0.3), ("carne", 0.5)]),
+        (id: "ritardo_regali", name: "Ritardi nelle consegne dei regali", per_tick: -1.389, stats: {"morale": -8}, prices: {"regalo": 1.8, "merce": 1.3}, logistics_disruption: 0.4),
+        (id: "natale_cancellato", name: "Natale d'Agosto cancellato", per_tick: -0.595, stats: {"morale": -20}, prices: {"regalo": 3.0, "lusso": 1.5}, logistics_disruption: 0.8),
+        (id: "proibizionismo", name: "Proibizionismo vegano", stats: {"morale": -5}, prices: {"alcol": 2.0, "carne": 1.5}, supply: {"alcol": 0.3, "carne": 0.5}, logistics_disruption: 0.1),
     ],
 )
