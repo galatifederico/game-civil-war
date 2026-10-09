@@ -5,8 +5,8 @@
   fa»** con i campi del lavoro (durata, tipo di lavoro, caratteristica che velocizza, gittata, rango minimo,
   notiziabilità, sospetto, requisiti, effetti, reato, tag richiesti): si modificano lì e si salvano sul lavoro (che
   vale per tutte le azioni che lo usano; la scheda dice quali).
-- L'elenco delle **Azioni** mostra anche i 13 lavori che nessuna azione usa, cioè i **lavori della bacheca**
-  (consegna, trasporta, pulisci, scava roccia, sabotaggio, ruba reliquia…), con la categoria «bacheca».
+- I 13 **lavori della bacheca** (consegna, trasporta, pulisci, scava roccia, sabotaggio, ruba reliquia…) sono azioni
+  con la categoria «bacheca»: si trovano nell'elenco delle Azioni con il filtro Categoria.
 - Le schede dei lavori restano raggiungibili dai link; «Torna all'elenco» porta alle Azioni.
 
 ## Fatto: nel motore
