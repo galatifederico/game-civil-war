@@ -104,10 +104,10 @@ pub fn exports(world: &mut World) {
     for e in crate::sorted_entities::<Building>(world) {
         let b = world.get::<Building>(e).unwrap().clone();
         let Some(def) = content.buildings.get(&b.def) else { continue };
-        if b.hp <= 0.0 || (def.exports.is_empty() && def.income <= 0.0) {
+        if b.hp <= 0.0 || def.exports.is_empty() {
             continue;
         }
-        let mut earned = def.income * (b.hp / b.max_hp) as f64;
+        let mut earned = 0.0;
         for item in &def.exports {
             let n = world.get::<crate::inventory::Stock>(e).map_or(0, |s| s.count(item)).min(batch);
             if n == 0 {

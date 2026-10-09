@@ -28,7 +28,7 @@ fn produces(content: &Content, def: &str, item: &str) -> bool {
     content
         .buildings
         .get(def)
-        .is_some_and(|d| d.stockpile || d.passive.contains_key(item) || d.recipes.iter().any(|r| r.outputs.contains_key(item)))
+        .is_some_and(|d| d.stockpile || d.productions.iter().any(|r| r.outputs.contains_key(item)))
 }
 
 /// Haul deliveries already planned (on the board, in personal queues or being carried out).
@@ -82,7 +82,7 @@ pub fn post_logistics(world: &mut World) {
             continue;
         }
         if let Some(d) = content.buildings.get(&s.def) {
-            for r in &d.recipes {
+            for r in &d.productions {
                 for (item, n) in &r.inputs {
                     // Keep a buffer of a few batches, refilled with full loads.
                     let target = (n * 4).max(batch);

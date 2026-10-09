@@ -484,9 +484,9 @@ const CATALOG = {
     cols: [["Nome", (d) => esc(d.name)], ["Categorie", (d) => chips(d.tags)], ["Scomparto", (d) => esc(d.category)], ["Prezzo", (d) => fmt(d.base_price), true],
       ["Peso", (d) => (d.weight ? fmt(d.weight) : ""), true], ["Danni", (d) => (d.damage ? fmt(d.damage) : ""), true], ["Nel mondo", (d) => L.items[d.id]?.total ?? 0, true]] },
   buildings: { title: "Edifici", group: "Catalogo", sprite: true,
-    facets: [["Tag", (d) => d.tags]],
-    cols: [["Nome", (d) => esc(d.name)], ["Tag", (d) => chips(d.tags)], ["Vende", (d) => chips(Object.keys(d.sells ?? {}).map((i) => name("items", i)))],
-      ["Ricette", (d) => (d.recipes ?? []).length || "", true], ["In gioco", (d) => L.byBuilding[d.id] ?? 0, true]] },
+    facets: [["Categoria", (d) => d.tags], ["Produce", (d) => (d.productions ?? []).map((p) => (p.every ? "da solo" : "con lavoratore"))]],
+    cols: [["Nome", (d) => esc(d.name)], ["Categorie", (d) => chips(d.tags)], ["Produce", (d) => chips((d.productions ?? []).flatMap((p) => Object.keys(p.outputs ?? {}).map((i) => name("items", i)).concat(p.money ? [`${fmt(p.money, 0)} €`] : [])))],
+      ["Vende", (d) => chips(Object.keys(d.sells ?? {}).map((i) => name("items", i)))], ["In gioco", (d) => L.byBuilding[d.id] ?? 0, true]] },
   factions: { title: "Fazioni", group: "Catalogo", sprite: true,
     facets: [["Giocabile", (d) => (d.playable ? "sì" : "no")]],
     cols: [["Nome", (d) => esc(d.name)], ["Giocabile", (d) => (d.playable ? "sì" : "")], ["Ideologia", (d) => chips(Object.entries(d.ideology ?? {}).map(([k, v]) => `${k} ${v}`))],
@@ -530,7 +530,7 @@ function usersOf(kind, id) {
   if (kind === "jobs") scan("actions", (d) => d.kind?.Job?.job === id);
   if (kind === "races") scan("templates", (d) => d.race === id);
   if (kind === "classes") scan("templates", (d) => d.classes?.includes(id));
-  if (kind === "items") { scan("templates", (d) => d.items && id in d.items); scan("buildings", (d) => (d.sells && id in d.sells) || (d.recipes ?? []).some((r) => id in (r.outputs ?? {}))); }
+  if (kind === "items") { scan("templates", (d) => d.items && id in d.items); scan("buildings", (d) => (d.sells && id in d.sells) || (d.productions ?? []).some((r) => id in (r.outputs ?? {}))); }
   if (kind === "statuses") scan("items", (d) => JSON.stringify(d.on_use ?? []).includes(`"${id}"`));
   if (kind === "factions") scan("templates", (d) => d.faction === id);
   return out;
@@ -1274,6 +1274,32 @@ function itemSections(d) {
     used: ["category", "stack_max", "base_price", "weight", "unique", "victory_points", "tags", "carried_stats", "damage", "range", "hands", "wear_slot", "durability", "on_hit", "on_use", "reusable", "requires"],
   };
 }
+/** Buildings: what it is, productions, shop and stock, exports, construction, integrity thresholds. */
+function buildingSections(d) {
+  const ed = (f) => fieldEditor("buildings", d, f)?.[1] ?? "";
+  const items = (m) => chips(Object.entries(m ?? {}).map(([i, n]) => `${n}× ${name("items", i)}`));
+  const prods = (d.productions ?? []).map((p) => `<tr><td>${esc(p.name || p.id)}</td><td>${p.every ? `da sola, ogni ${p.every} ore` : `con un lavoratore (${fmt(p.work)} di lavoro${p.work_type ? ", " + esc(p.work_type) : ""})`}</td>` +
+    `<td>${items(p.inputs)}</td><td>${items(p.outputs)}</td><td class="num">${p.money ? fmt(p.money, 0) + " €" : ""}</td></tr>`).join("");
+  const cons = (d.consequences ?? []).map((c) => { const rows = effectRows(c.effects, "#"); return `<tr><td class="num">sotto il ${fmt(c.below * 100, 0)}%</td><td>${esc(c.name)}</td><td>${rows.map((x) => `${x.what} ${x.mod}`).join("<br>")}</td></tr>`; }).join("");
+  return {
+    sections: [
+      card("Cos'è", kv({ Integrità: ed("hp"), "Ingombro (larghezza, altezza)": `<code>${esc(JSON.stringify(d.footprint))}</code>`, "Visione (caselle)": ed("vision"), "Deposito (la logistica prende di tutto)": ed("stockpile") }) +
+        `<h4 style="margin:10px 0 4px">Categorie</h4>` + tagList("buildings", ["tags"], d.tags, "tags")),
+      card("Produzioni", (prods ? `<table class="ed"><thead><tr><th>Produzione</th><th>Come</th><th>Usa</th><th>Produce</th><th class="num">Soldi</th></tr></thead><tbody>${prods}</tbody></table>` : '<div class="muted">nessuna</div>') +
+        `<div class="muted">Con un lavoratore: si pubblica un lavoro sulla bacheca quando ci sono gli ingressi. Da sola: ogni N ore, se ci sono gli ingressi; i soldi vanno al proprietario in proporzione all'integrità.</div>` +
+        `<details><summary class="muted">modifica le produzioni (JSON)</summary>${jsonBox(["productions"], d.productions ?? [])}</details>`),
+      card("Negozio e scorte", kv({ Ricarico: ed("markup") }) + `<h4 style="margin:10px 0 4px">Vende</h4>` +
+        `<div>${chips(Object.entries(d.sells ?? {}).map(([i, pr]) => `${name("items", i)}${pr != null ? ` a ${fmt(pr, 2)} €` : ""}`))}</div>` +
+        `<details><summary class="muted">modifica il catalogo (JSON: oggetto → prezzo fisso o null = prezzo di mercato)</summary>${jsonBox(["sells"], d.sells ?? {})}</details>` +
+        `<h4 style="margin:10px 0 4px">Scorte iniziali</h4>` + mapTable(["stock"], d.stock, "items", { keyLabel: "Oggetto", valLabel: "Quantità", value: 1 })),
+      card("Esporta", refTable("buildings", ["exports"], d.exports, "items", { label: "Oggetto", brief: true }) + `<div class="muted">Venduti fuori città al prezzo di mercato a intervalli regolari.</div>`),
+      card("Costruzione", mapTable(["cost"], d.cost, "items", { keyLabel: "Materiale", valLabel: "Quantità", value: 1 }) + kv({ "Lavoro": ed("build_work") })),
+      card("Soglie di integrità", (cons ? `<table class="ed"><tbody>${cons}</tbody></table>` : '<div class="muted">nessuna</div>') +
+        `<details><summary class="muted">modifica (JSON)</summary>${jsonBox(["consequences"], d.consequences ?? [])}</details>`),
+    ],
+    used: ["hp", "footprint", "vision", "stockpile", "tags", "productions", "markup", "sells", "stock", "exports", "cost", "build_work", "consequences"],
+  };
+}
 /** Roles: like classes, plus how they change hands. */
 function titleSections(d) {
   const how = ["faction", "members_only", "mode", "seat_zone", "vacancy_ticks", "term", "grace", "challenge_stat", "challenge_allies", "grants_faction_control", "victory_points", "news"];
@@ -1593,6 +1619,7 @@ function renderDetail() {
   if (kind === "events") { const r = eventSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "global_modifiers") { const r = circSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "items") { const r = itemSections(d); main = r.sections; used = [...used, ...r.used]; }
+  if (kind === "buildings") { const r = buildingSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "actions") { const j = actionJobSection(d); if (j) main.push(j); used = [...used, "how"]; }
   const values = {}, details = [], logic = [];
   for (const f of Object.keys(d)) {

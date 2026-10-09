@@ -771,12 +771,17 @@ pub struct GoalDef {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
+/// A production of a building: `inputs` from its stock become `outputs` (and `money` for the owner).
+/// With `every` 0 a worker does it (`work` units, a job of `work_type` on the board); otherwise it happens
+/// by itself every `every` ticks (fields, pens, visitors…), money scaled by the building's integrity.
 pub struct RecipeDef {
     pub id: Id,
     pub name: String,
     pub inputs: BTreeMap<Id, u32>,
     pub outputs: BTreeMap<Id, u32>,
-    /// Work units per batch.
+    pub money: f64,
+    pub every: u64,
+    /// Work units per batch (with a worker).
     pub work: f32,
     /// Work type of the production job posted on the board.
     pub work_type: Id,
@@ -801,7 +806,7 @@ pub struct BuildingDef {
     pub footprint: Option<(i32, i32)>,
     pub hp: f32,
     pub tags: Vec<String>,
-    pub recipes: Vec<RecipeDef>,
+    pub productions: Vec<RecipeDef>,
     /// Items it can sell (shop catalog) with an optional fixed price (None = market price × markup).
     pub sells: BTreeMap<Id, Option<f64>>,
     pub markup: f32,
@@ -811,15 +816,10 @@ pub struct BuildingDef {
     pub cost: BTreeMap<Id, u32>,
     pub build_work: f32,
     pub consequences: Vec<DamageConsequenceDef>,
-    /// Items produced passively every `passive_interval` ticks (fields, pens, generators).
-    pub passive: BTreeMap<Id, u32>,
-    pub passive_interval: u64,
     /// Removes fog of war around it for the owner's faction (radius in cells).
     pub vision: i32,
     /// Goods sold outside the world every `economy.export_interval` ticks (money comes in from outside).
     pub exports: Vec<Id>,
-    /// Money earned every `economy.export_interval` ticks from visitors (tourism, gambling…).
-    pub income: f64,
     /// A stockpile: logistics may take anything it stores, not only what it produces.
     pub stockpile: bool,
 }

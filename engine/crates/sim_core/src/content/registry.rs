@@ -493,12 +493,12 @@ impl Validator<'_> {
         }
         for b in c.buildings.values() {
             let ctx = format!("edificio {}", b.id);
-            for r in &b.recipes {
+            for r in &b.productions {
                 for i in r.inputs.keys().chain(r.outputs.keys()) {
                     self.check(&c.items, "oggetto", i, &ctx);
                 }
             }
-            for i in b.sells.keys().chain(b.stock.keys()).chain(b.cost.keys()).chain(b.passive.keys()) {
+            for i in b.sells.keys().chain(b.stock.keys()).chain(b.cost.keys()) {
                 self.check(&c.items, "oggetto", i, &ctx);
             }
             for i in &b.exports {

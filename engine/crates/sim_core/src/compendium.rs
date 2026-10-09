@@ -38,7 +38,7 @@ pub fn build(content: &Content, params: &Params) -> Value {
         })).collect::<Vec<_>>(),
         "buildings": content.buildings.values().map(|b| json!({
             "id": b.id, "name": b.name, "description": b.description,
-            "recipes": b.recipes.iter().map(|r| json!({ "name": r.name, "inputs": r.inputs, "outputs": r.outputs })).collect::<Vec<_>>(),
+            "recipes": b.productions.iter().map(|r| json!({ "name": r.name, "inputs": r.inputs, "outputs": r.outputs })).collect::<Vec<_>>(),
             "sells": b.sells.keys().collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "characters": content.templates.values().filter(|t| t.unique).map(|t| json!({

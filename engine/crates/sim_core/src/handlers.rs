@@ -263,7 +263,7 @@ fn produce(world: &mut World, ctx: &JobCtx) -> JobResult {
         None => world
             .get::<Building>(dest)
             .and_then(|b| world.resource::<Content>().buildings.get(&b.def))
-            .map(|d| d.passive.iter().map(|(k, v)| (k.clone(), *v)).collect())
+            .map(|d| d.productions.iter().filter(|p| p.every > 0 && p.inputs.is_empty()).flat_map(|p| p.outputs.iter().map(|(k, v)| (k.clone(), *v))).collect())
             .unwrap_or_default(),
     };
     if outputs.is_empty() {

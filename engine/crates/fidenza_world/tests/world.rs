@@ -761,3 +761,38 @@ fn events_spawn_publish_in_turn_and_can_be_forced() {
     let heads: Vec<&String> = feed.iter().rev().take(3).map(|a| &a.headline).collect();
     assert!(heads[0] != heads[1] && heads[1] != heads[2], "{heads:?}");
 }
+
+/// Buildings: productions that happen by themselves add their outputs every `every` ticks and pay their
+/// money to the owner (scaled by integrity).
+#[test]
+fn productions_happen_by_themselves() {
+    use sim_core::buildings::{Building, Owner};
+    use sim_core::inventory::Stock;
+    let mut sim = sim(1);
+    let content = sim.content().clone();
+    let blds: Vec<(Entity, Building)> = sim.world.query::<(Entity, &Building)>().iter(&sim.world).map(|(e, b)| (e, b.clone())).collect();
+    // A field: outputs without inputs.
+    let (field, p) = blds
+        .iter()
+        .find_map(|(e, b)| content.buildings.get(&b.def)?.productions.iter().find(|p| p.every > 0 && p.inputs.is_empty() && !p.outputs.is_empty()).map(|p| (*e, p.clone())))
+        .unwrap();
+    let (item, n) = p.outputs.iter().next().map(|(k, v)| (k.clone(), *v)).unwrap();
+    let before = sim.world.get::<Stock>(field).unwrap().count(&item);
+    sim.world.resource_mut::<sim_core::time::SimClock>().tick = p.every * 10;
+    sim_core::buildings::buildings_tick(&mut sim.world);
+    assert_eq!(sim.world.get::<Stock>(field).unwrap().count(&item), before + n, "{item}");
+    // Visitors: money for the owner faction.
+    let (b, money, every) = blds
+        .iter()
+        .find_map(|(_, b)| {
+            let Owner::Faction(_) = &b.owner else { return None };
+            content.buildings.get(&b.def)?.productions.iter().find(|p| p.every > 0 && p.money > 0.0 && p.inputs.is_empty()).map(|p| (b.clone(), p.money, p.every))
+        })
+        .unwrap();
+    let Owner::Faction(f) = &b.owner else { unreachable!() };
+    let t0 = sim.world.resource::<sim_core::factions::Factions>().states[f].treasury;
+    sim.world.resource_mut::<sim_core::time::SimClock>().tick = every * 11;
+    sim_core::buildings::buildings_tick(&mut sim.world);
+    let gained = sim.world.resource::<sim_core::factions::Factions>().states[f].treasury - t0;
+    assert!(gained >= money * (b.hp / b.max_hp) as f64 - 0.01, "incasso {gained}, atteso almeno {money}");
+}

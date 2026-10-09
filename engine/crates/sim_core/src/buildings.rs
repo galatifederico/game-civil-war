@@ -181,17 +181,28 @@ pub fn buildings_tick(world: &mut World) {
         let b = world.get::<Building>(e).unwrap().clone();
         let Some(def) = content.buildings.get(&b.def) else { continue };
         let id = *world.get::<SimId>(e).unwrap();
-        // Passive production (fields, pens, generators): halted when destroyed.
-        if b.hp > 0.0 && def.passive_interval > 0 && tick.is_multiple_of(def.passive_interval) && tick > 0
-            && let Some(mut s) = world.get_mut::<Stock>(e) {
-                for (item, n) in &def.passive {
-                    s.add(item, *n);
+        // Productions that happen by themselves (fields, pens, visitors…): halted when destroyed.
+        if b.hp > 0.0 && tick > 0 {
+            for p in def.productions.iter().filter(|p| p.every > 0 && tick.is_multiple_of(p.every)) {
+                let Some(mut s) = world.get_mut::<Stock>(e) else { break };
+                if !p.inputs.iter().all(|(i, n)| s.count(i) >= *n) {
+                    continue;
+                }
+                for (i, n) in &p.inputs {
+                    s.remove(i, *n);
+                }
+                for (i, n) in &p.outputs {
+                    s.add(i, *n);
+                }
+                if p.money > 0.0 {
+                    crate::economy::earn_owner(world, &b.owner, p.money * (b.hp / b.max_hp) as f64);
                 }
             }
+        }
         // Post one production job per recipe whose inputs are available.
         if let (Some(job), true, Owner::Faction(f)) = (&process_job, b.hp > 0.0, &b.owner) {
             let stock = world.get::<Stock>(e).cloned().unwrap_or_default();
-            for (ri, r) in def.recipes.iter().enumerate() {
+            for (ri, r) in def.productions.iter().enumerate().filter(|(_, r)| r.every == 0) {
                 let payload = Some(crate::jobs::JobPayload::Recipe { building: id, index: ri });
                 let open = world.resource::<JobBoard>().jobs.values().any(|j| j.payload == payload);
                 let has = r.inputs.iter().all(|(i, n)| stock.count(i) >= *n);
@@ -232,7 +243,7 @@ pub fn process_recipe(world: &mut World, building: Entity, recipe: usize) -> Res
     let b = world.get::<Building>(building).cloned().ok_or("non è un edificio")?;
     let content = world.resource::<Content>().clone();
     let def = content.buildings.get(&b.def).ok_or("edificio sconosciuto")?;
-    let r = def.recipes.get(recipe).ok_or("ricetta sconosciuta")?;
+    let r = def.productions.get(recipe).ok_or("ricetta sconosciuta")?;
     let mut stock = world.get_mut::<Stock>(building).ok_or("nessun magazzino")?;
     if !r.inputs.iter().all(|(i, n)| stock.count(i) >= *n) {
         return Err("mancano gli ingredienti".into());

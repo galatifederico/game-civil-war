@@ -254,7 +254,7 @@ async fn ui_player(State(s): State<AppState>, Path(player): Path<String>) -> Api
     });
     let mut work_types: Vec<String> = content.jobs.values().map(|j| j.work_type.clone()).filter(|w| !w.is_empty()).collect();
     for b in content.buildings.values() {
-        work_types.extend(b.recipes.iter().map(|r| r.work_type.clone()).filter(|w| !w.is_empty()));
+        work_types.extend(b.productions.iter().map(|r| r.work_type.clone()).filter(|w| !w.is_empty()));
     }
     work_types.sort();
     work_types.dedup();

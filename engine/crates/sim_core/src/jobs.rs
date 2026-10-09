@@ -213,7 +213,7 @@ fn recipe_work_type(world: &World, j: &BoardJob) -> Option<String> {
     let Some(JobPayload::Recipe { building: bid, index: ri }) = j.payload else { return None };
     let b = world.resource::<IdIndex>().get(bid)?;
     let def = world.get::<crate::buildings::Building>(b)?.def.clone();
-    let r = world.resource::<Content>().buildings.get(&def)?.recipes.get(ri)?;
+    let r = world.resource::<Content>().buildings.get(&def)?.productions.get(ri)?;
     (!r.work_type.is_empty()).then(|| r.work_type.clone())
 }
 
