@@ -465,7 +465,7 @@ const CATALOG = {
     facets: [["Categoria", (d) => d.tags], ["Fa", (d) => actionKindName(d)], ["Gruppo", (d) => setsOf(d.id), (v) => name("action_sets", v)]],
     cols: [["Nome", (d) => esc(d.name)], ["Fa", (d) => actionKind(d)], ["Categorie", (d) => chips(d.tags)], ["Gruppi", (d) => chips(setsOf(d.id), "action_sets")], ["Peso", (d) => fmt(d.weight, 2), true],
       ["Attesa", (d) => d.cooldown || "", true], ["Requisiti", (d) => esc(D("actions", d.id).requires || "")], ["Ora in corso", (d) => L.byAction[d.id] ?? 0, true]] },
-  jobs: { title: "Lavori ed effetti", group: "Catalogo",
+  jobs: { title: "Lavori", group: "Catalogo", hidden: true,
     facets: [["Gestore", (d) => d.handler || "effetti"]],
     cols: [["Nome", (d) => esc(d.name)], ["Gestore", (d) => esc(d.handler || "effetti")], ["Durata", (d) => fmt(d.duration), true],
       ["Effetti", (d) => esc(D("jobs", d.id).effects || "")], ["Reato", (d) => esc(d.crime?.id ?? "")], ["Ora in corso", (d) => L.byJob[d.id] ?? 0, true]] },
@@ -502,10 +502,12 @@ const CATALOG = {
 const setsOf = (action) => Object.values(C("action_sets")).filter((s) => (s.actions ?? []).includes(action)).map((s) => s.id);
 const MODES = { Seat: "trono", Succession: "successione", Election: "elezione", Appointment: "nomina", Challenge: "sfida", Coup: "colpo di stato", Purchase: "acquisto" };
 function actionKindName(d) {
+  if (d._job) return "bacheca";
   const k = d.kind;
   return k === "Work" || k?.Work !== undefined ? "lavoro" : k === "Idle" ? "niente" : k?.Job ? "job" : k?.Effects ? "effetti" : "altro";
 }
 function actionKind(d) {
+  if (d._job) return "lavoro della bacheca";
   const k = d.kind;
   if (k === "Work" || k?.Work !== undefined) return "lavoro dalla bacheca";
   if (k === "Idle") return "niente";
@@ -545,7 +547,7 @@ const WORLD = {
 // ── Sidebar and routing ───────────────────────────────────────────────────────
 const SIDE = [
   ["Mondo", [["overview", "Panoramica"], ["map", "Mappa"], ["list/pawns", "Pedine"], ["list/bld", "Edifici in gioco"], ["events", "Eventi"]]],
-  ["Catalogo", Object.entries(CATALOG).map(([k, v]) => ["cat/" + k, v.title, k])],
+  ["Catalogo", Object.entries(CATALOG).filter(([, v]) => !v.hidden).map(([k, v]) => ["cat/" + k, v.title, k])],
   ["Strumenti", [["sprites", "Sprite"], ["params", "Parametri"], ["commands", "Comandi"], ["raw", "Contenuti grezzi"]]],
 ];
 function renderSide() {
@@ -612,6 +614,12 @@ const filters = { q: {}, dead: false, sort: {}, facet: {} };
 function listSpec() { return route.src === "cat" ? CATALOG[route.kind] : WORLD[route.kind]; }
 function listRows() {
   const spec = listSpec();
+  if (route.src === "cat" && route.kind === "actions") {
+    // Jobs no action uses: the board's work (posted by factions, buildings, orders).
+    const used = new Set(Object.values(C("actions")).map((a) => a.kind?.Job?.job).filter(Boolean));
+    const board = Object.values(C("jobs")).filter((j) => !used.has(j.id)).map((j) => ({ ...j, _job: true, tags: ["bacheca"] }));
+    return [...Object.values(C("actions")), ...board];
+  }
   if (route.src === "cat") return Object.values(C(route.kind)).map((d) => (d.id ? d : { ...d, id: d.name }));
   return spec.rows();
 }
@@ -640,7 +648,7 @@ function renderList() {
   }
   $("lCount").textContent = `${rows.length} voci`;
   const head = `<thead><tr><th class="nosort"></th>${spec.sprite ? '<th class="nosort"></th>' : ""}${spec.cols.map(([h], i) => `<th data-i="${i}">${esc(h)}${sort?.[0] === i ? (sort[1] > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead>`;
-  const body = rows.slice(0, 1000).map((d) => `<tr data-id="${esc(d.id)}"><td><a class="open" href="${esc(detailHref(d.id))}" title="Apri il dettaglio">▸</a></td>${spec.sprite ? `<td>${spriteHtml(route.src === "cat" ? route.kind : route.kind, d)}</td>` : ""}` +
+  const body = rows.slice(0, 1000).map((d) => `<tr data-id="${esc(d.id)}"><td><a class="open" href="${esc(d._job ? `#cat/jobs/${encodeURIComponent(d.id)}` : detailHref(d.id))}" title="Apri il dettaglio">▸</a></td>${spec.sprite ? `<td>${spriteHtml(route.src === "cat" ? route.kind : route.kind, d)}</td>` : ""}` +
     spec.cols.map(([, f, num]) => `<td class="${num ? "num" : ""}">${f(d)}</td>`).join("") + "</tr>").join("");
   $("lTable").innerHTML = head + "<tbody>" + body + "</tbody>";
   for (const th of $("lTable").querySelectorAll("th[data-i]")) th.onclick = () => {
@@ -648,14 +656,14 @@ function renderList() {
     filters.sort[route.kind] = cur?.[0] === i ? [i, -cur[1]] : [i, 1]; renderList();
   };
   for (const tr of $("lTable").querySelectorAll("tbody tr")) {
-    tr.ondblclick = (ev) => { if (!ev.target.closest("a")) location.hash = detailHref(tr.dataset.id); };
+    tr.ondblclick = (ev) => { if (!ev.target.closest("a")) location.hash = tr.querySelector("a.open").getAttribute("href"); };
   }
 }
 function detailHref(id) {
   return route.src === "cat" ? `#cat/${route.kind}/${encodeURIComponent(id)}` : `#ent/${id}`;
 }
 $("lFilter").oninput = () => { filters.q[route.kind] = $("lFilter").value; renderList(); };
-$("dBack").onclick = () => { if (route.kind === "ent") history.back(); else location.hash = "#cat/" + route.kind; };
+$("dBack").onclick = () => { if (route.kind === "ent") history.back(); else location.hash = "#cat/" + (route.kind === "jobs" ? "actions" : route.kind); };
 
 // ── Detail pages ─────────────────────────────────────────────────────────────
 function kv(obj) {
@@ -665,7 +673,7 @@ const FIELD = { default: "valore iniziale", group: "gruppo", max: "massimo", min
   spread: "variazione alla nascita", visible: "visibile", faction: "fazione", race: "razza", money: "soldi", unique: "unico", immortal: "immortale", virtual_entity: "senza corpo",
   category: "categoria", stack_max: "per slot", base_price: "prezzo base", reusable: "riutilizzabile", victory_points: "punti vittoria", durability: "vita", weight: "peso",
   hands: "mani", damage: "danni", range: "gittata", wear_slot: "si indossa su", cooldown: "attesa (tick)", suspicious: "sospetta", weight_: "peso", universal: "per tutti",
-  label: "etichetta", handler: "gestore", duration: "durata", work_type: "tipo di lavoro", skill: "abilità che velocizza", news: "notiziabilità", priority: "priorità",
+  label: "etichetta", handler: "gestore", duration: "durata", work_type: "tipo di lavoro", skill: "caratteristica che velocizza", min_rank: "rango minimo", news: "notiziabilità", priority: "priorità",
   innate: "di razza", mode: "modo", term: "mandato", grace: "tolleranza", vacancy_ticks: "vacanza (tick)", members_only: "solo membri", challenge_stat: "si sfida con",
   challenge_allies: "raggio degli alleati", seat_zone: "trono", grants_faction_control: "dà il controllo della fazione", kind: "tipo", stacking: "accumulo",
   progression: "progressione", hidden: "nascosto", body_plan: "corpo", sexes: "sessi", stat_ranges: "caratteristiche della razza", need_rates: "velocità dei bisogni", needs_exempt: "bisogni assenti", sex: "sesso", playable: "giocabile",
@@ -693,8 +701,11 @@ function delAt(o, p) {
   if (parent && typeof parent === "object") delete parent[p[p.length - 1]];
   if (p.length > 2 && parent && !Object.keys(parent).length) delAt(o, p.slice(0, -1));
 }
-async function saveDraft() {
-  const { kind, id, def } = draft;
+/** The definition a path edits: "@job" paths go to the job of the action being shown. */
+let jobDraft = null, pathPrefix = [];
+function on(p) { return p[0] === "@job" && jobDraft ? { dr: jobDraft, p: p.slice(1) } : { dr: draft, p }; }
+async function saveDraft(dr = draft) {
+  const { kind, id, def } = dr;
   try {
     const r = await put(`/api/admin/content/${kind}/${encodeURIComponent(id)}`, def);
     S.content[kind][id] = def;
@@ -705,11 +716,11 @@ async function saveDraft() {
   renderDetail();
   window.scrollTo(0, y); if (main) main.scrollTop = my;
 }
-const P = (p) => esc(JSON.stringify(p));
+const P = (p) => esc(JSON.stringify([...pathPrefix, ...p]));
 const del = (p, v) => `<button class="x" title="Togli" data-act="${v === undefined ? "delkey" : "rm"}" data-p="${P(p)}"${v === undefined ? "" : ` data-v="${esc(v)}"`}>×</button>`;
 /** A button opening the selection dialog. op: push (into a list), rm (from a list), key (new map key). */
 function picker(path, cands, { op = "push", free = false, value = 0, kind = null, title = "" } = {}) {
-  const i = pickers.push({ path, cands, op, free, value, kind, title }) - 1;
+  const i = pickers.push({ path: [...pathPrefix, ...path], cands, op, free, value, kind, title }) - 1;
   if (!cands.length && !free) return '<div class="muted" style="margin-top:4px">niente altro da aggiungere</div>';
   return `<div style="margin-top:4px"><button class="addbtn" data-act="pick" data-i="${i}">+ Aggiungi…</button></div>`;
 }
@@ -1030,9 +1041,10 @@ function withOp(c, op) {
 function condEditor(f, cond, { none, start, startLabel = "Aggiungi una condizione", nullLabel = "Togli la condizione", nullable = true }) {
   const base = Array.isArray(f) ? f : [f];
   if (cond == null) return `<div class="muted">${esc(none)}</div><button data-cstart="${P(base)}" data-v="${esc(JSON.stringify(start))}">${esc(startLabel)}</button>`;
-  if (cond === "Always") { cond = { All: [] }; setAt(draft.def, base, cond); }
-  if (cond === "Never") { cond = { Any: [] }; setAt(draft.def, base, cond); }
-  if (!(typeof cond === "object" && ("All" in cond || "Any" in cond))) { cond = { All: [cond] }; setAt(draft.def, base, cond); }
+  const norm = (c) => { const t = on([...pathPrefix, ...base]); setAt(t.dr.def, t.p, c); return c; };
+  if (cond === "Always") cond = norm({ All: [] });
+  if (cond === "Never") cond = norm({ Any: [] });
+  if (!(typeof cond === "object" && ("All" in cond || "Any" in cond))) cond = norm({ All: [cond] });
   const mode = "All" in cond ? "All" : "Any", list = cond[mode];
   const rows = list.map((c, i) => {
     const p = [...base, mode, i], cells = condCells(c, p);
@@ -1136,6 +1148,32 @@ function statusSections(d) {
     used: ["intensity", "per_tick", "resist_stat", "resist_per_point", "stats", "need_rates", "effects", "thresholds", "contagion"],
   };
 }
+/** Actions that do a job: the job's fields, edited here and saved on the job. */
+function actionJobSection(d) {
+  const jid = d.kind?.Job?.job, src = jid && C("jobs")[jid];
+  if (!src) return null;
+  const job = structuredClone(src);
+  jobDraft = { kind: "jobs", id: job.id, def: job };
+  pathPrefix = ["@job"];
+  try {
+    const vals = {};
+    for (const f of ["duration", "work_type", "skill", "range", "min_rank", "news", "suspicious"]) { const ed = fieldEditor("jobs", job, f); if (ed) vals[fieldLabel(f)] = ed[1]; }
+    const rows = effectRows(job.effects, "#");
+    const shared = Object.values(C("actions")).filter((a) => a.kind?.Job?.job === jid && a.id !== d.id);
+    return card("Come si fa", `<div class="muted" style="margin-bottom:6px">Il lavoro ${link("jobs", jid)}${shared.length ? ` (lo usano anche: ${shared.map((a) => link("actions", a.id)).join(" ")})` : ""}: le modifiche valgono per tutte le azioni che lo usano.</div>` +
+      kv(vals) +
+      (job.handler ? `<div class="muted">Una parte è scritta nel codice («${esc(job.handler)}»).</div>` : "") +
+      `<h4 style="margin:10px 0 4px">Requisiti del lavoro</h4>` + condEditor("requires", job.requires, { nullable: false }) +
+      `<h4 style="margin:10px 0 4px">Effetti</h4>` +
+      (rows.length ? `<table class="ed"><thead><tr><th>Su chi</th><th>Effetto</th><th>Modificatore</th><th>Condizione</th></tr></thead><tbody>${rows.map((x) => `<tr><td>${esc(x.who)}</td><td>${x.what}</td><td>${x.mod}</td><td class="muted">${esc(x.cond)}</td></tr>`).join("")}</tbody></table>` : '<div class="muted">nessun effetto</div>') +
+      `<details><summary class="muted">modifica gli effetti (JSON)</summary>${jsonBox(["effects"], job.effects ?? [])}</details>` +
+      `<h4 style="margin:10px 0 4px">Reato</h4>` + (job.crime ? `<div>${esc(job.crime.id)} · gravità ${fmt(job.crime.severity, 1)}</div>` : '<div class="muted">nessuno</div>') +
+      `<details><summary class="muted">modifica il reato (JSON)</summary>${jsonBox(["crime"], job.crime ?? null)}</details>` +
+      `<h4 style="margin:10px 0 4px">Tag richiesti</h4>` + tagList("jobs", ["required_tags"], job.required_tags, "required_tags"));
+  } finally {
+    pathPrefix = [];
+  }
+}
 /** Roles: like classes, plus how they change hands. */
 function titleSections(d) {
   const how = ["faction", "members_only", "mode", "seat_zone", "vacancy_ticks", "term", "grace", "challenge_stat", "challenge_allies", "grants_faction_control", "victory_points", "news"];
@@ -1187,16 +1225,18 @@ function raceActionSection(d) {
 }
 $("dBody").addEventListener("change", (ev) => {
   const el = ev.target; if (!draft) return;
-  if (el.dataset.cop) { const p = JSON.parse(el.dataset.cop); setAt(draft.def, p, withOp(getAt(draft.def, p), el.value)); saveDraft(); }
-  else if (el.dataset.cmode) { const p = JSON.parse(el.dataset.cmode), c = getAt(draft.def, p); setAt(draft.def, p, { [el.value]: c.All ?? c.Any ?? [] }); saveDraft(); }
-  else if (el.dataset.cadd && el.value) { const p = JSON.parse(el.dataset.cadd); setAt(draft.def, p, [...(getAt(draft.def, p) ?? []), COND_KINDS.find(([k]) => k === el.value)[2]()]); saveDraft(); }
+  const at = (attr) => on(JSON.parse(attr));
+  if (el.dataset.cop) { const { dr, p } = at(el.dataset.cop); setAt(dr.def, p, withOp(getAt(dr.def, p), el.value)); saveDraft(dr); }
+  else if (el.dataset.cmode) { const { dr, p } = at(el.dataset.cmode), c = getAt(dr.def, p); setAt(dr.def, p, { [el.value]: c.All ?? c.Any ?? [] }); saveDraft(dr); }
+  else if (el.dataset.cadd && el.value) { const { dr, p } = at(el.dataset.cadd); setAt(dr.def, p, [...(getAt(dr.def, p) ?? []), COND_KINDS.find(([k]) => k === el.value)[2]()]); saveDraft(dr); }
 }, true);
 $("dBody").addEventListener("click", (ev) => {
   const el = ev.target.closest("button"); if (!el || !draft) return;
-  if (el.dataset.cstart) { setAt(draft.def, JSON.parse(el.dataset.cstart), JSON.parse(el.dataset.v)); saveDraft(); }
-  else if (el.dataset.tadd) { const p = JSON.parse(el.dataset.tadd); setAt(draft.def, p, [...(getAt(draft.def, p) ?? []), el.dataset.v ? JSON.parse(el.dataset.v) : { name: "Nuova soglia", below: 10, effects: [], stats: {} }]); saveDraft(); }
-  else if (el.dataset.cnull) { setAt(draft.def, JSON.parse(el.dataset.cnull), null); saveDraft(); }
-  else if (el.dataset.act === "cdel") { const p = JSON.parse(el.dataset.p), list = getAt(draft.def, p.slice(0, -1)); list.splice(p[p.length - 1], 1); saveDraft(); ev.stopImmediatePropagation(); }
+  const at = (attr) => on(JSON.parse(attr));
+  if (el.dataset.cstart) { const { dr, p } = at(el.dataset.cstart); setAt(dr.def, p, JSON.parse(el.dataset.v)); saveDraft(dr); }
+  else if (el.dataset.tadd) { const { dr, p } = at(el.dataset.tadd); setAt(dr.def, p, [...(getAt(dr.def, p) ?? []), el.dataset.v ? JSON.parse(el.dataset.v) : { name: "Nuova soglia", below: 10, effects: [], stats: {} }]); saveDraft(dr); }
+  else if (el.dataset.cnull) { const { dr, p } = at(el.dataset.cnull); setAt(dr.def, p, null); saveDraft(dr); }
+  else if (el.dataset.act === "cdel") { const { dr, p } = at(el.dataset.p), list = getAt(dr.def, p.slice(0, -1)); list.splice(p[p.length - 1], 1); saveDraft(dr); ev.stopImmediatePropagation(); }
 }, true);
 
 // What a definition does to stats: [stat, "modifier"] pairs (abilities, statuses, items…).
@@ -1436,6 +1476,7 @@ function renderDetail() {
   if (!src) { $("dBody").innerHTML = `<div class="card">Voce non trovata.</div>`; return; }
   const d = structuredClone(src);
   draft = { kind, id: d.id, def: d };
+  jobDraft = null;
   pickers = [];
   const editable = EDITABLE.includes(kind);
   // Main sections: the race's own, else one per list/map field plus a card of single values.
@@ -1447,6 +1488,7 @@ function renderDetail() {
   if (kind === "needs") { const r = needSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "modes") { const r = modeSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "statuses") { const r = statusSections(d); main = r.sections; used = [...used, ...r.used]; }
+  if (kind === "actions") { const j = actionJobSection(d); if (j) main.push(j); }
   const values = {}, details = [], logic = [];
   for (const f of Object.keys(d)) {
     if (used.includes(f)) continue;
@@ -1481,12 +1523,12 @@ const EDITABLE = ["stats", "needs", "body_plans", "races", "action_sets", "modes
   "buildings", "templates", "spawners", "triggers", "collections", "titles", "news_sources", "global_modifiers", "supplies"];
 $("dBody").addEventListener("change", (ev) => {
   const el = ev.target.closest("[data-set]"); if (!el || !draft) return;
-  const p = JSON.parse(el.dataset.set), t = el.dataset.t;
+  const { dr, p } = on(JSON.parse(el.dataset.set)), t = el.dataset.t;
   let v = t === "bool" ? el.checked : el.value;
   if (t === "num" || t === "numnull") v = el.value === "" ? null : Number(el.value);
   if (t === "strnull" && v === "") v = null;
-  if (v === null && p.length > 1) delAt(draft.def, p); else setAt(draft.def, p, v);
-  saveDraft();
+  if (v === null && p.length > 1) delAt(dr.def, p); else setAt(dr.def, p, v);
+  saveDraft(dr);
 });
 $("dBody").addEventListener("input", (ev) => {
   // Filter of the race stat table (no saving).
@@ -1514,24 +1556,26 @@ $("dBody").addEventListener("toggle", (ev) => {
 }, true);
 $("dBody").addEventListener("click", (ev) => {
   const el = ev.target.closest("button[data-act]"); if (!el || !draft) return;
-  const a = el.dataset.act, def = draft.def;
+  const a = el.dataset.act;
+  let dr = draft;
   if (a === "pick") { openPicker(pickers[Number(el.dataset.i)]); return;
   } else if (a === "groups") {
     for (const g of $("dBody").querySelectorAll("details.statgroup")) g.open = el.dataset.v === "open";
     return;
   } else {
-    const p = JSON.parse(el.dataset.p);
+    const t = on(JSON.parse(el.dataset.p)), p = t.p, def = t.dr.def;
+    dr = t.dr;
     if (a === "rm") setAt(def, p, (getAt(def, p) ?? []).filter((x) => x !== el.dataset.v));
     else if (a === "push") setAt(def, p, [...(getAt(def, p) ?? []), el.dataset.v]);
     else if (a === "delkey") delAt(def, p);
     else if (a === "json") {
       let v;
       try { v = JSON.parse(el.parentElement.previousElementSibling.value); } catch (e) { toast("JSON non valido: " + e.message, true); return; }
-      if (!p.length) { if (v?.id !== draft.id) { toast("l'id non si cambia da qui", true); return; } draft.def = v; }
+      if (!p.length) { if (v?.id !== dr.id) { toast("l'id non si cambia da qui", true); return; } dr.def = v; }
       else setAt(def, p, v);
     }
   }
-  saveDraft();
+  saveDraft(dr);
 });
 
 // ── Selection dialog: every available value in a table, with search, filters and multiple choice ──
@@ -1605,14 +1649,15 @@ $("pkCancel").onclick = closePicker;
 $("pickdlg").onclick = (ev) => { if (ev.target.id === "pickdlg") closePicker(); };
 document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && pickState.pk) closePicker(); });
 function applyPick() {
-  const pk = pickState.pk, vals = [...pickState.sel], def = draft.def;
+  const pk = pickState.pk, vals = [...pickState.sel];
   if (!pk || !vals.length) return;
-  const list = getAt(def, pk.path) ?? [];
-  if (pk.op === "key") for (const v of vals) setAt(def, [...pk.path, v], pk.value);
-  else if (pk.op === "rm") setAt(def, pk.path, list.filter((x) => !vals.includes(x)));
-  else setAt(def, pk.path, [...list.filter((x) => !vals.includes(x)), ...vals]);
+  const { dr, p: path } = on(pk.path), def = dr.def;
+  const list = getAt(def, path) ?? [];
+  if (pk.op === "key") for (const v of vals) setAt(def, [...path, v], pk.value);
+  else if (pk.op === "rm") setAt(def, path, list.filter((x) => !vals.includes(x)));
+  else setAt(def, path, [...list.filter((x) => !vals.includes(x)), ...vals]);
   closePicker();
-  saveDraft();
+  saveDraft(dr);
 }
 $("pkOk").onclick = applyPick;
 
