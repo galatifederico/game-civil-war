@@ -93,6 +93,8 @@ button.x:hover { border-color: var(--warn); }
 .chip button.x { padding: 0 3px; line-height: 14px; }
 .scrollbox { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; margin-top: 6px; }
 .card.wide { grid-column: 1 / -1; }
+tr.grouprow td { background: var(--chip); font-weight: 600; padding-top: 8px; }
+tr.grouprow:hover td { background: var(--chip); }
 details.statgroup { border: 1px solid var(--line); border-radius: 6px; margin-top: 6px; }
 details.statgroup > summary { padding: 6px 10px; cursor: pointer; background: var(--chip); border-radius: 6px; }
 details.statgroup[open] > summary { border-bottom: 1px solid var(--line); border-radius: 6px 6px 0 0; }
@@ -452,9 +454,9 @@ const CATALOG = {
     facets: [["Fazione", (d) => d.faction, factionName], ["Come si ottiene", (d) => d.mode, (v) => MODES[v] ?? v]],
     cols: [["Ruolo", (d) => esc(d.name)], ["Fazione", (d) => esc(d.faction ? factionName(d.faction) : "—")], ["Come si ottiene", (d) => esc(MODES[d.mode] ?? d.mode)],
       ["Titolare", (d) => { const h = holderOf(d.id); return h ? elink(h) : '<span class="muted">vacante</span>'; }], ["Requisiti", (d) => esc(D("titles", d.id).requires || "—")]] },
-  stats: { title: "Caratteristiche", group: "Catalogo",
+  stats: { title: "Caratteristiche", group: "Catalogo", groupBy: (d) => d.group || "Altre",
     facets: [["Gruppo", (d) => d.group]],
-    cols: [["Nome", (d) => esc(d.name)], ["Gruppo", (d) => esc(d.group)], ["Intervallo", (d) => `${fmt(d.min)} – ${fmt(d.max)}`], ["Iniziale", (d) => `${fmt(d.default)}${d.spread ? " ± " + fmt(d.spread) : ""}`],
+    cols: [["Nome", (d) => esc(d.name)], ["Intervallo", (d) => `${fmt(d.min)} – ${fmt(d.max)}`], ["Iniziale", (d) => `${fmt(d.default)}${d.spread ? " ± " + fmt(d.spread) : ""}`],
       ["Media nel mondo", (d) => { const a = agg(L.stats[d.id]); return a.avg == null ? "—" : `${bar(a.avg - (d.min ?? 0), (d.max > 1000 ? a.max : d.max) - (d.min ?? 0))} ${fmt(a.avg)}`; }],
       ["Min", (d) => fmt(agg(L.stats[d.id]).min), true], ["Max", (d) => fmt(agg(L.stats[d.id]).max), true]] },
   needs: { title: "Bisogni", group: "Catalogo",
@@ -545,9 +547,17 @@ const WORLD = {
 };
 
 // ── Sidebar and routing ───────────────────────────────────────────────────────
+// Sections of the catalog in the side menu.
+const CATALOG_SECTIONS = [
+  ["Pedine", ["races", "classes", "titles", "templates", "stats", "needs", "abilities", "statuses", "body_plans"]],
+  ["Comportamento", ["actions", "action_sets", "modes"]],
+  ["Oggetti", ["items", "collections", "supplies", "fluids"]],
+  ["Edifici", ["buildings"]],
+  ["Fazioni e mondo", ["factions", "spawners", "triggers", "global_modifiers", "news_sources"]],
+];
 const SIDE = [
   ["Mondo", [["overview", "Panoramica"], ["map", "Mappa"], ["list/pawns", "Pedine"], ["list/bld", "Edifici in gioco"], ["events", "Eventi"]]],
-  ["Catalogo", Object.entries(CATALOG).filter(([, v]) => !v.hidden).map(([k, v]) => ["cat/" + k, v.title, k])],
+  ...CATALOG_SECTIONS.map(([g, kinds]) => [g, kinds.filter((k) => CATALOG[k] && !CATALOG[k].hidden).map((k) => ["cat/" + k, CATALOG[k].title, k])]),
   ["Strumenti", [["sprites", "Sprite"], ["params", "Parametri"], ["commands", "Comandi"], ["raw", "Contenuti grezzi"]]],
 ];
 function renderSide() {
@@ -647,15 +657,28 @@ function renderList() {
     rows = rows.slice().sort((a, b) => { const x = val(a), y = val(b); return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y))) * dir; });
   }
   $("lCount").textContent = `${rows.length} voci`;
+  // Lists split by category: groups in order (main first, counters last), rows keep their sort inside.
+  const groupOf = spec.groupBy;
+  if (groupOf) {
+    const order = [...new Set(rows.map(groupOf))].sort((a, b) => groupRank(a) - groupRank(b) || a.localeCompare(b));
+    rows = order.flatMap((g) => rows.filter((d) => groupOf(d) === g));
+  }
   const head = `<thead><tr><th class="nosort"></th>${spec.sprite ? '<th class="nosort"></th>' : ""}${spec.cols.map(([h], i) => `<th data-i="${i}">${esc(h)}${sort?.[0] === i ? (sort[1] > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead>`;
-  const body = rows.slice(0, 1000).map((d) => `<tr data-id="${esc(d.id)}"><td><a class="open" href="${esc(d._job ? `#cat/jobs/${encodeURIComponent(d.id)}` : detailHref(d.id))}" title="Apri il dettaglio">▸</a></td>${spec.sprite ? `<td>${spriteHtml(route.src === "cat" ? route.kind : route.kind, d)}</td>` : ""}` +
-    spec.cols.map(([, f, num]) => `<td class="${num ? "num" : ""}">${f(d)}</td>`).join("") + "</tr>").join("");
+  const ncols = 1 + (spec.sprite ? 1 : 0) + spec.cols.length;
+  let lastGroup = null;
+  const body = rows.slice(0, 1000).map((d) => {
+    const g = groupOf ? groupOf(d) : null, n = g !== null && g !== lastGroup ? rows.filter((x) => groupOf(x) === g).length : 0;
+    const head = g !== null && g !== lastGroup ? `<tr class="grouprow"><td colspan="${ncols}">${esc(g)} <span class="muted">${n}</span></td></tr>` : "";
+    lastGroup = g;
+    return head + `<tr data-id="${esc(d.id)}"><td><a class="open" href="${esc(d._job ? `#cat/jobs/${encodeURIComponent(d.id)}` : detailHref(d.id))}" title="Apri il dettaglio">▸</a></td>${spec.sprite ? `<td>${spriteHtml(route.src === "cat" ? route.kind : route.kind, d)}</td>` : ""}` +
+    spec.cols.map(([, f, num]) => `<td class="${num ? "num" : ""}">${f(d)}</td>`).join("") + "</tr>";
+  }).join("");
   $("lTable").innerHTML = head + "<tbody>" + body + "</tbody>";
   for (const th of $("lTable").querySelectorAll("th[data-i]")) th.onclick = () => {
     const i = Number(th.dataset.i), cur = filters.sort[route.kind];
     filters.sort[route.kind] = cur?.[0] === i ? [i, -cur[1]] : [i, 1]; renderList();
   };
-  for (const tr of $("lTable").querySelectorAll("tbody tr")) {
+  for (const tr of $("lTable").querySelectorAll("tbody tr[data-id]")) {
     tr.ondblclick = (ev) => { if (!ev.target.closest("a")) location.hash = tr.querySelector("a.open").getAttribute("href"); };
   }
 }
