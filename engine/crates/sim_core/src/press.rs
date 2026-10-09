@@ -6,14 +6,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::content::{Content, Truth};
 use crate::crime::Detained;
-use crate::effects::{apply_effects, EffectCtx};
+use crate::effects::EffectCtx;
 use crate::events::{kind, EventBuilder, EventLog, SimEvent};
 use crate::factions::{FactionMember, Factions};
 use crate::ids::{IdIndex, SimId};
 use crate::map::Position;
 use crate::params::Params;
 use crate::rng::SimRng;
-use crate::stats::{Dead, Stats, Tags, TemplateId};
+use crate::stats::{Dead, Stats, Tags};
 use crate::time::SimClock;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -337,30 +337,3 @@ fn apply_impacts(world: &mut World, author: Option<Entity>, truth: Truth, topics
     }
 }
 
-/// Automatic news sources (e.g. an AI spreading fake news from tick 0).
-pub fn news_sources(world: &mut World) {
-    let tick = world.resource::<SimClock>().tick;
-    let sources: Vec<_> = world.resource::<Content>().news_sources.values().cloned().collect();
-    for src in sources {
-        if tick < src.start_tick || src.interval == 0 || !(tick - src.start_tick).is_multiple_of(src.interval) || src.headlines.is_empty() {
-            continue;
-        }
-        let author = match &src.author {
-            Some(t) => {
-                let found = crate::sorted_entities::<TemplateId>(world)
-                    .into_iter()
-                    .find(|e| world.get::<TemplateId>(*e).is_some_and(|x| &x.0 == t) && world.get::<Dead>(*e).is_none());
-                match found {
-                    Some(e) => Some(e),
-                    None => continue,
-                }
-            }
-            None => None,
-        };
-        let Some(item) = world.resource_mut::<SimRng>().pick(&src.headlines).cloned() else { continue };
-        let ctx = EffectCtx::new(author, None, format!("news:{}", src.id));
-        apply_effects(world, &ctx, &item.effects);
-        let headline = crate::effects::substitute(world, &item.headline, author, None);
-        publish(world, author, headline, src.truth, item.topics.clone(), None, None);
-    }
-}

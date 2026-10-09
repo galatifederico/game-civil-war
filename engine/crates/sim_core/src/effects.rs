@@ -94,6 +94,18 @@ pub fn apply_effect(world: &mut World, ctx: &EffectCtx, effect: &Effect) {
             }
         }
         Effect::All(v) => apply_effects(world, ctx, v),
+        Effect::Cycle(v) => {
+            if !v.is_empty() {
+                let n = {
+                    let mut st = world.resource_mut::<crate::dungeon::TriggerState>();
+                    let c = st.cycles.entry(ctx.origin.clone()).or_insert(0);
+                    let n = *c;
+                    *c += 1;
+                    n
+                };
+                apply_effect(world, ctx, &v[(n as usize) % v.len()]);
+            }
+        }
         Effect::Chance(p, inner) => {
             if world.resource_mut::<SimRng>().chance(*p) {
                 apply_effect(world, ctx, inner);
@@ -283,7 +295,13 @@ pub fn apply_effect(world: &mut World, ctx: &EffectCtx, effect: &Effect) {
                 d.0 = (d.0 + amount).clamp(0.0, 100.0);
             }
         }
-        Effect::Spawn { template, count, zone } => {
+        Effect::Spawn { template, count, zone, faction, tether, max_alive } => {
+            if *max_alive > 0 {
+                let mut q = world.query_filtered::<&crate::dungeon::SpawnedBy, Without<crate::stats::Dead>>();
+                if q.iter(world).filter(|x| x.0 == ctx.origin).count() as u32 >= *max_alive {
+                    return;
+                }
+            }
             let pos = match zone {
                 Some(z) => {
                     let map = world.resource::<WorldMap>().clone();
@@ -291,12 +309,15 @@ pub fn apply_effect(world: &mut World, ctx: &EffectCtx, effect: &Effect) {
                 }
                 None => subj.and_then(|e| world.get::<Position>(e).copied()),
             };
+            let ov = crate::lifecycle::SpawnOverrides { faction: faction.clone(), tether: tether.clone(), ..Default::default() };
             for _ in 0..*count {
                 let p = pos.or_else(|| {
                     let map = world.resource::<WorldMap>().clone();
                     map.random_cell(&map.zones[0].id.clone(), &mut world.resource_mut::<SimRng>())
                 });
-                crate::lifecycle::spawn_template(world, template, p, &Default::default());
+                if let Some(e) = crate::lifecycle::spawn_template(world, template, p, &ov) {
+                    world.entity_mut(e).insert(crate::dungeon::SpawnedBy(ctx.origin.clone()));
+                }
             }
         }
         Effect::MarketShock { item, tag, demand, supply, duration } => {
@@ -312,7 +333,8 @@ pub fn apply_effect(world: &mut World, ctx: &EffectCtx, effect: &Effect) {
             *world.resource_mut::<Flags>().0.entry(flag.clone()).or_insert(0.0) += amount;
         }
         Effect::Publish { headline, truth, topics } => {
-            crate::press::publish(world, subj, headline.clone(), *truth, topics.clone(), ctx.target, None);
+            let headline = substitute(world, headline, subj, ctx.target);
+            crate::press::publish(world, subj, headline, *truth, topics.clone(), ctx.target, None);
         }
         Effect::Emit { kind, message, news } => {
             let pos = subj.and_then(|e| world.get::<Position>(e).copied());
@@ -476,7 +498,7 @@ pub fn origin_label(world: &World, origin: &str) -> String {
         "job" => c.jobs.get(id).map(|d| d.name.clone()),
         "status" => c.statuses.get(id).map(|d| d.name.clone()),
         "item" => c.items.get(id).map(|d| d.name.clone()),
-        "trigger" => c.triggers.get(id).map(|d| if d.name.is_empty() { d.id.clone() } else { d.name.clone() }),
+        "event" => c.events.get(id).map(|d| if d.name.is_empty() { d.id.clone() } else { d.name.clone() }),
         _ => None,
     };
     name.unwrap_or_else(|| origin.to_string())

@@ -1,4 +1,4 @@
-//! Spawning & Tethering System and Trigger Conditions Engine.
+//! Events (things that happen by themselves: spawns, news, triggers) and tethering.
 
 use std::collections::BTreeMap;
 
@@ -9,9 +9,7 @@ use crate::content::{Content, Tether};
 use crate::effects::{apply_effects, eval_condition, EffectCtx};
 use crate::events::{kind, EventBuilder, EventLog};
 use crate::ids::SimId;
-use crate::lifecycle::{spawn_template, SpawnOverrides};
 use crate::map::{Position, WorldMap};
-use crate::rng::SimRng;
 use crate::stats::{Dead, TemplateId};
 use crate::time::SimClock;
 
@@ -24,7 +22,11 @@ pub struct SpawnedBy(pub String);
 
 #[derive(Resource, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TriggerState {
+    /// Event id → last tick it happened.
     pub fired: BTreeMap<String, u64>,
+    /// Source → how many times its `Cycle` effects ran (which one comes next).
+    #[serde(default)]
+    pub cycles: BTreeMap<String, u64>,
 }
 
 pub fn release(world: &mut World, e: Entity, reason: &str) {
@@ -64,76 +66,60 @@ pub fn tethers(world: &mut World) {
     }
 }
 
-pub fn spawners(world: &mut World) {
+/// Events whose time has come and whose condition holds happen (once, or every `every` ticks).
+pub fn events(world: &mut World) {
     let tick = world.resource::<SimClock>().tick;
-    let spawners: Vec<_> = world.resource::<Content>().spawners.values().cloned().collect();
-    for s in spawners {
-        if s.interval == 0 || !tick.is_multiple_of(s.interval) {
+    let events: Vec<_> = world.resource::<Content>().events.values().cloned().collect();
+    for ev in events {
+        if tick < ev.from_tick {
             continue;
         }
-        if let Some(summoner) = &s.summoner {
-            let alive = crate::sorted_entities::<TemplateId>(world)
-                .into_iter()
-                .any(|e| world.get::<TemplateId>(e).is_some_and(|t| &t.0 == summoner) && world.get::<Dead>(e).is_none());
-            if !alive {
-                continue;
-            }
-        }
-        if !eval_condition(world, &EffectCtx::new(None, None, format!("spawner:{}", s.id)), &s.active_when) {
-            continue;
-        }
-        let alive = {
-            let mut q = world.query_filtered::<&SpawnedBy, Without<Dead>>();
-            q.iter(world).filter(|x| x.0 == s.id).count() as u32
-        };
-        if s.max_alive > 0 && alive >= s.max_alive {
-            continue;
-        }
-        let map = world.resource::<WorldMap>().clone();
-        let pos = map.random_cell(&s.zone, &mut world.resource_mut::<SimRng>());
-        let ov = SpawnOverrides { faction: s.faction.clone(), tether: s.tether.clone(), ..Default::default() };
-        if let Some(e) = spawn_template(world, &s.template, pos, &ov) {
-            world.entity_mut(e).insert(SpawnedBy(s.id.clone()));
-        }
-    }
-}
-
-pub fn triggers(world: &mut World) {
-    let tick = world.resource::<SimClock>().tick;
-    let triggers: Vec<_> = world.resource::<Content>().triggers.values().cloned().collect();
-    for t in triggers {
-        let last = world.resource::<TriggerState>().fired.get(&t.id).copied();
-        match last {
-            Some(_) if !t.repeat => continue,
-            Some(l) if tick < l + t.cooldown.max(1) => continue,
+        match world.resource::<TriggerState>().fired.get(&ev.id).copied() {
+            Some(_) if ev.every == 0 => continue,
+            Some(l) if tick < l + ev.every => continue,
             _ => {}
         }
-        let ctx = EffectCtx::new(None, None, format!("trigger:{}", t.id));
-        if !eval_condition(world, &ctx, &t.when) {
+        let by = match &ev.by {
+            Some(t) => match by_template(world, t) {
+                Some(e) => Some(e),
+                None => continue,
+            },
+            None => None,
+        };
+        let ctx = EffectCtx::new(by, None, format!("event:{}", ev.id));
+        if !eval_condition(world, &ctx, &ev.when) {
             continue;
         }
-        world.resource_mut::<TriggerState>().fired.insert(t.id.clone(), tick);
-        world.resource_mut::<EventLog>().push(
-            tick,
-            EventBuilder::new(kind::TRIGGER, if t.name.is_empty() { t.id.clone() } else { t.name.clone() })
-                .news(t.news)
-                .tags(["trigger", t.id.as_str()]),
-        );
-        apply_effects(world, &ctx, &t.effects);
+        happen(world, &ev, &ctx, false);
     }
 }
 
-/// Fires a trigger now, ignoring its condition (admin/MCP `trigger_event`).
-pub fn fire_trigger(world: &mut World, id: &str) -> bool {
-    let Some(t) = world.resource::<Content>().triggers.get(id).cloned() else { return false };
+fn by_template(world: &mut World, template: &str) -> Option<Entity> {
+    crate::sorted_entities::<TemplateId>(world)
+        .into_iter()
+        .find(|e| world.get::<TemplateId>(*e).is_some_and(|t| t.0 == template) && world.get::<Dead>(*e).is_none())
+}
+
+fn happen(world: &mut World, ev: &crate::content::EventDef, ctx: &EffectCtx, forced: bool) {
     let tick = world.resource::<SimClock>().tick;
-    world.resource_mut::<TriggerState>().fired.insert(t.id.clone(), tick);
-    world.resource_mut::<EventLog>().push(
-        tick,
-        EventBuilder::new(kind::TRIGGER, format!("{} (forzato)", if t.name.is_empty() { &t.id } else { &t.name }))
-            .news(t.news)
-            .tags(["trigger", t.id.as_str()]),
-    );
-    apply_effects(world, &EffectCtx::new(None, None, format!("trigger:{id}")), &t.effects);
+    world.resource_mut::<TriggerState>().fired.insert(ev.id.clone(), tick);
+    // Named events go in the log (spawns and news speak for themselves).
+    if !ev.name.is_empty() {
+        world.resource_mut::<EventLog>().push(
+            tick,
+            EventBuilder::new(kind::TRIGGER, if forced { format!("{} (forzato)", ev.name) } else { ev.name.clone() })
+                .news(ev.news)
+                .tags(["trigger", ev.id.as_str()]),
+        );
+    }
+    apply_effects(world, ctx, &ev.effects);
+}
+
+/// Makes an event happen now, ignoring its condition and timing (admin/MCP `trigger_event`).
+pub fn fire_trigger(world: &mut World, id: &str) -> bool {
+    let Some(ev) = world.resource::<Content>().events.get(id).cloned() else { return false };
+    let by = ev.by.as_deref().and_then(|t| by_template(world, t));
+    let ctx = EffectCtx::new(by, None, format!("event:{id}"));
+    happen(world, &ev, &ctx, true);
     true
 }

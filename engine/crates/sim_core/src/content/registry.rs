@@ -49,12 +49,10 @@ pub struct ContentData {
     pub map: Option<MapDef>,
     pub templates: BTreeMap<Id, EntityTemplate>,
     pub placements: Vec<Placement>,
-    pub spawners: BTreeMap<Id, SpawnerDef>,
-    pub triggers: BTreeMap<Id, TriggerDef>,
+    pub events: BTreeMap<Id, EventDef>,
     pub collections: BTreeMap<Id, CollectionDef>,
     pub titles: BTreeMap<Id, TitleDef>,
     pub press: PressDef,
-    pub news_sources: BTreeMap<Id, NewsSourceDef>,
     pub news_impacts: Vec<NewsImpactDef>,
     pub victory: Vec<VictoryDef>,
     pub global_modifiers: BTreeMap<Id, GlobalModifierDef>,
@@ -101,7 +99,7 @@ fn need_stats(c: &mut ContentData) {
 /// Kinds of definitions (keyed by id) the admin console can replace while the game runs.
 pub const EDITABLE_KINDS: &[&str] = &[
     "stats", "needs", "body_plans", "races", "action_sets", "modes", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
-    "buildings", "templates", "spawners", "triggers", "collections", "titles", "news_sources", "global_modifiers", "supplies",
+    "buildings", "templates", "events", "collections", "titles", "global_modifiers", "supplies",
 ];
 
 /// Adds one pack on top of the content merged so far (same id = replaced).
@@ -145,14 +143,12 @@ fn merge_pack(c: &mut ContentData, p: ContentPack) {
     }
     merge(&mut c.templates, p.templates, |d| &d.id);
     c.placements.extend(p.placements);
-    merge(&mut c.spawners, p.spawners, |d| &d.id);
-    merge(&mut c.triggers, p.triggers, |d| &d.id);
+    merge(&mut c.events, p.events, |d| &d.id);
     merge(&mut c.collections, p.collections, |d| &d.id);
     merge(&mut c.titles, p.titles, |d| &d.id);
     if let Some(press) = p.press {
         c.press = press;
     }
-    merge(&mut c.news_sources, p.news_sources, |d| &d.id);
     c.news_impacts.extend(p.news_impacts);
     c.victory.extend(p.victory);
     merge(&mut c.global_modifiers, p.global_modifiers, |d| &d.id);
@@ -634,23 +630,13 @@ impl Validator<'_> {
                 Placement::Player { .. } => {}
             }
         }
-        for s in c.spawners.values() {
-            let ctx = format!("spawner {}", s.id);
-            self.check(&c.templates, "template", &s.template, &ctx);
-            self.zone(&s.zone, &ctx);
-            self.cond(&s.active_when, &ctx);
-            if let Some(t) = &s.summoner {
+        for ev in c.events.values() {
+            let ctx = format!("evento {}", ev.id);
+            self.cond(&ev.when, &ctx);
+            self.effects(&ev.effects, &ctx);
+            if let Some(t) = &ev.by {
                 self.check(&c.templates, "template", t, &ctx);
             }
-            if let Some(t) = &s.tether {
-                self.zone(&t.zone, &ctx);
-                self.cond(&t.release, &ctx);
-            }
-        }
-        for t in c.triggers.values() {
-            let ctx = format!("trigger {}", t.id);
-            self.cond(&t.when, &ctx);
-            self.effects(&t.effects, &ctx);
         }
         for col in c.collections.values() {
             for i in &col.items {
@@ -678,14 +664,6 @@ impl Validator<'_> {
             }
             for a in &t.actions {
                 self.check(&c.actions, "azione", a, &ctx);
-            }
-        }
-        for n in c.news_sources.values() {
-            if let Some(a) = &n.author {
-                self.check(&c.templates, "template", a, &format!("fonte di notizie {}", n.id));
-            }
-            for h in &n.headlines {
-                self.effects(&h.effects, &format!("fonte di notizie {}", n.id));
             }
         }
         for v in &c.victory {
@@ -745,7 +723,7 @@ impl Validator<'_> {
                 }
                 self.effect(inner, ctx)
             }
-            Effect::All(v) => self.effects(v, ctx),
+            Effect::All(v) | Effect::Cycle(v) => self.effects(v, ctx),
             Effect::Chance(_, inner) => self.effect(inner, ctx),
             Effect::If(cond, inner) => {
                 self.cond(cond, ctx);
@@ -775,10 +753,17 @@ impl Validator<'_> {
             }
             Effect::Transmute(r) => self.check(&c.races, "razza", r, ctx),
             Effect::AddClass(cl) | Effect::RemoveClass(cl) => self.check(&c.classes, "classe", cl, ctx),
-            Effect::Spawn { template, zone, .. } => {
+            Effect::Spawn { template, zone, faction, tether, .. } => {
                 self.check(&c.templates, "template", template, ctx);
                 if let Some(z) = zone {
                     self.zone(z, ctx);
+                }
+                if let Some(f) = faction {
+                    self.check(&c.factions, "fazione", f, ctx);
+                }
+                if let Some(t) = tether {
+                    self.zone(&t.zone, ctx);
+                    self.cond(&t.release, ctx);
                 }
             }
             Effect::MarketShock { item: Some(i), .. } => self.check(&c.items, "oggetto", i, ctx),

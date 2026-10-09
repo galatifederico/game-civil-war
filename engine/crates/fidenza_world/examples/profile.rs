@@ -18,8 +18,7 @@ fn main() {
         ("healing", |w| { w.run_system_once(sim_core::anatomy::natural_healing).unwrap(); }),
         ("hygiene", sim_core::hygiene::hygiene_tick),
         ("tethers", sim_core::dungeon::tethers),
-        ("spawners", sim_core::dungeon::spawners),
-        ("triggers", sim_core::dungeon::triggers),
+        ("events", sim_core::dungeon::events),
         ("ai_think", sim_core::ai::think),
         ("run_jobs", sim_core::jobs::run_jobs),
         ("crime", sim_core::crime::crime_upkeep),
@@ -32,7 +31,6 @@ fn main() {
         ("collections", sim_core::victory::collections),
         ("victory", sim_core::victory::check_victory),
         ("scoops", sim_core::press::gather_scoops),
-        ("news", sim_core::press::news_sources),
         ("activity", sim_core::snapshot::update_activity),
         ("telemetry", sim_core::telemetry::record_metrics),
     ];

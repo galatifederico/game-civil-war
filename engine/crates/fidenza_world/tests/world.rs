@@ -738,3 +738,26 @@ fn statuses_are_deterministic_intensities() {
     let (w, t) = (sev(&sim, weak, &contagious), sev(&sim, tough, &contagious));
     assert!(w > 0.0 && t < w, "debole {w}, resistente {t}");
 }
+
+/// Events: spawns stop at their `max_alive`; a news source publishes its headlines in turn, never the
+/// same twice in a row; an event can be forced.
+#[test]
+fn events_spawn_publish_in_turn_and_can_be_forced() {
+    let mut sim = sim(1);
+    let ev = sim.content().events["talpe"].clone();
+    let max = ev.effects.iter().find_map(|e| match e {
+        Effect::Spawn { max_alive, .. } => Some(*max_alive),
+        _ => None,
+    }).unwrap();
+    for _ in 0..(max + 3) {
+        sim.execute(SimCommand::FireTrigger { id: "talpe".into() }).unwrap();
+    }
+    let alive = sim.world.query::<(&sim_core::dungeon::SpawnedBy, Option<&Dead>)>().iter(&sim.world).filter(|(s, d)| s.0 == "event:talpe" && d.is_none()).count() as u32;
+    assert!(alive <= max && alive > 0, "{alive} talpe, massimo {max}");
+    for _ in 0..3 {
+        sim.execute(SimCommand::FireTrigger { id: "overmind_fake_news".into() }).unwrap();
+    }
+    let feed = &sim.world.resource::<sim_core::press::Feed>().articles;
+    let heads: Vec<&String> = feed.iter().rev().take(3).map(|a| &a.headline).collect();
+    assert!(heads[0] != heads[1] && heads[1] != heads[2], "{heads:?}");
+}

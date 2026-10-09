@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use super::logic::{Condition, Curve, Effect, Selector, Truth};
+use super::logic::{Condition, Curve, Effect, Selector};
 
 pub type Id = String;
 
@@ -34,12 +34,10 @@ pub struct ContentPack {
     pub map: Option<MapDef>,
     pub templates: Vec<EntityTemplate>,
     pub placements: Vec<Placement>,
-    pub spawners: Vec<SpawnerDef>,
-    pub triggers: Vec<TriggerDef>,
+    pub events: Vec<EventDef>,
     pub collections: Vec<CollectionDef>,
     pub titles: Vec<TitleDef>,
     pub press: Option<PressDef>,
-    pub news_sources: Vec<NewsSourceDef>,
     pub news_impacts: Vec<NewsImpactDef>,
     pub victory: Vec<VictoryDef>,
     pub global_modifiers: Vec<GlobalModifierDef>,
@@ -1063,32 +1061,21 @@ pub struct Tether {
     pub release: Condition,
 }
 
+/// Something that happens by itself: when `when` holds, every `every` ticks (0 = once), from `from_tick`.
+/// With `by`, only while a pawn of that template is alive, and that pawn does the effects (the summoner, the
+/// author of the news…). Spawning (`Spawn`), news (`Publish`, in turn with `Cycle`) and any other effect.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct SpawnerDef {
-    pub id: Id,
-    pub template: Id,
-    pub zone: Id,
-    pub interval: u64,
-    pub max_alive: u32,
-    /// Only spawns while this holds.
-    pub active_when: Condition,
-    /// Only while an entity of this template (the summoner) is alive.
-    pub summoner: Option<Id>,
-    pub faction: Option<Id>,
-    pub tether: Option<Tether>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct TriggerDef {
+pub struct EventDef {
     pub id: Id,
     pub name: String,
+    pub description: String,
     pub when: Condition,
+    pub every: u64,
+    pub from_tick: u64,
+    pub by: Option<Id>,
     pub effects: Vec<Effect>,
-    /// Fire only once (default) or every time the condition holds (with `cooldown`).
-    pub repeat: bool,
-    pub cooldown: u64,
+    /// Newsworthiness of the event (named events are written in the log).
     pub news: f32,
 }
 
@@ -1195,26 +1182,6 @@ pub struct FeedCategoryDef {
     pub topics: Vec<String>,
     /// Importance multiplier for the category (e.g. gossip counts less).
     pub weight: Option<f32>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct NewsSourceDef {
-    pub id: Id,
-    /// Template of the entity that publishes (must be alive); None = anonymous.
-    pub author: Option<Id>,
-    pub start_tick: u64,
-    pub interval: u64,
-    pub truth: Truth,
-    pub headlines: Vec<NewsItemDef>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct NewsItemDef {
-    pub headline: String,
-    pub topics: Vec<String>,
-    pub effects: Vec<Effect>,
 }
 
 /// How articles move the world, by topic (event kind or tag).

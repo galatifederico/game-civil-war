@@ -492,12 +492,13 @@ const CATALOG = {
     cols: [["Nome", (d) => esc(d.name)], ["Giocabile", (d) => (d.playable ? "sì" : "")], ["Ideologia", (d) => chips(Object.entries(d.ideology ?? {}).map(([k, v]) => `${k} ${v}`))],
       ["Membri", (d) => L.byFaction[d.id] ?? 0, true], ["Tesoro", (d) => fmt(S.state?.factions?.find((f) => f.id === d.id)?.treasury, 0), true],
       ["Punti", (d) => S.state?.scores?.[d.id] ?? "", true]] },
+  events: { title: "Eventi", group: "Catalogo",
+    facets: [["Fa", (d) => eventKinds(d)], ["Ripetuto", (d) => (d.every ? "sì" : "una volta")]],
+    cols: [["Nome", (d) => esc(d.name || d.id)], ["Fa", (d) => chips(eventKinds(d))], ["Quando", (d) => (d.when && d.when !== "Always" ? esc(condText(d.when)) : '<span class="muted">sempre</span>')],
+      ["Ogni (ore)", (d) => d.every || "una volta", true], ["Da chi", (d) => (d.by ? link("templates", d.by) : "")]] },
   collections: { title: "Collezioni", group: "Catalogo", cols: [["Nome", (d) => esc(d.name)], ["Pezzi", (d) => (d.items ?? []).length || d.count, true], ["Punti", (d) => d.victory_points, true]] },
-  spawners: { title: "Generatori", group: "Catalogo", cols: [["Id", (d) => esc(d.id)], ["Template", (d) => link("templates", d.template)], ["Zona", (d) => esc(d.zone)], ["Ogni", (d) => d.interval, true], ["Max", (d) => d.max_alive, true]] },
-  triggers: { title: "Eventi a condizione", group: "Catalogo", cols: [["Nome", (d) => esc(d.name || d.id)], ["Ripetibile", (d) => (d.repeat ? "sì" : "")], ["Attesa", (d) => d.cooldown || "", true]] },
   supplies: { title: "Rifornimenti", group: "Catalogo", cols: [["Nome", (d) => esc(d.name)], ["Oggetto", (d) => link("items", d.item)], ["Al giorno max", (d) => d.max_per_day, true]] },
   global_modifiers: { title: "Circostanze globali", group: "Catalogo", cols: [["Nome", (d) => esc(d.name)], ["Morale", (d) => d.morale ?? "", true]] },
-  news_sources: { title: "Fonti di notizie", group: "Catalogo", cols: [["Id", (d) => esc(d.id)], ["Autore", (d) => esc(d.author ?? "")], ["Titoli", (d) => (d.headlines ?? []).length, true]] },
   body_plans: { title: "Corpi", group: "Catalogo", cols: [["Id", (d) => esc(d.id)], ["Parti", (d) => chips(d.parts?.map((p) => p.name))]] },
   fluids: { title: "Fluidi", group: "Catalogo", cols: [["Nome", (d) => esc(d.name)], ["Sporcizia", (d) => d.dirtiness, true], ["Porta", (d) => esc(d.carries ?? "")]] },
 };
@@ -553,7 +554,7 @@ const CATALOG_SECTIONS = [
   ["Comportamento", ["actions", "action_sets", "modes"]],
   ["Oggetti", ["items", "collections", "supplies", "fluids"]],
   ["Edifici", ["buildings"]],
-  ["Fazioni e mondo", ["factions", "spawners", "triggers", "global_modifiers", "news_sources"]],
+  ["Fazioni e mondo", ["factions", "events", "global_modifiers"]],
 ];
 const SIDE = [
   ["Mondo", [["overview", "Panoramica"], ["map", "Mappa"], ["list/pawns", "Pedine"], ["list/bld", "Edifici in gioco"], ["events", "Eventi"]]],
@@ -836,7 +837,7 @@ function effectCells(k, v) {
     case "JoinFaction": return [["fazione", "entra in " + link("factions", v)]];
     case "VictoryPoints": return [["punti vittoria", sgn(v, 0)]];
     case "ModDissent": return [["dissenso", sgn(v)]];
-    case "Spawn": return [["evoca " + link("templates", v.template), "×" + v.count]];
+    case "Spawn": return [["evoca " + link("templates", v.template) + (v.zone ? ` in ${esc(v.zone)}` : "") + (v.faction ? " per " + link("factions", v.faction) : ""), "×" + (v.count ?? 1) + (v.max_alive ? ` (al massimo ${v.max_alive} vivi)` : "")]];
     case "MarketShock": return [["mercato " + esc(v.item ? name("items", v.item) : `«${v.tag ?? "tutto"}»`), `domanda ×${fmt(v.demand ?? 1, 2)}, offerta ×${fmt(v.supply ?? 1, 2)}, ${v.duration} tick`]];
     case "GlobalModifier": return [[`circostanza «${esc(v.name || v.id)}»`, `${v.duration} tick`]];
     case "SetFlag": return [[`flag «${esc(v.flag)}»`, "= " + fmt(v.value)]];
@@ -880,6 +881,7 @@ function effectRows(effects, href) {
     if (k === "Chance") return walk(v[1], scope, [...conds, `${fmt(v[0] * 100, 0)}% di probabilità`]);
     if (k === "If") return walk(v[1], scope, [...conds, "se " + condText(v[0])]);
     if (k === "IfElse") { walk(v[1], scope, [...conds, "se " + condText(v[0])]); return walk(v[2], scope, [...conds, "altrimenti"]); }
+    if (k === "Cycle") return v.forEach((x, i) => walk(x, scope, [...conds, `a turno: ${i + 1}ª volta su ${v.length}`]));
     const cells = effectCells(k, v);
     if (!cells) return out.push({ who: scopeText(scope), what: k === "Custom" && CUSTOM_LABEL[v.id] ? CUSTOM_LABEL[v.id](v.params ?? {}) : `effetto speciale «${esc(v?.id ?? k)}»`, mod: `<a href="${href}">vedi la scheda ▸</a>`, cond: conds.join(", "), special: true });
     for (const [what, mod] of cells) out.push({ who: scopeText(scope), what, mod, cond: conds.join(", ") });
@@ -1206,6 +1208,30 @@ function actionJobSection(d) {
     pathPrefix = [];
   }
 }
+/** What an event does, in short (spawns, news, other). */
+function eventKinds(d) {
+  const j = JSON.stringify(d.effects ?? []), out = [];
+  if (j.includes('"Spawn"')) out.push("evoca");
+  if (j.includes('"Publish"')) out.push("notizie");
+  if (!out.length || j.replace(/"(Spawn|Publish|Cycle)"/g, "").match(/"[A-Z][A-Za-z]+"/)) out.push("altro");
+  return out;
+}
+/** Events: when, how often, by whom, what happens. */
+function eventSections(d) {
+  const rows = effectRows(d.effects, "#");
+  const by = `<select data-set="${P(["by"])}" data-t="strnull"><option value="">— nessuno</option>${candsOf("templates").map(([id, l]) => `<option value="${esc(id)}" ${id === d.by ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+  return {
+    sections: [
+      card("Quando succede", condEditor("when", d.when, { nullable: false }) +
+        kv({ "Ogni (ore)": numInput(["every"], d.every, "0") + ' <span class="muted">0 = una volta sola</span>', "Dall'ora": numInput(["from_tick"], d.from_tick, "0"),
+          "Da chi": by + ' <span class="muted">deve essere vivo; compie gli effetti (chi evoca, chi pubblica…)</span>', "Notiziabilità": numInput(["news"], d.news, "0") })),
+      card("Cosa succede", (rows.length ? `<table class="ed"><thead><tr><th>Su chi</th><th>Effetto</th><th>Modificatore</th><th>Condizione</th></tr></thead><tbody>${rows.map((x) => `<tr><td>${esc(x.who)}</td><td>${x.what}</td><td>${x.mod}</td><td class="muted">${esc(x.cond)}</td></tr>`).join("")}</tbody></table>` : '<div class="muted">niente</div>') +
+        `<details><summary class="muted">modifica gli effetti (JSON)</summary>${jsonBox(["effects"], d.effects ?? [])}</details>` +
+        `<div style="margin-top:8px"><button onclick="window.command({ type: 'fire_trigger', id: '${esc(d.id)}' })">Fallo succedere ora</button></div>`),
+    ],
+    used: ["when", "every", "from_tick", "by", "news", "effects"],
+  };
+}
 /** Roles: like classes, plus how they change hands. */
 function titleSections(d) {
   const how = ["faction", "members_only", "mode", "seat_zone", "vacancy_ticks", "term", "grace", "challenge_stat", "challenge_allies", "grants_faction_control", "victory_points", "news"];
@@ -1522,6 +1548,7 @@ function renderDetail() {
   if (kind === "needs") { const r = needSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "modes") { const r = modeSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "statuses") { const r = statusSections(d); main = r.sections; used = [...used, ...r.used]; }
+  if (kind === "events") { const r = eventSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "actions") { const j = actionJobSection(d); if (j) main.push(j); used = [...used, "how"]; }
   const values = {}, details = [], logic = [];
   for (const f of Object.keys(d)) {
@@ -1554,7 +1581,7 @@ function renderDetail() {
   if (statBox) applyStatFilter(statBox);
 }
 const EDITABLE = ["stats", "needs", "body_plans", "races", "action_sets", "modes", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
-  "buildings", "templates", "spawners", "triggers", "collections", "titles", "news_sources", "global_modifiers", "supplies"];
+  "buildings", "templates", "events", "collections", "titles", "global_modifiers", "supplies"];
 $("dBody").addEventListener("change", (ev) => {
   const el = ev.target.closest("[data-set]"); if (!el || !draft) return;
   const { dr, p } = on(JSON.parse(el.dataset.set)), t = el.dataset.t;

@@ -50,9 +50,8 @@
          description: "Fumetti introvabili, una spada laser vera e un anello che nessuno dovrebbe toccare. Lo sorveglia il polipo.",
          stock: {"spada_laser": 1, "anello_potere": 1, "costume_cosplay": 2, "boomerang": 1}),
     ],
-    spawners: [
-        (id: "polipo", template: "polipo", zone: "scantinato_nerd", interval: 72, max_alive: 1, faction: "fauna_selvatica",
-         tether: (zone: "scantinato_nerd", release: Never)),
+    events: [
+        (id: "polipo", every: 72, effects: [Spawn(template: "polipo", zone: Some("scantinato_nerd"), faction: Some("fauna_selvatica"), tether: Some((zone: "scantinato_nerd", release: Never)), max_alive: 1)]),
     ],
     sprites: {
         "race:polipo": (shape: "circle", color: "#8e44ad", glyph: "Po", sheet: "chibi_polipo"),

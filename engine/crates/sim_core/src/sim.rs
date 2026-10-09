@@ -163,7 +163,7 @@ impl SimBuilder {
         schedule.add_systems(crate::commands::apply_commands.in_set(SimSet::Input));
         schedule.add_systems((crate::stats::stat_recovery, crate::equipment::update, crate::modes::update, crate::abilities::auras, crate::stats::recompute_stats, crate::stats::decay_needs, low_needs).chain().in_set(SimSet::Derive));
         schedule.add_systems((crate::status::tick_statuses, crate::anatomy::natural_healing, crate::hygiene::hygiene_tick).chain().in_set(SimSet::Health));
-        schedule.add_systems((crate::dungeon::tethers, crate::dungeon::spawners, crate::dungeon::triggers).chain().in_set(SimSet::World));
+        schedule.add_systems((crate::dungeon::tethers, crate::dungeon::events).chain().in_set(SimSet::World));
         schedule.add_systems((crate::player::wake_up, crate::player::follow_system, crate::ai::think).chain().in_set(SimSet::Ai));
         schedule.add_systems((crate::jobs::run_jobs, crate::crime::crime_upkeep).chain().in_set(SimSet::Act));
         schedule.add_systems((crate::buildings::buildings_tick, crate::logistics::post_logistics, crate::market::update_market, crate::supply::imports, crate::economy::exports, crate::economy::payroll).chain().in_set(SimSet::Economy));
@@ -172,7 +172,7 @@ impl SimBuilder {
                 .chain()
                 .in_set(SimSet::Social),
         );
-        schedule.add_systems((crate::press::gather_scoops, crate::press::news_sources, crate::press::prune_feed).chain().in_set(SimSet::Press));
+        schedule.add_systems((crate::press::gather_scoops, crate::press::prune_feed).chain().in_set(SimSet::Press));
         schedule.add_systems((crate::snapshot::update_activity, crate::telemetry::record_metrics).chain().in_set(SimSet::Output));
         for add in self.systems {
             add(&mut schedule);

@@ -229,7 +229,7 @@ pub fn apply(world: &mut World, cmd: SimCommand) -> Result<String, String> {
             if ids.is_empty() { Err("nessuna entità creata (unica già esistente?)".into()) } else { Ok(format!("create {ids:?}")) }
         }
         SimCommand::FireTrigger { id } => {
-            if crate::dungeon::fire_trigger(world, &id) { Ok(format!("trigger {id} eseguito")) } else { Err(format!("trigger '{id}' inesistente")) }
+            if crate::dungeon::fire_trigger(world, &id) { Ok(format!("evento {id} avvenuto")) } else { Err(format!("evento '{id}' inesistente")) }
         }
         SimCommand::ApplyEffect { subject, target, effect } => {
             let s = subject.map(|i| entity(world, i)).transpose()?;

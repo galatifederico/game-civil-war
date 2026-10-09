@@ -75,7 +75,18 @@ pub enum Effect {
     JoinFaction(String),
     VictoryPoints(i64),
     ModDissent(f32),
-    Spawn { template: String, #[serde(default = "one_u32")] count: u32, #[serde(default)] zone: Option<String> },
+    /// Brings `count` pawns of a template (in `zone`, else next to the subject). With `max_alive`, not
+    /// while that many of the ones this source spawned are alive.
+    Spawn {
+        template: String,
+        #[serde(default = "one_u32")] count: u32,
+        #[serde(default)] zone: Option<String>,
+        #[serde(default)] faction: Option<String>,
+        #[serde(default)] tether: Option<crate::content::Tether>,
+        #[serde(default)] max_alive: u32,
+    },
+    /// One of these in turn, a different one each time the same source applies it (in order).
+    Cycle(Vec<Effect>),
     MarketShock {
         #[serde(default)] item: Option<String>,
         #[serde(default)] tag: Option<String>,
