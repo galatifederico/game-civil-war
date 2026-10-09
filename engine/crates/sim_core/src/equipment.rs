@@ -88,7 +88,7 @@ pub fn best_of_type(world: &mut World, e: Entity, kind: &str) -> Option<String> 
     let content = world.resource::<Content>().clone();
     let carried: Vec<String> = world.get::<Inventory>(e)?.items().map(|(k, _)| k.clone()).collect();
     let mut best: Option<&ItemDef> = None;
-    for d in carried.iter().filter_map(|k| content.items.get(k)).filter(|d| d.types.iter().any(|t| t == kind)) {
+    for d in carried.iter().filter_map(|k| content.items.get(k)).filter(|d| d.tags.iter().any(|t| t == kind)) {
         if !eval_condition(world, &EffectCtx::new(Some(e), None, format!("item:{}", d.id)), &d.requires) {
             continue;
         }

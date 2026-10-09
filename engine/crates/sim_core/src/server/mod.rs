@@ -620,7 +620,7 @@ async fn ui_item(State(s): State<AppState>, Path(item): Path<String>, Query(q): 
         "id": d.id, "name": d.name, "description": d.description, "category": d.category, "tags": d.tags,
         "base_price": d.base_price, "price": price, "usable": !d.on_use.is_empty(), "reusable": d.reusable,
         "stack_max": d.stack_max, "victory_points": d.victory_points, "unique": d.unique,
-        "types": d.types, "weight": d.weight, "durability": d.durability, "hands": d.hands, "damage": d.damage, "wear_slot": d.wear_slot,
+        "types": d.tags, "weight": d.weight, "durability": d.durability, "hands": d.hands, "damage": d.damage, "wear_slot": d.wear_slot,
         "effects": crate::describe::item_effects(&content, &item), "holders": holders,
     })))
 }

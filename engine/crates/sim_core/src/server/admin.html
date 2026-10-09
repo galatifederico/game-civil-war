@@ -480,8 +480,8 @@ const CATALOG = {
       ["Dose", (d) => fmt(d.intensity ?? 100), true], ["Soglie", (d) => chips((d.thresholds ?? []).map((t) => `${t.name} ≥ ${fmt(t.above)}`))],
       ["Effetti", (d) => esc(Object.entries(d.stats ?? {}).map(([k, v]) => `${name("stats", k)} ${v > 0 ? "+" : ""}${v}`).join(", "))], ["Colpiti ora", (d) => L.byStatus[d.id] ?? 0, true]] },
   items: { title: "Oggetti", group: "Catalogo", sprite: true,
-    facets: [["Categoria", (d) => d.category], ["Tipo", (d) => d.types]],
-    cols: [["Nome", (d) => esc(d.name)], ["Categoria", (d) => esc(d.category)], ["Tipo", (d) => chips(d.types)], ["Prezzo", (d) => fmt(d.base_price), true],
+    facets: [["Categoria", (d) => d.tags], ["Scomparto", (d) => d.category]],
+    cols: [["Nome", (d) => esc(d.name)], ["Categorie", (d) => chips(d.tags)], ["Scomparto", (d) => esc(d.category)], ["Prezzo", (d) => fmt(d.base_price), true],
       ["Peso", (d) => (d.weight ? fmt(d.weight) : ""), true], ["Danni", (d) => (d.damage ? fmt(d.damage) : ""), true], ["Nel mondo", (d) => L.items[d.id]?.total ?? 0, true]] },
   buildings: { title: "Edifici", group: "Catalogo", sprite: true,
     facets: [["Tag", (d) => d.tags]],
@@ -1254,6 +1254,26 @@ function circSections(d) {
     used: ["intensity", "per_tick", "stats", "prices", "supply", "logistics_disruption"],
   };
 }
+/** Items: what it is, while carried, as a weapon or clothing, when used, requirements. */
+function itemSections(d) {
+  const effTable = (list, self = "sé") => { const rows = effectRows(list, "#"); return rows.length ? `<table class="ed"><thead><tr><th>Su chi</th><th>Effetto</th><th>Modificatore</th><th>Condizione</th></tr></thead><tbody>${rows.map((x) => `<tr><td>${esc(x.who === "sé" ? self : x.who)}</td><td>${x.what}</td><td>${x.mod}</td><td class="muted">${esc(x.cond)}</td></tr>`).join("")}</tbody></table>` : '<div class="muted">niente</div>'; };
+  const ed = (f) => fieldEditor("items", d, f)?.[1] ?? "";
+  return {
+    sections: [
+      card("Cos'è", kv({ "Scomparto dell'inventario": ed("category") + ' <span class="muted">oggetti dello stesso scomparto si impilano insieme</span>', "Quanti per scomparto": ed("stack_max"),
+        Prezzo: ed("base_price"), Peso: ed("weight"), Unico: ed("unique"), "Punti vittoria": ed("victory_points") }) +
+        `<h4 style="margin:10px 0 4px">Categorie</h4>` + tagList("items", ["tags"], d.tags, "tags")),
+      card("Finché lo porti", mapTable(["carried_stats"], d.carried_stats, "stats", { keyLabel: "Caratteristica", valLabel: "Modificatore" }) +
+        `<div class="muted">Armi e indumenti contano solo mentre sono in uso.</div>`),
+      card("Come arma o indumento", kv({ Danni: ed("damage"), "Gittata": ed("range"), Mani: ed("hands"), "Si indossa su": ed("wear_slot"), Vita: ed("durability") }) +
+        `<h4 style="margin:10px 0 4px">A chi viene colpito</h4>` + effTable(d.on_hit, "chi viene colpito") + `<details><summary class="muted">modifica (JSON)</summary>${jsonBox(["on_hit"], d.on_hit ?? [])}</details>`),
+      card("Quando lo usi", effTable(d.on_use) + `<details><summary class="muted">modifica (JSON)</summary>${jsonBox(["on_use"], d.on_use ?? [])}</details>` +
+        kv({ "Non si consuma": ed("reusable") })),
+      card("Requisiti per usarlo", condEditor("requires", d.requires, { nullable: false })),
+    ],
+    used: ["category", "stack_max", "base_price", "weight", "unique", "victory_points", "tags", "carried_stats", "damage", "range", "hands", "wear_slot", "durability", "on_hit", "on_use", "reusable", "requires"],
+  };
+}
 /** Roles: like classes, plus how they change hands. */
 function titleSections(d) {
   const how = ["faction", "members_only", "mode", "seat_zone", "vacancy_ticks", "term", "grace", "challenge_stat", "challenge_allies", "grants_faction_control", "victory_points", "news"];
@@ -1572,6 +1592,7 @@ function renderDetail() {
   if (kind === "statuses") { const r = statusSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "events") { const r = eventSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "global_modifiers") { const r = circSections(d); main = r.sections; used = [...used, ...r.used]; }
+  if (kind === "items") { const r = itemSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "actions") { const j = actionJobSection(d); if (j) main.push(j); used = [...used, "how"]; }
   const values = {}, details = [], logic = [];
   for (const f of Object.keys(d)) {

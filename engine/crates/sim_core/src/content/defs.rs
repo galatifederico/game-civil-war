@@ -463,9 +463,6 @@ pub struct ItemDef {
     pub victory_points: i64,
     /// Unique items exist once in the world.
     pub unique: bool,
-    /// Kinds of item that actions work with ("arma", "lanciabile", "armatura", "copricapo"…): an action asks
-    /// for a kind, not for a specific item.
-    pub types: Vec<Id>,
     /// Hit points of one unit: it wears when used to hit, thrown or hit while worn, and breaks at zero
     /// (0 = never wears).
     pub durability: f32,

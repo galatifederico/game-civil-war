@@ -31,7 +31,7 @@
          on_use: [ModStat(stat: "fame", amount: 60), ModStat(stat: "svago", amount: 20), ModStat(stat: "grasso", amount: 1.2)]),
         (id: "costume_cosplay", name: "Costume da cosplay", category: "vestiti", stack_max: 1, base_price: 40, tags: ["costume", "nerd"],
          description: "Fatto a mano con il cartone della pizza."),
-        (id: "molotov", name: "Molotov", category: "lanciabili", stack_max: 5, base_price: 12, tags: ["arma", "contrabbando"], types: ["lanciabile", "incendiario"],
+        (id: "molotov", name: "Molotov", category: "lanciabili", stack_max: 5, base_price: 12, tags: ["arma", "contrabbando", "lanciabile", "incendiario"],
          damage: 12, range: 5, weight: 0.8, on_hit: [ApplyStatus(status: "ustionato")]),
     ],
     actions: [

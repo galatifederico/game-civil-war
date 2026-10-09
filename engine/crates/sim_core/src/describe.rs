@@ -96,11 +96,8 @@ pub fn item_effects(c: &Content, id: &str) -> Vec<String> {
         let what = d.on_use.iter().map(|e| effect(c, e)).collect::<Vec<_>>().join(", ");
         out.push(format!("Usandolo{}: {what}", if d.reusable { " (non si consuma)" } else { " (si consuma)" }));
     }
-    if !d.types.is_empty() {
-        out.push(format!("Tipo: {}", d.types.join(", ")));
-    }
     if d.damage > 0.0 {
-        let how = if d.types.iter().any(|t| t == "lanciabile") && d.hands == 0 { "lanciandolo" } else { "colpendo" };
+        let how = if d.tags.iter().any(|t| t == "lanciabile") && d.hands == 0 { "lanciandolo" } else { "colpendo" };
         out.push(format!("Danni {how}: {:.0}{}", d.damage, if d.range > 0 { format!(" (fino a {} caselle)", d.range) } else { String::new() }));
     }
     if !d.on_hit.is_empty() {
@@ -194,7 +191,6 @@ pub fn condition(c: &Content, cond: &Condition) -> String {
         Condition::Disguised => "travestito".into(),
         Condition::HoldsTitle(t) => format!("è {}", c.titles.get(t).map_or(t.as_str(), |x| x.name.as_str())),
         Condition::HoldsAnyTitle => "ha un ruolo".into(),
-        Condition::HasItemType(t) => format!("ha con sé qualcosa di tipo {t}"),
         Condition::BondAtLeast { attraction, .. } if *attraction > 0.0 => format!("attrazione almeno {}", num(*attraction)),
         Condition::BondAtLeast { friendship, .. } => format!("amicizia almeno {}", num(*friendship)),
         Condition::Contest { stat: s, .. } => format!("vince il confronto di {}", stat(c, s)),

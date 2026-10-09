@@ -59,11 +59,11 @@
          on_use: [Heal(10), RemoveStatus("stordito")]),
 
         // Equipaggiamento e armi.
-        (id: "shuriken", name: "Shuriken", category: "lanciabili", stack_max: 20, base_price: 6, tags: ["arma"], types: ["lanciabile"], damage: 7, range: 6, weight: 0.1),
-        (id: "katana", name: "Katana", category: "arma", stack_max: 1, base_price: 60, tags: ["arma"], types: ["arma"], hands: 2, damage: 12, durability: 120, weight: 1.5,
+        (id: "shuriken", name: "Shuriken", category: "lanciabili", stack_max: 20, base_price: 6, tags: ["arma", "lanciabile"], damage: 7, range: 6, weight: 0.1),
+        (id: "katana", name: "Katana", category: "arma", stack_max: 1, base_price: 60, tags: ["arma"], hands: 2, damage: 12, durability: 120, weight: 1.5,
          carried_stats: {"attacco": 8}, requires: StatAtLeast(stat: "con_arti_marziali", value: 15)),
         (id: "bomba_fumogena", name: "Bomba Fumogena", category: "gadget", stack_max: 5, base_price: 15, tags: ["gadget"]),
-        (id: "manganello", name: "Manganello", category: "arma", stack_max: 1, base_price: 15, tags: ["arma", "polizia"], types: ["arma"], hands: 1, damage: 5,
+        (id: "manganello", name: "Manganello", category: "arma", stack_max: 1, base_price: 15, tags: ["arma", "polizia"], hands: 1, damage: 5,
          durability: 200, weight: 0.8, carried_stats: {"attacco": 3}, on_hit: [Chance(0.2, ApplyStatus(status: "stordito"))]),
         (id: "manette", name: "Manette", category: "gadget", stack_max: 3, base_price: 10, tags: ["polizia"]),
         (id: "tesserino_stampa", name: "Tesserino Stampa", category: "documenti", stack_max: 1, base_price: 5, tags: ["stampa"], carried_stats: {"carisma": 3}),
@@ -75,7 +75,7 @@
         // Collezionabili.
         (id: "regalo_di_natale", name: "Regalo di Natale", category: "regali", stack_max: 10, base_price: 20, tags: ["collezionabile", "regalo"]),
         (id: "corona_re_anolino", name: "Corona di Re Anolino", category: "insegne", stack_max: 1, base_price: 1000, unique: true, tags: ["collezionabile", "insegna"], victory_points: 50),
-        (id: "petardo", name: "Petardo", category: "lanciabili", stack_max: 100, base_price: 2, tags: ["collezionabile", "contrabbando"], types: ["lanciabile"], damage: 3, range: 5,
+        (id: "petardo", name: "Petardo", category: "lanciabili", stack_max: 100, base_price: 2, tags: ["collezionabile", "contrabbando", "lanciabile"], damage: 3, range: 5,
          weight: 0.05, on_hit: [Chance(0.5, ApplyStatus(status: "stordito"))]),
         (id: "preservativo", name: "Preservativo", category: "sballo", stack_max: 10, base_price: 2, tags: ["collezionabile"]),
 
@@ -95,7 +95,7 @@
         (id: "gonnella_san_donnino", name: "Gonnella di San Donnino", category: "reliquia_minore", stack_max: 1, unique: true, victory_points: 20, tags: ["reliquia", "reliquia_minore"]),
         (id: "fallo_san_donnino", name: "Fallo di San Donnino", category: "reliquia_minore", stack_max: 1, unique: true, victory_points: 20, tags: ["reliquia", "reliquia_minore"]),
         (id: "grinder_san_donnino", name: "Grinder di San Donnino", category: "reliquia_minore", stack_max: 1, unique: true, victory_points: 20, tags: ["reliquia", "reliquia_minore"]),
-        (id: "gladio_san_donnino", name: "Gladio di San Donnino", category: "reliquia_minore", stack_max: 1, unique: true, victory_points: 20, tags: ["reliquia", "reliquia_minore", "arma"], types: ["arma"], hands: 1, damage: 14, weight: 1.2,
+        (id: "gladio_san_donnino", name: "Gladio di San Donnino", category: "reliquia_minore", stack_max: 1, unique: true, victory_points: 20, tags: ["reliquia", "reliquia_minore", "arma"], hands: 1, damage: 14, weight: 1.2,
          carried_stats: {"attacco": 12, "onore": 20}),
     ],
     collections: [

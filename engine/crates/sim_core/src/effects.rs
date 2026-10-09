@@ -627,11 +627,6 @@ pub fn eval_condition(world: &mut World, ctx: &EffectCtx, cond: &Condition) -> b
             };
             sa * (1.0 - luck / 2.0 + luck * ra) > sb * (1.0 - luck / 2.0 + luck * rb)
         }
-        Condition::HasItemType(kind) => {
-            let content = world.resource::<Content>();
-            subj.and_then(|e| world.get::<Inventory>(e))
-                .is_some_and(|i| i.items().any(|(k, _)| content.items.get(k).is_some_and(|d| d.types.iter().any(|t| t == kind))))
-        }
         Condition::HoldsTitle(t) => {
             let id = subj.and_then(|e| world.get::<SimId>(e).copied());
             id.is_some() && world.resource::<Titles>().holder(t) == id
