@@ -69,6 +69,20 @@ fn merge<T, F: Fn(&T) -> &str>(dst: &mut BTreeMap<Id, T>, src: Vec<T>, id: F) {
     }
 }
 
+/// Actions that say how they are done (`how`) become the job with the action's id.
+fn action_jobs(c: &mut ContentData) {
+    for a in c.actions.values_mut() {
+        if let Some(how) = &a.how {
+            c.jobs.insert(a.id.clone(), how.to_job(&a.id, &a.name, &a.description));
+            if let ActionKind::Job { job, .. } = &mut a.kind
+                && job.is_empty()
+            {
+                *job = a.id.clone();
+            }
+        }
+    }
+}
+
 /// Every need names its stat; a missing one is created (0..100, full at birth, group "Bisogni").
 fn need_stats(c: &mut ContentData) {
     for n in c.needs.values_mut() {
@@ -160,6 +174,7 @@ impl Content {
         let mut c = (*self.0).clone();
         merge_pack(&mut c, pack);
         need_stats(&mut c);
+        action_jobs(&mut c);
         let errors = c.validate();
         if errors.is_empty() { Ok(Content(Arc::new(c))) } else { Err(ContentError::Invalid(errors)) }
     }
@@ -174,6 +189,7 @@ impl Content {
             merge_pack(&mut c, p);
         }
         need_stats(&mut c);
+        action_jobs(&mut c);
         if let Some(m) = c.map.as_mut() {
             for l in m.layers.iter_mut() {
                 if !l.tiles.is_empty() {

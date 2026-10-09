@@ -28,8 +28,10 @@
     actions: [
         (id: "scendi_nello_scantinato", name: "Scende nello Scantinato", weight: 0.1, cooldown: 120,
          requires: StatAtLeast(stat: "con_lore_nerd", value: 40),
-         kind: Job(job: "curiosa_nello_scantinato", target: Zone("scantinato_nerd")),
-         considerations: [(input: Stat(stat: "curiosita", max: 100), curve: Identity)], label: "Scende nello Scantinato della Fumetteria", tags: ["esplorazione", "svago"]),
+         kind: Job(job: "scendi_nello_scantinato", target: Zone("scantinato_nerd")),
+         considerations: [(input: Stat(stat: "curiosita", max: 100), curve: Identity)], label: "Scende nello Scantinato della Fumetteria", tags: ["esplorazione", "svago"],
+         how: Some((duration: 3, effects: [ModStat(stat: "con_lore_nerd", amount: 1), ModStat(stat: "curiosita", amount: 0.5), ModStat(stat: "svago", amount: 20),
+                   Chance(0.05, GiveRandomItem(items: ["costume_cosplay", "cerchietto_orecchie", "corazza_cartone"]))]))),
         // Prima le donne: peso alto e raggio più ampio.
         (id: "avvinghia_donna", name: "Avvinghia", weight: 2.5,
          kind: Effects(target: Nearest((pawn: true, visible: true, max_distance: 10, not_detained: true, tags_none: ["bestia", "macchina"],
@@ -47,11 +49,6 @@
         (id: "baule_nerd", name: "Baule dei tesori nerd", footprint: (1, 1), hp: 150, tags: ["cassaforte", "nerd"],
          description: "Fumetti introvabili, una spada laser vera e un anello che nessuno dovrebbe toccare. Lo sorveglia il polipo.",
          stock: {"spada_laser": 1, "anello_potere": 1, "costume_cosplay": 2, "boomerang": 1}),
-    ],
-    jobs: [
-        (id: "curiosa_nello_scantinato", name: "Curiosa nello Scantinato", duration: 3,
-         effects: [ModStat(stat: "con_lore_nerd", amount: 1), ModStat(stat: "curiosita", amount: 0.5), ModStat(stat: "svago", amount: 20),
-                   Chance(0.05, GiveRandomItem(items: ["costume_cosplay", "cerchietto_orecchie", "corazza_cartone"]))]),
     ],
     spawners: [
         (id: "polipo", template: "polipo", zone: "scantinato_nerd", interval: 72, max_alive: 1, faction: "fauna_selvatica",

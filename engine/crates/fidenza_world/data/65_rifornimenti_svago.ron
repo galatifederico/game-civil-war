@@ -5,22 +5,18 @@
         (id: "gelato", name: "Gelato al Culatello", category: "cibo", stack_max: 5, base_price: 3, tags: ["cibo", "dolce"],
          on_use: [ModStat(stat: "fame", amount: 30), ModStat(stat: "svago", amount: 30)]),
     ],
-    jobs: [
-        (id: "pianta_stendardo", name: "Pianta lo stendardo", handler: "build", duration: 2, params: {"building": "stendardo"},
-         effects: [ModMoney(-30.0)], news: 0.3),
-        (id: "divertiti", name: "Si diverte", duration: 3,
-         effects: [ModStat(stat: "svago", amount: 50), ModStat(stat: "morale", amount: 1.5), ModMoney(-1.0)]),
-    ],
     actions: [
         // I capi delle fazioni (e il campione su ordine) piantano stendardi per conquistare i quartieri.
         (id: "pianta_stendardo", name: "Pianta lo stendardo", weight: 0.04, cooldown: 72,
          kind: Job(job: "pianta_stendardo"),
-         requires: All([MoneyAtLeast(60), HasTag("leader")]), tags: ["territorio"]),
+         requires: All([MoneyAtLeast(60), HasTag("leader")]), tags: ["territorio"],
+         how: Some((handler: "build", duration: 2, params: {"building": "stendardo"}, effects: [ModMoney(-30.0)], news: 0.3))),
         (id: "divertiti", name: "Si diverte", weight: 0.7, cooldown: 18,
          kind: Job(job: "divertiti", target: Nearest((building_tag: "svago", max_distance: 40))),
          requires: MoneyAtLeast(2),
          considerations: [(input: Stat(stat: "svago", max: 100), curve: Logistic(steepness: -10, midpoint: 0.45))],
-         label: "Si diverte", tags: ["svago"]),
+         label: "Si diverte", tags: ["svago"],
+         how: Some((duration: 3, effects: [ModStat(stat: "svago", amount: 50), ModStat(stat: "morale", amount: 1.5), ModMoney(-1.0)]))),
     ],
     buildings: [
         (id: "stendardo", name: "Stendardo", footprint: (1, 1), hp: 30, tags: ["stendardo"],

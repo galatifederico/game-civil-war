@@ -108,7 +108,7 @@ fn hacker_takes_over_a_robot() {
     let robot = SimId(msg.trim_start_matches("create [").trim_end_matches(']').parse().unwrap());
     let re = sim.entity(robot).unwrap();
     sim.world.entity_mut(re).insert(pos);
-    sim.execute(SimCommand::Order { entity: nerd, job: "hackeraggio".into(), target: Some(robot), zone: None }).unwrap();
+    sim.execute(SimCommand::Order { entity: nerd, job: "hackera_macchina".into(), target: Some(robot), zone: None }).unwrap();
     sim.run(10);
     assert_eq!(sim.world.get::<FactionMember>(re).unwrap().faction, "gilda_nerd");
 }

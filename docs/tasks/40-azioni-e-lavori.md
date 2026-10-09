@@ -9,16 +9,16 @@
   (consegna, trasporta, pulisci, scava roccia, sabotaggio, ruba reliquia…), con la categoria «bacheca».
 - Le schede dei lavori restano raggiungibili dai link; «Torna all'elenco» porta alle Azioni.
 
-## Da fare: nel motore (piano)
-Oggi un'azione dice *perché/quando* (peso, considerazioni, bersaglio, requisiti, attesa, categorie) e il lavoro
-dice *come* (durata, tipo di lavoro, effetti, reato, gestore). 126 lavori su 139 sono usati da un'azione, quasi
-sempre uno a uno; 5 sono condivisi; 13 sono solo della bacheca.
-
-Proposta da decidere insieme:
-1. L'azione porta direttamente i campi del lavoro (durata, tipo di lavoro, caratteristica che velocizza, effetti,
-   reato, gestore): `ActionKind::Job { job }` diventa un'azione che «si fa» da sé.
-2. I lavori della bacheca diventano azioni senza peso (l'IA non le sceglie da sola) che fazioni, edifici,
-   designazioni e ordini pubblicano; «Lavora» prende dalla bacheca come oggi.
-3. I 5 lavori condivisi diventano azioni separate (oppure un'azione con più bersagli).
-4. Migrazione: i ~140 riferimenti nei dati (ricette degli edifici, obiettivi delle fazioni, eventi, designazioni,
-   PostJob) e i 45 gestori nel codice puntano all'azione invece che al lavoro.
+## Fatto: nel motore
+- **Un'azione dice anche come si fa:** il campo `how` dell'azione (durata, tipo di lavoro, caratteristica che
+  velocizza, gittata, requisiti, effetti, reato, gestore, parametri…). Al caricamento il motore ne ricava il lavoro con
+  lo stesso id dell'azione, quindi bacheca, gestori nel codice, ricette, obiettivi delle fazioni e ordini funzionano
+  come prima. `kind: Job(...)` senza `job` (o con l'id dell'azione) fa il lavoro dell'azione stessa; un'azione può
+  anche usare il lavoro di un'altra (es. «Reclama il trono» usa «Si muove»).
+- **Dati migrati:** i 139 lavori sono entrati nelle loro azioni (i 5 condivisi copiati in ciascuna); i 13 lavori della
+  bacheca sono azioni con peso 0 e categoria «bacheca»; il movimento generico è l'azione «Si muove» (`muoviti`, peso 0,
+  categoria «ordine»). 39 lavori hanno preso il nome della loro azione (es. «hackeraggio» → «hackera_macchina»);
+  nessun riferimento esterno puntava a quei nomi. Non c'è più nessun elenco `jobs` nei dati di Fidenza.
+- I pacchetti che scrivono i lavori a parte (`jobs: [...]`, come quello di prova dei test) funzionano ancora.
+- **Console:** «Come si fa» modifica il `how` dell'azione; se l'azione usa il lavoro di un'altra, lo dice e salva su
+  quella; la scheda di un lavoro che appartiene a un'azione porta all'azione.

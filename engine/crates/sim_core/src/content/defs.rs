@@ -565,11 +565,56 @@ pub struct JobDef {
     pub ideology_tags: Vec<String>,
 }
 
+/// How an action is done, written inside the action (`how`): the engine turns it into the job with the
+/// action's id (name and description from the action). Same fields as a job.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct JobSpec {
+    pub work_type: Id,
+    pub handler: Id,
+    pub duration: f32,
+    pub range: i32,
+    pub skill: Option<Id>,
+    pub requires: Condition,
+    pub required_tags: Vec<String>,
+    pub min_rank: u32,
+    pub crime: Option<CrimeDef>,
+    pub news: f32,
+    pub effects: Vec<Effect>,
+    pub params: BTreeMap<String, serde_json::Value>,
+    pub suspicious: bool,
+    pub ideology_tags: Vec<String>,
+}
+
+impl JobSpec {
+    pub fn to_job(&self, id: &str, name: &str, description: &str) -> JobDef {
+        JobDef {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: description.to_string(),
+            work_type: self.work_type.clone(),
+            handler: self.handler.clone(),
+            duration: self.duration,
+            range: self.range,
+            skill: self.skill.clone(),
+            requires: self.requires.clone(),
+            required_tags: self.required_tags.clone(),
+            min_rank: self.min_rank,
+            crime: self.crime.clone(),
+            news: self.news,
+            effects: self.effects.clone(),
+            params: self.params.clone(),
+            suspicious: self.suspicious,
+            ideology_tags: self.ideology_tags.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum ActionKind {
-    /// Run a job directly (not taken from the board).
-    Job { job: Id, #[serde(default)] target: Selector },
+    /// Do a job: the action's own (`how`, when `job` is empty or the action's id) or a separate one.
+    Job { #[serde(default)] job: Id, #[serde(default)] target: Selector },
     /// Take the best job from the faction/global JobBoard according to the WorkPriorityMatrix.
     #[default]
     Work,
@@ -637,6 +682,8 @@ pub struct ActionDef {
     /// Doing it in view of others is suspicious (lowers cover).
     pub suspicious: bool,
     pub tags: Vec<String>,
+    /// How it is done (duration, work type, effects, crime…): the action's own job.
+    pub how: Option<JobSpec>,
 }
 
 impl Default for ActionDef {
@@ -654,6 +701,7 @@ impl Default for ActionDef {
             description: String::new(),
             suspicious: false,
             tags: Vec::new(),
+            how: None,
         }
     }
 }

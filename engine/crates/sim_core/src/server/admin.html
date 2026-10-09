@@ -709,6 +709,8 @@ async function saveDraft(dr = draft) {
   try {
     const r = await put(`/api/admin/content/${kind}/${encodeURIComponent(id)}`, def);
     S.content[kind][id] = def;
+    // An action's own job (`how`) is also a job for everything that looks jobs up.
+    if (kind === "actions" && def.how) S.content.jobs[id] = { ...def.how, id, name: def.name, description: def.description ?? "" };
     S.describe = await api("/api/admin/describe").catch(() => S.describe);
     toast(r.ok);
   } catch (e) { toast("Rifiutato: " + e.message, true); }
@@ -1150,17 +1152,24 @@ function statusSections(d) {
 }
 /** Actions that do a job: the job's fields, edited here and saved on the job. */
 function actionJobSection(d) {
-  const jid = d.kind?.Job?.job, src = jid && C("jobs")[jid];
-  if (!src) return null;
-  const job = structuredClone(src);
-  jobDraft = { kind: "jobs", id: job.id, def: job };
-  pathPrefix = ["@job"];
+  const jid = d.kind?.Job?.job || (d.how ? d.id : null);
+  let job, owner = null;
+  if (d.how && (jid === d.id)) { job = d.how; pathPrefix = ["how"]; }
+  else if (jid && C("actions")[jid]?.how) {
+    // Another action's job: edited and saved on that action.
+    jobDraft = { kind: "actions", id: jid, def: structuredClone(C("actions")[jid]) };
+    job = jobDraft.def.how; pathPrefix = ["@job", "how"]; owner = jid;
+  } else if (jid && C("jobs")[jid]) {
+    jobDraft = { kind: "jobs", id: jid, def: structuredClone(C("jobs")[jid]) };
+    job = jobDraft.def; pathPrefix = ["@job"];
+  } else return null;
   try {
     const vals = {};
     for (const f of ["duration", "work_type", "skill", "range", "min_rank", "news", "suspicious"]) { const ed = fieldEditor("jobs", job, f); if (ed) vals[fieldLabel(f)] = ed[1]; }
     const rows = effectRows(job.effects, "#");
-    const shared = Object.values(C("actions")).filter((a) => a.kind?.Job?.job === jid && a.id !== d.id);
-    return card("Come si fa", `<div class="muted" style="margin-bottom:6px">Il lavoro ${link("jobs", jid)}${shared.length ? ` (lo usano anche: ${shared.map((a) => link("actions", a.id)).join(" ")})` : ""}: le modifiche valgono per tutte le azioni che lo usano.</div>` +
+    const shared = Object.values(C("actions")).filter((a) => a.kind?.Job?.job === jid && a.id !== d.id && a.id !== owner);
+    const whose = owner ? `Usa il lavoro dell'azione ${link("actions", owner)}` : jid === d.id ? "Il lavoro di questa azione" : `Il lavoro ${link("jobs", jid)}`;
+    return card("Come si fa", `<div class="muted" style="margin-bottom:6px">${whose}${shared.length ? ` (lo usano anche: ${shared.map((a) => link("actions", a.id)).join(" ")}; le modifiche valgono per tutte)` : ""}.</div>` +
       kv(vals) +
       (job.handler ? `<div class="muted">Una parte è scritta nel codice («${esc(job.handler)}»).</div>` : "") +
       `<h4 style="margin:10px 0 4px">Requisiti del lavoro</h4>` + condEditor("requires", job.requires, { nullable: false }) +
@@ -1470,6 +1479,8 @@ function liveInfo(kind, d) {
 
 function renderDetail() {
   if (route.kind === "ent") return entityPage(route.id);
+  // A job written inside an action: its page is the action's.
+  if (route.kind === "jobs" && C("actions")[route.id]?.how) { location.replace("#cat/actions/" + encodeURIComponent(route.id)); return; }
   const kind = route.kind, src = C(kind)[route.id] ?? Object.values(C(kind)).find((x) => x.name === route.id);
   const spec = CATALOG[kind];
   $("dCrumb").textContent = `${spec?.title ?? kind} › ${src?.name ?? route.id}`;
@@ -1488,7 +1499,7 @@ function renderDetail() {
   if (kind === "needs") { const r = needSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "modes") { const r = modeSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "statuses") { const r = statusSections(d); main = r.sections; used = [...used, ...r.used]; }
-  if (kind === "actions") { const j = actionJobSection(d); if (j) main.push(j); }
+  if (kind === "actions") { const j = actionJobSection(d); if (j) main.push(j); used = [...used, "how"]; }
   const values = {}, details = [], logic = [];
   for (const f of Object.keys(d)) {
     if (used.includes(f)) continue;

@@ -105,16 +105,14 @@
         (id: "zaino_tattico", name: "Zaino tattico", category: "accessori", stack_max: 1, base_price: 70, tags: [], types: ["accessorio"],
          weight: 1, carried_stats: {"forza": 4}, description: "Si porta più roba senza rallentare."),
     ],
-    jobs: [
-        (id: "lancia_oggetto", name: "Lancia qualcosa", handler: "throw", duration: 1, range: 8, params: {"type": "lanciabile"}, suspicious: true,
-         crime: (id: "aggressione", severity: 4, witness_radius: 6, news: 0.3)),
-    ],
     actions: [
         (id: "lancia_oggetto", name: "Lancia qualcosa", weight: 0.9, cooldown: 4, requires: HasItemType("lanciabile"),
          kind: Job(job: "lancia_oggetto", target: Nearest((pawn: true, relation: Hostile, visible: true, max_distance: 6, not_detained: true))),
-         considerations: [(input: TargetExists), (input: Stat(stat: "mira", max: 60), curve: Linear(slope: 0.6, intercept: 0.4))], tags: ["crimine", "violenza"]),
+         considerations: [(input: TargetExists), (input: Stat(stat: "mira", max: 60), curve: Linear(slope: 0.6, intercept: 0.4))], tags: ["crimine", "violenza"],
+         how: Some((handler: "throw", duration: 1, range: 8, params: {"type": "lanciabile"}, suspicious: true, crime: (id: "aggressione", severity: 4, witness_radius: 6, news: 0.3)))),
         (id: "tira_al_bersaglio", name: "Tira roba a chi gli sta antipatico", weight: 0.15, cooldown: 48, requires: HasItemType("lanciabile"),
-         kind: Job(job: "lancia_oggetto", target: Nearest((pawn: true, relation: Other, visible: true, max_distance: 6, not_detained: true, tags_none: ["bestia"]))),
-         considerations: [(input: TargetExists), (input: Stat(stat: "aggressivita", max: 80), curve: Power(exponent: 2.0))], tags: ["crimine", "violenza"]),
+         kind: Job(job: "tira_al_bersaglio", target: Nearest((pawn: true, relation: Other, visible: true, max_distance: 6, not_detained: true, tags_none: ["bestia"]))),
+         considerations: [(input: TargetExists), (input: Stat(stat: "aggressivita", max: 80), curve: Power(exponent: 2.0))], tags: ["crimine", "violenza"],
+         how: Some((handler: "throw", duration: 1, range: 8, params: {"type": "lanciabile"}, suspicious: true, crime: (id: "aggressione", severity: 4, witness_radius: 6, news: 0.3)))),
     ],
 )
