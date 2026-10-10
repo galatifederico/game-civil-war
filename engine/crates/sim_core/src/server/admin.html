@@ -320,14 +320,14 @@ function pawnLayers(race, cls, faction, sex) {
   if (acc) out.push({ file: acc + ".png" });
   return out;
 }
-/** Data URL of the first frame of the layers (16×20 for sheets, the whole image otherwise). */
+/** Data URL of the first frame of the layers (a third of the width and a quarter of the height for sheets, the whole image otherwise). */
 async function compose(layers, whole) {
   const key = JSON.stringify(layers) + (whole ? "w" : "");
   if (composed[key]) return composed[key];
   const ims = await Promise.all(layers.map((l) => loadImg(l.file)));
   if (!ims[0]) return null;
-  const sheet = ims[0].width === 48 && ims[0].height === 80;
-  const [w, h] = sheet && !whole ? [16, 20] : [ims[0].width, ims[0].height];
+  const sheet = /^(chibi|acc)_/.test(layers[0].file);
+  const [w, h] = sheet && !whole ? [ims[0].width / 3, ims[0].height / 4] : [ims[0].width, ims[0].height];
   const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
   const g = cv.getContext("2d"); g.imageSmoothingEnabled = false;
   layers.forEach((l, i) => {

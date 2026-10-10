@@ -13,76 +13,107 @@ from pathlib import Path
 
 from PIL import Image
 
-W, H = 16, 20
+W, H = 24, 32  # frame; humanoids fill about 18×30, like the overworld trainers of the Pokémon games
 DIRS = ["down", "left", "right", "up"]
 OUTLINE = (34, 28, 38, 255)
 
-# ── Humanoid templates ────────────────────────────────────────────────────────
-# H hair, h hair shadow, S skin, s skin shadow, E eye, W eye shine, M mouth,
-# C cloth (tinted), c cloth shadow (tinted), P pants, B boots.  '.' transparent.
+# ── Humanoid parts (16 px wide, drawn at x = 4) ─────────────────────────────
+# H hair, L hair light, h hair shadow, S skin, s skin shadow, E eye, W eye shine, M mouth,
+# C cloth, l cloth light, c cloth shadow (tinted by the faction), P pants, p pants shadow,
+# B shoes, b shoes light.  '.' transparent.
 HEAD_DOWN = [
-    "................",
-    ".....HHHHHH.....",
-    "...HHHHHHHHHH...",
-    "..HHHHHHHHHHHH..",
-    "..HHHHHHHHHHHH..",
-    "..HSSHSSSSHSSH..",
-    "..SSSSSSSSSSSS..",
-    "..SSWESSSSWESS..",
-    "..SSEESSSSEESS..",
-    "..sSSSSSSSSSSs..",
-    "...sSSSMMSSSs...",
+    "......HHHH......",
+    "...HHLLLHHHHH...",
+    "..HLLLHHHHHHHH..",
+    ".HHLHHHHHHHHHHh.",
+    ".HHHHHHHHHHHHHh.",
+    "HHHHHHHHHHHHHHhh",
+    "HHHhSShHHHhSShhh",
+    "HHhSSSShHhSSSShh",
+    "HhSSSSSSSSSSSSSh",
+    "hSSSEESSSSEESSSh",
+    "hSSSWESSSSWESSSh",
+    "hSSSEESSSSEESSSh",
+    ".sSSSSSSSSSSSSs.",
+    "..sSSSSMMSSSSs..",
+    "....ssssssss....",
 ]
 HEAD_UP = [
-    "................",
-    ".....HHHHHH.....",
-    "...HHHHHHHHHH...",
-    "..HHHHHHHHHHHH..",
-    "..HHHHHHHHHHHH..",
-    "..HHHHHHHHHHHH..",
-    "..HHHHHHHHHHHH..",
-    "..HHHHHHHHHHHH..",
-    "..hHHHHHHHHHHh..",
-    "..hhHHHHHHHHhh..",
-    "...shhhhhhhhs...",
+    "......HHHH......",
+    "...HHLLLHHHHH...",
+    "..HLLLHHHHHHHH..",
+    ".HLLHHHHHHHHHHh.",
+    "HHHHHHHHHHHHHHHh",
+    "HHHHHHHHHHHHHHhh",
+    "HHHHHHHHHHHHHHhh",
+    "HHHHHHHHHHHHHHhh",
+    "HHHHHHHHHHHHHhhh",
+    "hHHHHHHHHHHHHhhh",
+    "hhHHHHHHHHHHhhhh",
+    ".hhHHHHHHHHhhhh.",
+    "..hhhhhhhhhhhh..",
+    "...sSSSSSSSSs...",
+    "....ssssssss....",
 ]
 HEAD_LEFT = [
-    "................",
-    ".....HHHHHH.....",
-    "...HHHHHHHHHH...",
-    "..HHHHHHHHHHHH..",
-    "..HHHHHHHHHHHH..",
-    "..SHSSSSHHHHHH..",
-    "..SSSSSSSHHHHH..",
-    "..WESSSSSSHHHH..",
-    "..EESSSSSSShHH..",
-    "..sSSSSSSSSShh..",
-    "...sMSSSSSSSs...",
+    "......HHHH......",
+    "...HHLLLHHHHH...",
+    "..HLLLHHHHHHHH..",
+    ".HLLHHHHHHHHHHh.",
+    "HHHHHHHHHHHHHHHh",
+    "HHHHHHHHHHHHHHhh",
+    "SShHHhHHHHHHHHhh",
+    "SSSSSSShHHHHHHhh",
+    "SSSSSSSSSHHHHHhh",
+    "SEESSSSSSsSHHHhh",
+    "SWESSSSSSssHHhhh",
+    "SEESSSSSSSShhhh.",
+    ".SSSSSSSSSShhhh.",
+    "..sMSSSSSSSshh..",
+    "...ssssssss.....",
 ]
-BODY_FRONT = [
-    "....CCCCCCCC....",
-    "...SCCCCCCCCS...",
-    "...SCCCCCCCCS...",
-    "...ScCCCCCCcS...",
-    "....cccccccc....",
+TORSO_FRONT = [
+    "....lCCCCCCl....",
+    "...lCCCCCCCCC...",
+    "..CClCCCCCCCCc..",
+    "..CClCCCCCCCcc..",
+    "..CCCCCCCCCCcc..",
+    "..SSCCCCCCCCSS..",
+    "..ssccccccccss..",
+    "....PPPPPPPP....",
 ]
-BODY_SIDE = [
-    ".....CCCCCC.....",
-    ".....CCSCCC.....",
-    ".....CCSCCC.....",
-    ".....cCSCCc.....",
-    ".....cccccc.....",
+TORSO_UP = [
+    "....lCCCCCCl....",
+    "...CCCCCCCCCC...",
+    "..CCCCCCCCCCcc..",
+    "..CCCCCCCCCCcc..",
+    "..CCCCCCCCCCcc..",
+    "..SSccCCCCccSS..",
+    "..ssccccccccss..",
+    "....PPPPPPPP....",
 ]
+TORSO_SIDE = [  # facing left; the hand ('A') moves with the step
+    ".....lCCCCC.....",
+    "....lCCCCCCc....",
+    "....CCClCCcc....",
+    "....CCClCCcc....",
+    "....CCClCCcc....",
+    "....CCCCCcccc...",
+    "....ccccccccc...",
+    ".....PPPPPP.....",
+]
+HAND_SIDE = [(7, 5), (5, 5), (9, 5)]  # (x, row) of the hand for idle, step A, step B
 LEGS_FRONT = [
-    ["....PPP..PPP....", "....PPP..PPP....", "....BBB..BBB....", "................"],
-    ["....PPP..PPP....", "....BBB..PPP....", ".........BBB....", "................"],
-    ["....PPP..PPP....", "....PPP..BBB....", "....BBB.........", "................"],
+    ["....PPPPPPPP....", "....PPPppPPP....", "....PPP..PPp....", "....PPP..PPp....", "....pBB..BBp....", "...bBBB..BBBB...", "................"],
+    ["....PPPPPPPP....", "....PPPppPPP....", "....PPP..PPp....", "....PPP..BBp....", "....pBB..BBBB...", "...bBBB.........", "................"],
+    ["....PPPPPPPP....", "....PPPppPPP....", "....PPP..PPp....", "....bBB..PPp....", "...bBBB..BBp....", ".........BBBB...", "................"],
 ]
 LEGS_SIDE = [
-    ["......PPPP......", "......PPPP......", ".....BBBBB......", "................"],
-    [".....PP..PP.....", "....PP....PP....", "...BB......BB...", "................"],
-    ["......PPPP......", "......PPPP......", "......BBBB......", "................"],
+    [".....PPPPPP.....", ".....PPPPpp.....", "......PPPp......", "......PPPp......", "......BBBp......", ".....bBBBB......", "................"],
+    [".....PPPPPP.....", "....PPP..ppp....", "...PPP....ppp...", "...PP......pp...", "..bBB......BBp..", "..BB.........BB.", "................"],
+    [".....PPPPPP.....", ".....PPPPpp.....", ".....PPp.pp.....", "....PPp...pp....", "....bBB..BBB....", "....BB.....BB...", "................"],
 ]
+HEAD_Y, TORSO_Y, LEGS_Y, X0 = 1, 16, 24, 4
 
 # Race palettes: skin, skin shadow, hair, hair shadow, eye, pants, boots, extras.
 RACES = {
@@ -242,25 +273,37 @@ def hexrgba(h):
     return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), 255)
 
 
+def shade(c, k):
+    """Lighter (k > 0) or darker (k < 0) version of a colour, keeping the hue."""
+    r, g, b, a = c
+    if k >= 0:
+        return (round(r + (255 - r) * k), round(g + (255 - g) * k), round(b + (255 - b) * k), a)
+    return (round(r * (1 + k)), round(g * (1 + k)), round(b * (1 + k)), a)
+
+
 def blank():
     return [[None] * W for _ in range(H)]
 
 
-def put(grid, rows, pal, y0=0):
+def put(grid, rows, pal, y0=0, x0=0):
     for y, row in enumerate(rows):
         for x, ch in enumerate(row):
-            if ch != "." and ch in pal and pal[ch] is not None and 0 <= y0 + y < H:
-                grid[y0 + y][x] = pal[ch]
+            if ch != "." and ch in pal and pal[ch] is not None and 0 <= y0 + y < H and 0 <= x0 + x < W:
+                grid[y0 + y][x0 + x] = pal[ch]
 
 
 def outline(grid):
+    """Pokémon-style outline: a dark line in the hue of what it surrounds (darker where two shapes meet)."""
     out = [row[:] for row in grid]
     for y in range(H):
         for x in range(W):
             if grid[y][x] is None:
-                n = [(x + dx, y + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))]
-                if any(0 <= a < W and 0 <= b < H and grid[b][a] is not None for a, b in n):
-                    out[y][x] = OUTLINE
+                n = [grid[b][a] for a, b in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)) if 0 <= a < W and 0 <= b < H and grid[b][a] is not None]
+                if n:
+                    r = sum(c[0] for c in n) // len(n)
+                    g = sum(c[1] for c in n) // len(n)
+                    bb = sum(c[2] for c in n) // len(n)
+                    out[y][x] = (r * 28 // 100 + 12, g * 24 // 100 + 10, bb * 28 // 100 + 16, 255)
     return out
 
 
@@ -277,19 +320,27 @@ def to_img(grid):
     return img
 
 
+def palette(race):
+    p = RACES[race]
+    pal = {k: hexrgba(v) for k, v in p.items() if k != "extras"}
+    pal.setdefault("L", shade(pal["H"], 0.35))
+    pal.setdefault("p", shade(pal["P"], -0.3))
+    pal.setdefault("b", shade(pal["B"], 0.35))
+    pal["W"] = (255, 255, 255, 255)
+    pal["M"] = hexrgba("#b8574d")
+    return pal
+
+
 def humanoid_frames(race, hair=None):
     """Returns {dir: [base grids]} and {dir: [cloth grids]} for 3 poses. `hair`: "long" (women) or "bob"
     (non-binary) adds hair down the sides of the head."""
-    p = RACES[race]
-    pal = {k: hexrgba(v) for k, v in p.items() if k != "extras"}
-    pal["W"] = (255, 255, 255, 255)
-    pal["M"] = hexrgba("#a0524a")
-    extras = list(p.get("extras", []))
+    pal = palette(race)
+    extras = list(RACES[race].get("extras", []))
     if hair == "long" and "long_hair" not in extras:
         extras.append("long_hair")
     if hair == "bob":
         extras.append("bob_hair")
-    cloth_pal = {"C": (235, 235, 235, 255), "c": (170, 170, 170, 255)}
+    cloth_pal = {"l": (255, 255, 255, 255), "C": (228, 228, 228, 255), "c": (160, 160, 160, 255)}
     base, cloth = {}, {}
     for d in DIRS:
         base[d], cloth[d] = [], []
@@ -297,34 +348,54 @@ def humanoid_frames(race, hair=None):
             g, c = blank(), blank()
             side = d in ("left", "right")
             head = {"down": HEAD_DOWN, "up": HEAD_UP}.get(d, HEAD_LEFT)
-            body = BODY_SIDE if side else BODY_FRONT
+            torso = TORSO_SIDE if side else (TORSO_UP if d == "up" else TORSO_FRONT)
             legs = (LEGS_SIDE if side else LEGS_FRONT)[pose]
-            bob = 1 if pose == 0 else 0  # idle breathes one pixel lower than the steps
-            put(g, head, pal, y0=bob)
-            put(g, body, {"S": pal["S"]}, y0=11 + bob)
-            put(c, body, cloth_pal, y0=11 + bob)
-            put(g, legs, pal, y0=16)
-            if "beard" in extras and d != "up":
-                beard = ["..H........H..", "..HHHHHHHHHH..", "...HHHHHHHH...", "....HHHHHH...."] if d == "down" else [
-                    "..HHHHH.......", "...HHHH.......", "....HH........", "..............."]
-                put(g, [" " + r if False else r for r in beard], {"H": pal["H"]}, y0=8 + bob)
-            if "ears" in extras:
-                for (x, y) in ([(1, 6), (0, 5), (14, 6), (15, 5)] if d in ("down", "up") else [(10, 6), (11, 5)]):
-                    g[y + bob][x] = pal["S"]
+            bob = 1 if pose else 0  # the steps sit one pixel lower, as in the games
+            body_pal = {k: pal[k] for k in "SsPp"}
+            put(g, legs, pal, y0=LEGS_Y, x0=X0)
+            put(g, torso, body_pal, y0=TORSO_Y + bob, x0=X0)
+            put(c, torso, cloth_pal, y0=TORSO_Y + bob, x0=X0)
+            if side:
+                hx, hy = HAND_SIDE[pose]
+                g[TORSO_Y + bob + hy][X0 + hx] = pal["S"]
+                g[TORSO_Y + bob + hy + 1][X0 + hx] = pal["s"]
+                c[TORSO_Y + bob + hy][X0 + hx] = c[TORSO_Y + bob + hy + 1][X0 + hx] = None
             if "long_hair" in extras:
-                for y in range(5, 12):
-                    for x in ([1, 2, 13, 14] if d in ("down", "up") else [10, 11, 12, 13]):
-                        if g[y + bob][x] is None or d == "up":
-                            g[y + bob][x] = pal["H"] if y < 11 else pal["h"]
+                cols = [0, 1, 14, 15] if not side else [10, 11, 12, 13, 14]
+                for y in range(8, 22):
+                    for x in cols:
+                        if d == "up" or g[HEAD_Y + bob + y][X0 + x] is None or y >= 15 and x in (0, 15, 13, 14):
+                            g[HEAD_Y + bob + y][X0 + x] = pal["H"] if y < 18 else pal["h"]
+                if d == "up":
+                    for y in range(15, 21):
+                        for x in range(1 + (y > 18), 15 - (y > 18)):
+                            g[HEAD_Y + bob + y][X0 + x] = pal["h"] if x >= 12 - (y > 18) else pal["H"]
+            put(g, head, pal, y0=HEAD_Y + bob, x0=X0)
             if "bob_hair" in extras:
-                for y in range(5, 9):
-                    for x in ([1, 2, 13, 14] if d in ("down", "up") else [10, 11, 12]):
-                        if g[y + bob][x] is None or d == "up":
-                            g[y + bob][x] = pal["H"] if y < 8 else pal["h"]
+                for y in range(6, 14):
+                    for x in ([0, 1, 14, 15] if not side else [9, 10, 11, 12, 13, 14, 15]):
+                        if d == "up" or x in (0, 1, 14, 15) or g[HEAD_Y + bob + y][X0 + x] in (pal["H"], pal["h"], None):
+                            g[HEAD_Y + bob + y][X0 + x] = pal["H"] if y < 12 else pal["h"]
+            if "long_hair" in extras and d == "down":
+                for y in range(8, 18):
+                    for x in (0, 15):
+                        g[HEAD_Y + bob + y][X0 + x] = pal["H"] if y < 15 else pal["h"]
+            if "beard" in extras and d != "up":
+                beard = ["..H..........H..", "..HHHHHHHHHHHH..", "...HHHHMMHHHH...", "....HHHHHHHH....", ".....hhhhhh....."] if d == "down" else [
+                    "HHHHHHH.........", "HHHMHHHH........", ".HHHHHH.........", "..hhhh.........."]
+                put(g, beard, pal, y0=HEAD_Y + bob + 10, x0=X0)
+            if "ears" in extras:
+                pts = [(-1, 8), (-2, 7), (-1, 9), (16, 8), (17, 7), (16, 9)] if not side else [(9, 7), (10, 6), (11, 5), (9, 8)]
+                for (x, y) in pts:
+                    g[HEAD_Y + bob + y][X0 + x] = pal["S"]
             if "tail" in extras and d != "down":
-                tail = [(12, 14), (13, 15), (14, 15), (15, 14)] if d in ("left", "up") else []
-                for x, y in tail:
-                    g[y][x] = pal["s"]
+                for x, y in ([(12, 22), (13, 23), (14, 24), (15, 24), (16, 23)] if d != "up" else [(8, 24), (8, 25), (9, 26), (10, 27)]):
+                    g[y][X0 + x] = pal["s"]
+            hair_cols = (pal["H"], pal["h"])
+            for y in range(H):
+                for x in range(W):
+                    if g[y][x] in hair_cols:
+                        c[y][x] = None
             if d == "right":
                 g, c = mirror(g), mirror(c)
             base[d].append(g)
@@ -335,6 +406,44 @@ def humanoid_frames(race, hair=None):
 def _norm(rows):
     rows = [r.ljust(16, ".")[:16] for r in rows]
     return (rows + ["." * 16] * 20)[:20]
+
+
+# Creatures are drawn on a 16×20 grid; the big ones are scaled up 1.5× to stand next to people.
+BIG = {"dinosauro", "leone", "cinghiale", "robot", "droide", "maiale"}
+
+
+def autoshade(grid):
+    """Light from the top-left: a lighter rim where the shape faces up/left, a darker one down/right."""
+    out = [row[:] for row in grid]
+    for y in range(H):
+        for x in range(W):
+            c = grid[y][x]
+            if c is None:
+                continue
+            up = y == 0 or grid[y - 1][x] is None
+            left = x == 0 or grid[y][x - 1] is None
+            down = y == H - 1 or grid[y + 1][x] is None
+            right = x == W - 1 or grid[y][x + 1] is None
+            if up or left:
+                out[y][x] = shade(c, 0.22)
+            elif down or right:
+                out[y][x] = shade(c, -0.22)
+    return out
+
+
+def place(small, big):
+    """A 16×20 grid into the frame, bottom-centred (scaled 1.5× when big)."""
+    g = blank()
+    if big:
+        sw, sh = 24, 30
+        for y in range(sh):
+            for x in range(sw):
+                g[H - 1 - sh + y][x] = small[y * 2 // 3][x * 2 // 3]
+    else:
+        for y in range(20):
+            for x in range(16):
+                g[H - 21 + y][4 + x] = small[y][x]
+    return g
 
 
 def creature_frames(name):
@@ -348,11 +457,13 @@ def creature_frames(name):
         rows = spec["down"] if d in ("down", "up") or spec["left"] is None else spec["left"]
         frames[d] = []
         for pose in range(3):
-            g = blank()
-            y0 = 0 if pose == 0 else (-1 if pose == 1 else 0)
-            put(g, rows, pal, y0=y0)
-            if pose == 2 and name not in ("drone",):
-                g = [row[:] for row in g]
+            small = [[None] * 16 for _ in range(20)]
+            for y, row in enumerate(rows):
+                for x, ch in enumerate(row):
+                    yy = y + (-1 if pose == 1 else 0)
+                    if ch != "." and ch in pal and 0 <= yy < 20:
+                        small[yy][x] = pal[ch]
+            g = autoshade(place(small, name in BIG))
             if d == "right" and spec["left"] is not None:
                 g = mirror(g)
             frames[d].append(g)
@@ -449,6 +560,13 @@ def acc(name, d):
                 px.append((8, 10, "#3a1240"))
     elif name == "aureola":
         rect(5, 0, 10, 0, "#fff59d")
+    # Drawn on the old 16-px frame (head at x 2..13, y 1..10): scale every pixel onto the new head.
+    big = []
+    for x, y, c in px:
+        for nx in range(4 + (x - 2) * 4 // 3, 4 + (x - 1) * 4 // 3):
+            for ny in range(1 + (y - 1) * 3 // 2, 1 + y * 3 // 2):
+                big.append((nx, max(0, ny), c))
+    px = big
     if d == "right":
         px = [(W - 1 - x, y, c) for x, y, c in px]
     return px
@@ -491,7 +609,8 @@ def main():
             for x, y, col in acc(name, d):
                 if 0 <= x < W and 0 <= y < H:
                     g[y][x] = hexrgba(col)
-            frames[d] = [g, [row[:] for row in g], [row[:] for row in g]]
+            g = outline(autoshade(g))
+            frames[d] = [g] + [[[None] * W] + [row[:] for row in g[:-1]] for _ in range(2)]
         sheet(frames).save(out / f"acc_{name}.png")
     print(f"sprite: {', '.join(made)}; accessori: {', '.join(ACCESSORY_NAMES)} → {out}")
     if "--preview" in sys.argv:
