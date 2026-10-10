@@ -219,7 +219,24 @@ def link(m, x, y, road=None):
         m.g[yy][x] = r
 
 
+def room(m, x0, y0, x1, y1, floor, doors=(), wall="W"):
+    """A building drawn on the map: walls all round, the floor inside, door mats in the walls."""
+    m.rect(x0, y0, x1, y1, wall)
+    m.rect(x0 + 1, y0 + 1, x1 - 1, y1 - 1, floor)
+    for (x, y) in doors:
+        m.g[y][x] = "d"
+
+
+def path(m, a, b, ch=None):
+    """L-shaped walkable path (first along x, then along y)."""
+    tunnel(m, a, b, ch or m.road)
+
+
 # ── Fidenza ──────────────────────────────────────────────────────────────────
+# The regions sit on a grid like the real towns: the station to the north, the Duomo, Piazza Garibaldi
+# on the Via Emilia, the borghi, the Village and the hospital at Vaio to the east, the Stirone to the
+# west and Salsomaggiore with Tabiano in the hills to the south-west. The important buildings are drawn
+# with their walls and rooms on the surface; their old map ids stay as zones.
 p = outdoor("piazza_garibaldi", "Piazza Garibaldi", "NSEW", ["pubblico", "pattuglia", "caldo", "fidenza"])
 p.rect(7, 5, 32, 22, "_")
 p.rect(18, 12, 21, 15, "F")
@@ -232,63 +249,108 @@ building("acquedotto", "piazza_garibaldi", 26, 8, None)
 building("redazione", "piazza_garibaldi", 6, 23, "redazione_gazzetta")
 clear_below(p, 6, 23, ch="=")
 link(p, 6, 23, "=")
-building("forno", "piazza_garibaldi", 27, 21, "anarchici_commercio", "Forno di Piazza")
+building("forno", "piazza_garibaldi", 24, 21, "anarchici_commercio", "Forno di Piazza")
 building("galleria_borgazzi", "piazza_garibaldi", 34, 5, None)
-building("stazione_polizia", "piazza_garibaldi", 34, 22, "polizia_neutra")
-clear_below(p, 34, 22, ch="=")
-link(p, 34, 22, "=")
-p.rect(33, 23, 35, 24, "=")
+# Comando di Polizia: a desk, the cells behind bars.
+room(p, 28, 15, 37, 25, "x", doors=[(32, 15)])
+p.rect(29, 18, 31, 18, "c")
+p.rect(32, 19, 36, 19, "|")
+p.rect(32, 19, 32, 24, "|")
+p.g[19][34] = "x"
+building("stazione_polizia", "piazza_garibaldi", 32, 16, "polizia_neutra")
+SUBZONES += [("stazione_polizia", "Comando di Polizia", "piazza_garibaldi", (29, 16, 8, 9), ["fidenza", "pattuglia"]),
+             ("celle", "Celle di Detenzione", "piazza_garibaldi", (33, 20, 4, 5), ["celle"])]
 p.g[20][12] = "_"
 door("Tombino di Piazza Garibaldi", "piazza_garibaldi", 11, 20, "gallerie", 3, 3)
 SUBZONES.append(("redazione", "Redazione della Gazzetta", "piazza_garibaldi", (2, 18, 9, 9), ["fidenza"]))
 EDGES += [("piazza_garibaldi", "North", "cattedrale"), ("piazza_garibaldi", "East", "borgo_templari"),
           ("piazza_garibaldi", "South", "strada_provinciale"), ("piazza_garibaldi", "West", "rotonde")]
 
-s = outdoor("cattedrale", "Sagrato del Duomo", "SEW", ["pubblico", "chiesa", "fidenza"])
-s.rect(10, 11, 29, 20, "_")
-s.rect(18, 3, 21, 12, "_")
-building("cattedrale", "cattedrale", 20, 11, "chiesa")
-building("banchetto_santini", "cattedrale", 14, 17, "chiesa")
-building("mensa_poveri", "cattedrale", 8, 22, "chiesa")
-clear_below(s, 8, 22)
-link(s, 8, 22)
-building("laboratorio_medico", "cattedrale", 31, 22, "chiesa")
-clear_below(s, 31, 22)
-link(s, 31, 22)
+st = outdoor("stazione", "Stazione di Fidenza", "S", ["pubblico", "fidenza", "stazione"])
+st.rect(0, 5, 39, 6, "x")                        # the Milano–Bologna line
+st.rect(0, 4, 39, 4, "f")
+st.rect(0, 7, 39, 7, "f")
+st.rect(5, 8, 34, 9, "_")                        # platform
+st.rect(19, 7, 20, 7, "_")
+room(st, 12, 10, 27, 16, "m", doors=[(19, 10), (19, 16)])
+st.rect(13, 12, 16, 12, "c")                     # ticket office
+st.rect(19, 17, 20, 27, "=")
+st.rect(3, 19, 12, 24, "g")                      # car park
+st.rect(13, 21, 18, 21, "g")
+building("banco_mercato", "stazione", 24, 15, "anarchici_commercio", "Edicola della Stazione")
+SUBZONES.append(("stazione_fs", "Stazione di Fidenza", "stazione", (13, 11, 14, 5), ["fidenza", "stazione"]))
+EDGES += [("cattedrale", "North", "stazione")]
+
+s = outdoor("cattedrale", "Piazza del Duomo", "NSE", ["pubblico", "chiesa", "fidenza"])
+# Duomo di San Donnino: long nave with pews, the red carpet up to the presbytery and the altar.
+room(s, 4, 3, 16, 21, "m", doors=[(10, 21), (16, 12)])
+s.rect(9, 6, 11, 20, "r")
+for y in range(8, 20, 2):
+    s.rect(6, y, 8, y, "p")
+    s.rect(12, y, 14, y, "p")
+s.rect(6, 4, 14, 5, "x")
+s.rect(17, 12, 18, 12, "_")
+s.rect(3, 22, 20, 24, "_")                       # sagrato
+building("cattedrale", "cattedrale", 10, 20, "chiesa")
+SUBZONES.append(("duomo_interno", "Interno del Duomo", "cattedrale", (5, 4, 11, 17), ["chiesa", "sacro"]))
+building("banchetto_santini", "cattedrale", 14, 24, "chiesa")
+building("mensa_poveri", "cattedrale", 27, 10, "chiesa")
+clear_below(s, 27, 10)
+link(s, 27, 10)
+building("laboratorio_medico", "cattedrale", 33, 10, "chiesa")
+clear_below(s, 33, 10)
+link(s, 33, 10)
 EDGES += [("cattedrale", "East", "fumetteria")]
 
 b = outdoor("borgo_templari", "Borgo dei Templari", "NEW", ["pubblico", "templari", "fidenza", "caldo"])
 b.rect(4, 17, 35, 18, "=")
-building("bar_ubriaconi", "borgo_templari", 10, 16, "ubriaconi")
+# Bar degli Ubriaconi: the counter and, at the back, the throne on its red carpet.
+room(b, 3, 3, 15, 11, "w", doors=[(9, 11)])
+b.rect(4, 8, 9, 8, "c")
+b.rect(11, 4, 14, 6, "r")
+b.rect(9, 12, 9, 12, "=")
+building("bar_ubriaconi", "borgo_templari", 9, 10, "ubriaconi")
+building("trono_ubriaconi", "borgo_templari", 12, 6, "ubriaconi")
+SUBZONES += [("bar_ubriaconi", "Bar degli Ubriaconi", "borgo_templari", (4, 4, 11, 7), ["pubblico", "caldo", "fidenza"]),
+             ("trono_ubriaconi", "Trono degli Ubriaconi", "borgo_templari", (11, 4, 4, 3), ["trono"])]
 building("fucina", "borgo_templari", 28, 16, "templari_borgo")
-building("forno", "borgo_templari", 20, 10, "templari_borgo", "Forno del Borgo")
-b.rect(19, 11, 21, 12, "=")
-b.rect(8, 5, 16, 9, "x")
-b.rect(24, 5, 32, 9, "x")
-EDGES += [("borgo_templari", "East", "fidenza_village")]
+building("forno", "borgo_templari", 27, 10, "templari_borgo", "Forno del Borgo")
+clear_below(b, 27, 10)
+link(b, 27, 10)
+b.rect(31, 5, 36, 9, "x")
+EDGES += [("borgo_templari", "East", "capannone_regali")]
 
-n = outdoor("fumetteria", "Quartiere Nerd", "SW", ["pubblico", "nerd", "fidenza"])
-building("fumetteria", "fumetteria", 20, 11, "gilda_nerd")
+n = outdoor("fumetteria", "Quartiere Nerd", "SEW", ["pubblico", "nerd", "fidenza"])
+# La Fumetteria: shelves and the counter; the trapdoor to the basement is behind the counter.
+room(n, 14, 3, 26, 11, "w", doors=[(20, 11)])
+n.rect(16, 5, 18, 5, "c")
+n.rect(22, 5, 24, 6, "c")
+n.rect(16, 8, 17, 8, "c")
+n.g[12][20] = "="
+building("fumetteria", "fumetteria", 20, 10, "gilda_nerd")
+SUBZONES.append(("negozio_fumetti", "Fumetteria", "fumetteria", (15, 4, 11, 7), ["nerd", "negozio"]))
 n.rect(24, 18, 34, 22, "_")
-EDGES += [("fumetteria", "South", "borgo_templari")]
+EDGES += [("fumetteria", "South", "borgo_templari"), ("fumetteria", "East", "fidenza_village")]
 
-v = outdoor("impero_vegano", "Impero Vegano del Monolite", "SE", ["vegano"], road=":")
+v = outdoor("impero_vegano", "Impero Vegano del Monolite", "S", ["vegano"], road=":")
 v.rect(5, 16, 14, 23, "o")
 building("monolite_soia", "impero_vegano", 20, 10, "impero_vegano")
 v.rect(18, 3, 22, 11, ":")
 building("cattedrale_idroponica", "impero_vegano", 9, 11, "impero_vegano")
 clear_below(v, 9, 11, ":")
 link(v, 9, 11, ":")
+v.rect(9, 13, 20, 14, ":")
 building("bar_estratti", "impero_vegano", 30, 11, "impero_vegano")
 clear_below(v, 30, 11, ":")
 link(v, 30, 11, ":")
+v.rect(20, 13, 30, 14, ":")
 building("laboratorio_fake_meat", "impero_vegano", 30, 23, "impero_vegano")
 clear_below(v, 30, 23, ":")
 v.rect(30, 15, 30, 23, ":")
 building("campo_soia", "impero_vegano", 9, 22, "impero_vegano")
 EDGES += [("impero_vegano", "East", "cattedrale"), ("impero_vegano", "South", "rotonde")]
 
-r = outdoor("rotonde", "Le Rotonde", "NSE", ["rotonda", "pattuglia"], road="g")
+r = outdoor("rotonde", "Le Rotonde", "NSEW", ["rotonda", "pattuglia"], road="g")
 for (cx, cy) in [(20, 13), (20, 5), (20, 22)]:
     r.rect(cx - 3, cy - 2, cx + 3, cy + 3, "g")
     r.rect(cx - 1, cy, cx + 1, cy + 1, ",")
@@ -301,12 +363,22 @@ r.rect(12, 9, 18, 10, "g")
 SUBZONES.append(("circolo_boomer", "Circolo dei Boomer", "rotonde", (5, 5, 7, 5), ["boomer"]))
 EDGES += [("rotonde", "East", "piazza_garibaldi"), ("rotonde", "South", "campagna_bassa")]
 
-fv = outdoor("fidenza_village", "Fidenza Village", "W", ["pubblico", "shopping"], road="=")
-fv.rect(8, 16, 34, 24, "g")
-for x in range(9, 34, 3):
-    fv.rect(x, 18, x, 22, "_")
-fv.rect(12, 4, 30, 14, "_")
-building("outlet", "fidenza_village", 21, 12, "cda_fidenza_village")
+fv = outdoor("fidenza_village", "Fidenza Village", "SW", ["pubblico", "shopping"], road="=")
+# The outlet: a gallery of shops, the board's safes at the back.
+room(fv, 6, 2, 31, 11, "m", doors=[(20, 11)])
+for x in range(8, 26, 5):
+    fv.rect(x, 4, x + 2, 7, "c")
+fv.g[12][20] = "="
+building("outlet", "fidenza_village", 20, 10, "cda_fidenza_village")
+building("casseforti_cda", "fidenza_village", 28, 5, "cda_fidenza_village")
+SUBZONES.append(("outlet_interno", "Negozi dell'Outlet", "fidenza_village", (7, 3, 24, 8), ["shopping"]))
+fv.rect(6, 16, 32, 24, "g")
+for x in range(7, 32, 3):
+    if x not in (19, 20):
+        fv.rect(x, 18, x, 22, "_")
+fv.rect(35, 0, 36, 27, "g")                      # Autostrada A1
+fv.rect(34, 0, 34, 27, "f")
+fv.rect(37, 0, 37, 27, "f")
 
 sp = outdoor("strada_provinciale", "Strada Provinciale", "NSEW", ["strada"], road="g")
 sp.rect(1, 20, 38, 21, "~")
@@ -315,109 +387,87 @@ sp.rect(3, 22, 36, 22, "s")
 sp.rect(3, 19, 36, 19, "s")
 sp.g[19][19] = sp.g[19][20] = "g"
 sp.g[22][19] = sp.g[22][20] = "g"
-EDGES += [("strada_provinciale", "East", "capannone_regali"), ("strada_provinciale", "South", "salsomaggiore_terme")]
+EDGES += [("strada_provinciale", "South", "tabiano_terme")]
 WALLS_NOTE = "Torrente Stirone: acqua (~) con il ponte (b) della provinciale"
 
-cy = outdoor("capannone_regali", "Capannone di Babbo Natale Estivo", "W", ["logistica"], road="g")
+cy = outdoor("capannone_regali", "Capannone di Babbo Natale Estivo", "NEW", ["logistica"], road="g")
 cy.rect(6, 4, 34, 22, "g")
 building("capannone_regali", "capannone_regali", 20, 12, "babbo_natale")
 building("banco_mercato", "capannone_regali", 10, 18, "babbo_natale", "Mensa aziendale degli Elfi")
 building("banco_mercato", "fumetteria", 28, 20, "gilda_nerd", "Bancarella della Gilda")
 building("banco_mercato", "rotonde", 9, 12, "circolo_boomer", "Chiosco del Circolo")
+EDGES += [("fidenza_village", "South", "capannone_regali"), ("capannone_regali", "East", "ospedale_vaio")]
 
-c = outdoor("campagna_bassa", "Campagna della Bassa", "NEW", ["campi"], road=":")
+ov = outdoor("ospedale_vaio", "Ospedale di Vaio", "W", ["pubblico", "fidenza", "ospedale"], road="g")
+room(ov, 8, 3, 31, 11, "m", doors=[(20, 11)])
+for x in range(10, 30, 4):
+    ov.rect(x, 5, x + 1, 5, "c")                 # beds
+ov.rect(10, 9, 14, 9, "c")                       # reception
+ov.g[12][20] = "g"
+building("laboratorio_medico", "ospedale_vaio", 24, 10, None, "Pronto Soccorso di Vaio")
+SUBZONES.append(("ospedale", "Ospedale di Vaio", "ospedale_vaio", (9, 4, 22, 7), ["ospedale", "medicina"]))
+ov.rect(6, 17, 33, 23, "g")
+
+c = outdoor("campagna_bassa", "Campagna della Bassa", "NSEW", ["campi"], road=":")
 c.rect(2, 8, 37, 9, ":")
 c.rect(2, 19, 37, 20, ":")
-row_a = [("mulino", 6), ("forno", 12), ("cantina", 18), ("birrificio", 25), ("distilleria", 31)]
+row_a = [("mulino", 6), ("forno", 12), ("cantina", 25), ("birrificio", 31), ("distilleria", 36)]
 for bid, x in row_a:
     building(bid, "campagna_bassa", x, 7, "contadini_bassa")
 row_b = [("macello", 6), ("salumificio", 12), ("porcilaia", 26), ("orto", 32)]
 for bid, x in row_b:
     building(bid, "campagna_bassa", x, 18, "contadini_bassa")
-for i, (bid, x) in enumerate([("vigna", 4), ("luppoleto", 10), ("campo_orzo", 16), ("campo_grano", 22), ("campo_grano", 28), ("orto", 34)]):
+for i, (bid, x) in enumerate([("vigna", 4), ("luppoleto", 10), ("campo_orzo", 16), ("campo_grano", 24), ("campo_grano", 28), ("orto", 34)]):
     c.rect(x - 1, 22, x + 1, 24, "o")
     building(bid, "campagna_bassa", x, 25, "contadini_bassa")
 c.rect(2, 25, 37, 25, ":")
+c.rect(19, 13, 20, 27, ":")
+EDGES += [("campagna_bassa", "East", "strada_provinciale")]
 
 # ── Salsomaggiore ───────────────────────────────────────────────────────────
 t = outdoor("salsomaggiore_terme", "Salsomaggiore e le Terme", "NES", ["pubblico", "terme", "salso", "caldo"])
-t.rect(12, 4, 28, 12, "_")
-building("stabilimento_termale", "salsomaggiore_terme", 20, 10, "cripta_san_vitale")
+# Terme Berzieri: the pools in the great hall; the stairs to the crypt in a corner.
+room(t, 22, 2, 37, 11, "m", doors=[(29, 11)])
+t.rect(25, 5, 34, 8, "P")
+t.g[12][29] = "="
+building("stabilimento_termale", "salsomaggiore_terme", 29, 10, "cripta_san_vitale")
+SUBZONES.append(("terme_interno", "Terme Berzieri", "salsomaggiore_terme", (23, 3, 14, 8), ["terme", "salso"]))
+door("Scale delle viscere", "salsomaggiore_terme", 24, 3, "cripta", 3, 3)
+t.rect(4, 4, 16, 10, "_")                        # Piazza Berzieri
 t.rect(6, 17, 34, 23, "_")
 building("banco_mercato", "salsomaggiore_terme", 12, 20, "anarchici_commercio")
 building("forno", "salsomaggiore_terme", 28, 21, "contadini_bassa")
 t.rect(27, 22, 29, 22, "_")
 building("orto", "salsomaggiore_terme", 6, 25, "contadini_bassa")
-EDGES += [("salsomaggiore_terme", "East", "casino")]
+EDGES += [("salsomaggiore_terme", "East", "casino"), ("bosco_stirone", "South", "salsomaggiore_terme")]
 
-k = outdoor("casino", "Casinò Diablo Tentator", "W", ["pubblico", "vizio", "caldo"])
-k.rect(10, 4, 32, 22, "_")
-building("sala_giochi", "casino", 21, 12, "casino_diablo")
+k = outdoor("casino", "Casinò Diablo Tentator", "NEW", ["pubblico", "vizio", "caldo"])
+k.rect(6, 3, 17, 11, "_")
+k.rect(22, 3, 33, 11, "_")
+# The gaming hall: tables on the carpet, the back room in the corner.
+room(k, 11, 16, 31, 25, "D", doors=[(20, 16)])
+for (x, y) in [(13, 19), (17, 19), (23, 19), (13, 22), (17, 22)]:
+    k.rect(x, y, x + 2, y, "c")
+k.g[15][20] = "="
+building("sala_giochi", "casino", 20, 17, "casino_diablo")
+building("spacciatore_casino", "casino", 28, 24, "casino_diablo")
+SUBZONES.append(("sala_casino", "Sala da gioco", "casino", (12, 17, 19, 8), ["vizio", "caldo"]))
+EDGES += [("casino", "North", "campagna_bassa"), ("casino", "East", "tabiano_terme")]
 
-# ── Interiors ────────────────────────────────────────────────────────────────
-def interior(mid, name, w, h, floor, tags=(), mat=None):
-    m = Map(mid, name, w, h, floor, tags, indoor=True)
-    m.frame("W")
-    m.rect(1, 1, w - 2, 1, "W")
-    mx = w // 2
-    m.g[h - 1][mx] = "W"
-    m.g[h - 2][mx] = "d"
-    MAPS.append(m)
-    return m, (mx, h - 2)
-
-
-di, dm = interior("duomo_interno", "Interno del Duomo", 24, 18, "m", ["chiesa", "sacro"])
-di.rect(10, 2, 13, 15, "r")
-for y in range(5, 15, 2):
-    di.rect(3, y, 8, y, "p")
-    di.rect(15, y, 20, y, "p")
-di.rect(8, 2, 15, 3, "x")
-door("Portone del Duomo", "cattedrale", 20, 11, "duomo_interno", *dm)
-
-ps, pm = interior("stazione_polizia", "Comando di Polizia", 20, 14, "x", ["fidenza", "pattuglia"])
-ps.rect(12, 2, 18, 7, "x")
-ps.rect(12, 8, 18, 8, "|")
-ps.rect(12, 2, 12, 8, "|")
-ps.g[8][15] = "x"
-ps.rect(3, 4, 8, 4, "c")
-SUBZONES.append(("celle", "Celle di Detenzione", "stazione_polizia", (13, 2, 5, 6), ["celle"]))
-door("Ingresso del Comando", "piazza_garibaldi", 34, 22, "stazione_polizia", *pm)
-
-bu, bm = interior("bar_ubriaconi", "Bar degli Ubriaconi", 20, 14, "w", ["pubblico", "caldo", "fidenza"])
-bu.rect(2, 7, 11, 7, "c")
-bu.rect(13, 2, 17, 5, "r")
-building("trono_ubriaconi", "bar_ubriaconi", 15, 4, "ubriaconi")
-SUBZONES.append(("trono_ubriaconi", "Trono degli Ubriaconi", "bar_ubriaconi", (13, 2, 5, 4), ["trono"]))
-door("Porta del Bar", "borgo_templari", 10, 16, "bar_ubriaconi", *bm)
-
-ou, om = interior("outlet_interno", "Negozi dell'Outlet", 26, 16, "m", ["shopping"])
-for x in range(3, 23, 5):
-    ou.rect(x, 4, x + 2, 9, "c")
-building("casseforti_cda", "outlet_interno", 21, 4, "cda_fidenza_village")
-door("Ingresso dell'Outlet", "fidenza_village", 21, 12, "outlet_interno", *om)
-
-ti, tm = interior("terme_interno", "Stabilimento Termale", 24, 16, "m", ["terme", "salso"])
-ti.rect(6, 4, 17, 9, "P")
-ti.rect(2, 2, 3, 3, "e")
-door("Scale delle viscere", "terme_interno", 2, 2, "cripta", 3, 3)
-door("Ingresso delle Terme", "salsomaggiore_terme", 20, 10, "terme_interno", *tm)
-
-sc, sm = interior("sala_casino", "Sala da gioco", 22, 14, "D", ["vizio", "caldo"])
-for (x, y) in [(4, 4), (9, 4), (4, 8), (9, 8)]:
-    sc.rect(x, y, x + 2, y + 1, "c")
-building("spacciatore_casino", "sala_casino", 17, 6, "casino_diablo")
-door("Porta della Sala da gioco", "casino", 21, 12, "sala_casino", *sm)
-
-# Scantinato della Fumetteria: il dungeon dei nerd, dove vive il polipo.
-sn, snm = interior("scantinato_nerd", "Scantinato della Fumetteria", 22, 16, "x", ["nerd", "dungeon", "scantinato"])
-for (x, y) in [(3, 3), (3, 7), (16, 3), (16, 9)]:
-    sn.rect(x, y, x + 2, y + 1, "c")
-sn.rect(8, 5, 13, 9, "~")
-building("baule_nerd", "scantinato_nerd", 18, 12, None)
-door("Botola dello Scantinato", "fumetteria", 26, 6, "scantinato_nerd", *snm)
+tb = outdoor("tabiano_terme", "Tabiano Terme", "NW", ["pubblico", "terme", "salso"])
+room(tb, 6, 3, 18, 11, "m", doors=[(12, 11)])
+tb.rect(8, 5, 16, 8, "P")
+tb.g[12][12] = "="
+building("banco_mercato", "tabiano_terme", 15, 10, None, "Bottega delle Terme di Tabiano")
+SUBZONES.append(("terme_tabiano", "Terme di Tabiano", "tabiano_terme", (7, 4, 11, 7), ["terme", "salso"]))
+# Castello di Tabiano on its rock.
+tb.rect(25, 2, 36, 11, "R")
+room(tb, 27, 3, 34, 9, "x", doors=[(30, 9)], wall="#")
+tb.rect(30, 10, 30, 13, ":")
+SUBZONES.append(("castello_tabiano", "Castello di Tabiano", "tabiano_terme", (28, 4, 6, 5), ["castello", "salso"]))
 
 # ── Wild surface ────────────────────────────────────────────────────────────
-bo = outdoor("bosco_stirone", "Bosco dello Stirone", "E", ["bosco", "selvatico"], road=":")
+bo = outdoor("bosco_stirone", "Bosco dello Stirone", "ES", ["bosco", "selvatico"], road=":")
 bo.scatter("T", 4, seed=21)
 bo.scatter("t", 9, seed=22)
 bo.rect(15, 1, 18, 26, "~")
@@ -427,6 +477,7 @@ for y in range(1, 27):
 bo.rect(14, 13, 19, 14, "b")
 bo.rect(20, 13, 39, 14, ":")
 bo.rect(2, 13, 13, 14, ":")
+bo.rect(19, 15, 20, 27, ":")
 for (x, y) in [(6, 5), (8, 20), (28, 6), (32, 21)]:
     bo.rect(x - 2, y - 2, x + 2, y + 2, ",")
 EDGES += [("campagna_bassa", "West", "bosco_stirone")]
@@ -453,6 +504,15 @@ def under(mid, name, w, h, depth, tags):
     MAPS.append(m)
     return m
 
+
+# Scantinato della Fumetteria: the nerds' dungeon under the shop, where the octopus lives.
+sn = under("scantinato_nerd", "Scantinato della Fumetteria", 22, 16, -1, ["nerd", "dungeon", "scantinato"])
+sn.rect(1, 1, 20, 14, "x")
+for (x, y) in [(3, 3), (3, 7), (16, 3), (16, 9)]:
+    sn.rect(x, y, x + 2, y + 1, "c")
+sn.rect(8, 5, 13, 9, "~")
+building("baule_nerd", "scantinato_nerd", 18, 12, None)
+door("Botola dello Scantinato", "fumetteria", 16, 9, "scantinato_nerd", 3, 13)
 
 gl = under("gallerie", "Fortezza dei Nani", 64, 40, -1, ["gallerie", "sotterraneo", "fortezza"])
 veins(gl, "O", 14, 18, 101)
@@ -668,6 +728,12 @@ def merge():
                 continue
             sides = [s for s, (dx, dy) in SIDES.items() if 0 <= gx + dx < cols and 0 <= gy + dy < rows]
             countryside(surf, gx * RW, gy * RH, 7919 * (gx + 1) + 104729 * (gy + 1), sides)
+    # The Via Emilia runs east–west through Piazza Garibaldi's row, the railway through the station's.
+    for mid, rows_, ch in (("piazza_garibaldi", (13, 14), "g"), ("stazione", (5, 6), "x")):
+        gy = pos[mid][1] - miny
+        for gx in range(cols):
+            if (gx, gy) not in by_cell:
+                surf.rect(gx * RW, gy * RH + rows_[0], gx * RW + RW - 1, gy * RH + rows_[1], ch)
     # Edge of the world: the woods of the Po valley.
     for x in range(W):
         surf.g[0][x] = surf.g[H - 1][x] = "T"
@@ -755,7 +821,7 @@ VENUES = [
     ("balera", None, "contadini_bassa", "Balera della Bassa", 5, 4),
     ("campetto", "strada_provinciale", None, "Campetto della Provinciale", 5, 3),
     ("gelateria", "salsomaggiore_terme", None, "Gelateria delle Terme", 3, 2),
-    ("cinema", "fidenza_village", "cda_fidenza_village", "Multisala del Village", 5, 4),
+    ("cinema", None, "cda_fidenza_village", "Multisala del Village", 5, 4),
     ("parco_giochi", "capannone_regali", None, "Parco giochi degli Elfi", 3, 2),
     ("parco_giochi", "impero_vegano", None, "Parco giochi a impatto zero", 3, 2),
     ("osteria", "colline_di_salso", "contadini_bassa", "Osteria delle Colline", 3, 3),
