@@ -1302,6 +1302,15 @@ function buildingSections(d) {
     used: ["hp", "footprint", "vision", "stockpile", "tags", "productions", "markup", "sells", "stock", "exports", "cost", "build_work", "consequences"],
   };
 }
+/** Factions: ranks shown as a table (requirements and powers like classes and roles). */
+function factionRanksCard(d) {
+  const rows = [...(d.ranks ?? [])].sort((a, b) => b.level - a.level).map((r) => `<tr><td class="num">${r.level}</td><td>${esc(r.name)}${r.unique ? ' <span class="chip">unico</span>' : ""}</td>` +
+    `<td class="num">${fmt(r.salary ?? 0, 0)} €</td><td>${r.requires ? esc(condText(r.requires)) : '<span class="muted">solo per ordine o dal personaggio</span>'}</td>` +
+    `<td>${Object.keys(r.stats ?? {}).length || (r.abilities ?? []).length || (r.actions ?? []).length ? (Object.keys(r.stats ?? {}).length ? statMapChips(r.stats) : "") + ((r.abilities ?? []).length ? chips(r.abilities, "abilities") : "") + ((r.actions ?? []).length ? chips(r.actions, "actions") : "") : '<span class="muted">—</span>'}</td></tr>`).join("");
+  return card("Ranghi", `<table class="ed"><thead><tr><th class="num">Livello</th><th>Rango</th><th class="num">Stipendio</th><th>Per salire</th><th>Poteri</th></tr></thead><tbody>${rows}</tbody></table>` +
+    `<div class="muted">I membri salgono da soli al rango più alto di cui hanno i requisiti (mai a quelli unici).</div>` +
+    `<details><summary class="muted">modifica i ranghi (JSON)</summary>${jsonBox(["ranks"], d.ranks ?? [])}</details>`);
+}
 /** Roles: like classes, plus how they change hands. */
 function titleSections(d) {
   const how = ["faction", "members_only", "mode", "seat_zone", "vacancy_ticks", "term", "grace", "challenge_stat", "challenge_allies", "grants_faction_control", "victory_points", "news"];
@@ -1622,6 +1631,7 @@ function renderDetail() {
   if (kind === "global_modifiers") { const r = circSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "items") { const r = itemSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "buildings") { const r = buildingSections(d); main = r.sections; used = [...used, ...r.used]; }
+  if (kind === "factions") { main.push(factionRanksCard(d)); used = [...used, "ranks"]; }
   if (kind === "actions") { const j = actionJobSection(d); if (j) main.push(j); used = [...used, "how"]; }
   const values = {}, details = [], logic = [];
   for (const f of Object.keys(d)) {

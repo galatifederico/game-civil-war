@@ -151,6 +151,8 @@ pub fn recompute_stats(
         abilities.extend(content.races.get(&race.0).into_iter().flat_map(|r| r.abilities.iter()));
         abilities.extend(classes.0.iter().filter_map(|c| content.classes.get(c)).flat_map(|d| d.abilities.iter()));
         abilities.extend(sid.and_then(|id| roles.get(id)).into_iter().flatten().flat_map(|d| d.abilities.iter()));
+        let rank = member.and_then(|m| content.rank(&m.faction, &m.rank));
+        abilities.extend(rank.into_iter().flat_map(|r| r.abilities.iter()));
         for a in abilities.iter().filter_map(|a| content.abilities.get(*a)) {
             for (k, v) in &a.stats {
                 *eff.entry(k.clone()).or_insert(0.0) += v;
@@ -237,6 +239,11 @@ pub fn recompute_stats(
                 }
                 t.extend(f.tags.iter().cloned());
             }
+        if let Some(r) = rank {
+            add(&r.stats, &mut eff);
+            t.extend(r.tags.iter().cloned());
+            t.insert(format!("rank:{}", r.id));
+        }
         for d in sid.and_then(|id| roles.get(id)).into_iter().flatten() {
             add(&d.stats, &mut eff);
             t.extend(d.tags.iter().cloned());

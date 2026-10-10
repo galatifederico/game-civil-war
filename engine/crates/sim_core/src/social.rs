@@ -252,3 +252,39 @@ pub fn succession(world: &mut World) {
         crate::titles::assign(world, &t.id, e, "");
     }
 }
+
+/// Promotions: every member climbs to the highest rank of its faction whose requirements it meets
+/// (ranks without requirements, and unique ones, are only given by order or by the template).
+pub fn promotions(world: &mut World) {
+    let tick = world.resource::<crate::time::SimClock>().tick;
+    let every = world.resource::<Params>().get("factions.promotion_every", 24.0).max(1.0) as u64;
+    if !tick.is_multiple_of(every) {
+        return;
+    }
+    let content = world.resource::<Content>().clone();
+    for e in crate::sorted_entities::<FactionMember>(world) {
+        if world.get::<Dead>(e).is_some() {
+            continue;
+        }
+        let m = world.get::<FactionMember>(e).unwrap().clone();
+        let Some(f) = content.factions.get(&m.faction) else { continue };
+        let cur = content.rank(&m.faction, &m.rank).map_or(0, |r| r.level);
+        let mut best: Option<&crate::content::RankDef> = None;
+        for r in f.ranks.iter().filter(|r| !r.unique && r.level > cur && r.requires.is_some()) {
+            let ctx = crate::effects::EffectCtx::new(Some(e), None, format!("rank:{}", r.id));
+            if crate::effects::eval_condition(world, &ctx, r.requires.as_ref().unwrap()) && best.is_none_or(|b| r.level > b.level) {
+                best = Some(r);
+            }
+        }
+        if let Some(r) = best {
+            world.get_mut::<FactionMember>(e).unwrap().rank = r.id.clone();
+            crate::lifecycle::refresh_role(world, e);
+            let name = crate::effects::name_of(world, e);
+            let id = world.get::<crate::ids::SimId>(e).copied();
+            world.resource_mut::<crate::events::EventLog>().push(
+                tick,
+                crate::events::EventBuilder::new("promotion", format!("{name} diventa {} ({})", r.name, f.name)).target(id).faction(Some(f.id.clone())).news(0.1).tags(["rank"]),
+            );
+        }
+    }
+}

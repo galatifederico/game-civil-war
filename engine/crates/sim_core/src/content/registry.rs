@@ -325,6 +325,21 @@ impl Validator<'_> {
             self.check(&c.modes, "modalità", m, "bindings");
         }
         for f in c.factions.values() {
+            for r in &f.ranks {
+                let ctx = format!("rango {} di {}", r.id, f.id);
+                if let Some(q) = &r.requires {
+                    self.cond(q, &ctx);
+                }
+                for s in r.stats.keys() {
+                    self.stat(s, &ctx);
+                }
+                for a in &r.abilities {
+                    self.check(&c.abilities, "abilità", a, &ctx);
+                }
+                for a in &r.actions {
+                    self.check(&c.actions, "azione", a, &ctx);
+                }
+            }
             if let Some(m) = &f.mode {
                 self.check(&c.modes, "modalità", m, &format!("fazione {}", f.id));
             }

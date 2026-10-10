@@ -715,6 +715,19 @@ pub struct RankDef {
     /// Unique rank (the faction leader).
     #[serde(default)]
     pub unique: bool,
+    /// Members are promoted to the highest rank whose requirements they meet (never to a unique one).
+    /// `None`: only by order or from the template.
+    #[serde(default)]
+    pub requires: Option<Condition>,
+    /// Powers of the rank, like a class or a role.
+    #[serde(default)]
+    pub stats: BTreeMap<Id, f32>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub abilities: Vec<Id>,
+    #[serde(default)]
+    pub actions: Vec<Id>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

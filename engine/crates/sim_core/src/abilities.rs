@@ -41,6 +41,9 @@ pub fn known(world: &World, e: Entity) -> Vec<String> {
             v.extend(d.abilities.iter().cloned());
         }
     }
+    if let Some(r) = world.get::<crate::factions::FactionMember>(e).and_then(|m| c.rank(&m.faction, &m.rank)) {
+        v.extend(r.abilities.iter().cloned());
+    }
     v.sort();
     v.dedup();
     v

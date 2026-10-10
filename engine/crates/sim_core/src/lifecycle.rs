@@ -215,6 +215,9 @@ pub fn refresh_role(world: &mut World, e: Entity) {
             actions.extend(d.actions.iter().cloned());
         }
     }
+    if let Some(r) = world.get::<crate::factions::FactionMember>(e).and_then(|m| content.rank(&m.faction, &m.rank)) {
+        actions.extend(r.actions.iter().cloned());
+    }
     actions.sort();
     actions.dedup();
     if let Some(mut b) = world.get_mut::<Brain>(e) {
