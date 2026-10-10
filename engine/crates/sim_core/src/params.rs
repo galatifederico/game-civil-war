@@ -96,8 +96,8 @@ pub const DEFAULTS: &[(&str, f64, &str)] = &[
     ("classes.check_every", 12.0, "Ogni quanti tick si controllano i requisiti delle classi"),
     ("classes.adopt_chance", 0.35, "Probabilità che una pedina che ha i requisiti di una classe la prenda a ogni controllo"),
     ("titles.check_every", 6.0, "Ogni quanti tick si controllano i ruoli (vacanze, mandati, requisiti)"),
-    ("titles.election_luck", 0.3, "Peso della fortuna nelle elezioni (quota del punteggio)"),
-    ("titles.challenge_luck", 0.5, "Peso della fortuna nelle sfide e nei colpi di stato"),
+    ("titles.election_luck", 0.0, "Peso della fortuna nelle elezioni (quota del punteggio)"),
+    ("titles.challenge_luck", 0.0, "Peso della fortuna nelle sfide e nei colpi di stato"),
     ("stealth.detection_scale", 0.1, "Peso della differenza percezione-stealth nel rilevamento"),
 ];
 

@@ -766,6 +766,8 @@ function numInput(path, value, ph, t = "num") {
 }
 
 // ── Effects as rows: who is affected, what changes, by how much, under which condition ──
+// "By chance" is deterministic: a share that adds up (0.2 = once every five times).
+const oneIn = (p) => (p >= 1 ? "sempre" : p <= 0 ? "mai" : `una volta su ${fmt(1 / p, 1)}`);
 const sgn = (v, d = 2) => (v > 0 ? "+" : v < 0 ? "−" : "") + fmt(Math.abs(v), d);
 function scopeText(sc) {
   if (sc === "Subject" || sc == null) return "sé";
@@ -786,7 +788,7 @@ function condText(c) {
     case "Any": return v.map(condText).join(" o ");
     case "Not": return "non " + condText(v);
     case "OnTarget": return "il bersaglio " + condText(v);
-    case "Chance": return `${fmt(v * 100, 0)}%`;
+    case "Chance": return oneIn(v);
     case "StatAtLeast": return `${name("stats", v.stat)} ≥ ${fmt(v.value)}`;
     case "StatBelow": return `${name("stats", v.stat)} < ${fmt(v.value)}`;
     case "NeedBelow": return `${name("needs", v.need)} < ${fmt(v.value * 100, 0)}%`;
@@ -881,7 +883,7 @@ function effectRows(effects, href) {
     const [k, v] = Object.entries(e)[0];
     if (k === "On") return walk(v[1], v[0], conds);
     if (k === "All") return walk(v, scope, conds);
-    if (k === "Chance") return walk(v[1], scope, [...conds, `${fmt(v[0] * 100, 0)}% di probabilità`]);
+    if (k === "Chance") return walk(v[1], scope, [...conds, oneIn(v[0])]);
     if (k === "If") return walk(v[1], scope, [...conds, "se " + condText(v[0])]);
     if (k === "IfElse") { walk(v[1], scope, [...conds, "se " + condText(v[0])]); return walk(v[2], scope, [...conds, "altrimenti"]); }
     if (k === "Cycle") return v.forEach((x, i) => walk(x, scope, [...conds, `a turno: ${i + 1}ª volta su ${v.length}`]));

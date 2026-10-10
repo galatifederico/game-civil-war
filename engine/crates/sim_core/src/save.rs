@@ -105,6 +105,7 @@ macro_rules! resources {
 use crate::buildings::GlobalModifiers;
 use crate::commands::{CommandQueue, SpriteMapping};
 use crate::dungeon::TriggerState;
+use crate::effects::Odds;
 use crate::effects::Flags;
 use crate::events::EventLog;
 use crate::factions::{Factions, Players, Titles};
@@ -123,7 +124,7 @@ use crate::victory::Progress;
 
 resources!(
     SimRng, SimClock, Params, EventLog, CommandQueue, SpriteMapping, JobBoard, Factions, Players, Titles, Squads, Market,
-    GlobalModifiers, Feed, PressCursor, TelemetryCursor, Flags, TriggerState, Progress, Environment, TerrainChanges,
+    GlobalModifiers, Feed, PressCursor, TelemetryCursor, Flags, TriggerState, Odds, Progress, Environment, TerrainChanges,
     SupplyStats, Territories,
 );
 

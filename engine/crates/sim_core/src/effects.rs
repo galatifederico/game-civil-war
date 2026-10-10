@@ -107,7 +107,7 @@ pub fn apply_effect(world: &mut World, ctx: &EffectCtx, effect: &Effect) {
             }
         }
         Effect::Chance(p, inner) => {
-            if world.resource_mut::<SimRng>().chance(*p) {
+            if odds(world, ctx, *p, &format!("{inner:?}")) {
                 apply_effect(world, ctx, inner);
             }
         }
@@ -535,7 +535,7 @@ pub fn eval_condition(world: &mut World, ctx: &EffectCtx, cond: &Condition) -> b
         }
         Condition::TickAtLeast(t) => tick >= *t,
         Condition::Every(n) => *n > 0 && tick.is_multiple_of(*n),
-        Condition::Chance(p) => world.resource_mut::<SimRng>().chance(*p),
+        Condition::Chance(p) => odds(world, ctx, *p, "condition"),
         Condition::Flag { flag, min } => world.resource::<Flags>().0.get(flag).is_some_and(|v| v >= min),
         Condition::StatAtLeast { stat, value } => subj.and_then(|e| world.get::<Stats>(e)).is_some_and(|s| s.get(stat) >= *value),
         Condition::StatBelow { stat, value } => subj.and_then(|e| world.get::<Stats>(e)).is_some_and(|s| s.get(stat) < *value),
@@ -616,16 +616,12 @@ pub fn eval_condition(world: &mut World, ctx: &EffectCtx, cond: &Condition) -> b
             let b = subj.zip(other).and_then(|(e, o)| world.get::<crate::stats::Bonds>(e).map(|b| b.get(o))).unwrap_or_default();
             b.friendship >= *friendship && b.attraction >= *attraction
         }
-        Condition::Contest { stat, luck } => {
+        // The higher stat wins (no luck: everything is deterministic).
+        Condition::Contest { stat, .. } => {
             let (Some(a), Some(b)) = (subj, ctx.target) else { return false };
-            let luck = luck.unwrap_or(0.5).clamp(0.0, 1.0);
-            let sa = world.get::<Stats>(a).map_or(0.0, |s| s.get(stat)).max(1.0);
-            let sb = world.get::<Stats>(b).map_or(0.0, |s| s.get(stat)).max(1.0);
-            let (ra, rb) = {
-                let mut rng = world.resource_mut::<SimRng>();
-                (rng.next_f32(), rng.next_f32())
-            };
-            sa * (1.0 - luck / 2.0 + luck * ra) > sb * (1.0 - luck / 2.0 + luck * rb)
+            let sa = world.get::<Stats>(a).map_or(0.0, |s| s.get(stat));
+            let sb = world.get::<Stats>(b).map_or(0.0, |s| s.get(stat));
+            sa > sb
         }
         Condition::HoldsTitle(t) => {
             let id = subj.and_then(|e| world.get::<SimId>(e).copied());
@@ -667,4 +663,33 @@ fn template_counts(world: &mut World, t: &str) -> (usize, usize) {
 /// Convenience used by many modules.
 pub fn name_of(world: &World, e: Entity) -> String {
     world.get::<DisplayName>(e).map_or_else(|| "?".into(), |n| n.0.clone())
+}
+
+/// How often things "by chance" happen, deterministically: a share `p` accumulates for each source and
+/// subject, and the thing happens each time the share reaches a whole (p = 0.2: once every five times).
+#[derive(Resource, Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct Odds(pub BTreeMap<String, f32>);
+
+pub fn odds(world: &mut World, ctx: &EffectCtx, p: f32, what: &str) -> bool {
+    if p >= 1.0 {
+        return true;
+    }
+    if p <= 0.0 {
+        return false;
+    }
+    let who = ctx.subject.and_then(|e| world.get::<SimId>(e).copied()).map_or(-1, |i| i.0 as i64);
+    let mut h: u64 = 1469598103934665603;
+    for b in what.bytes() {
+        h = (h ^ b as u64).wrapping_mul(1099511628211);
+    }
+    let key = format!("{}|{who}|{h:x}", ctx.origin);
+    let mut o = world.resource_mut::<Odds>();
+    let acc = o.0.entry(key).or_insert(0.0);
+    *acc += p;
+    if *acc >= 1.0 - 1e-6 {
+        *acc -= 1.0;
+        true
+    } else {
+        false
+    }
 }

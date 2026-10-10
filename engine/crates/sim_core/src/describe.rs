@@ -43,7 +43,7 @@ pub fn effect(c: &Content, e: &Effect) -> String {
         }
         Effect::All(list) => list.iter().map(|x| effect(c, x)).collect::<Vec<_>>().join(", "),
         Effect::Cycle(list) => format!("a turno: {}", list.iter().map(|x| effect(c, x)).collect::<Vec<_>>().join(" / ")),
-        Effect::Chance(p, inner) => format!("{:.0}% di probabilità: {}", p * 100.0, effect(c, inner)),
+        Effect::Chance(p, inner) => format!("una volta su {}: {}", num(1.0 / p.max(0.001)), effect(c, inner)),
         Effect::If(_, inner) => format!("a volte: {}", effect(c, inner)),
         Effect::IfElse(_, a, b) => format!("{} oppure {}", effect(c, a), effect(c, b)),
         Effect::ModStat { stat: s, amount } => format!("{} {}", stat(c, s), signed(*amount)),

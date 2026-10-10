@@ -17,7 +17,6 @@ use crate::content::Content;
 use crate::events::{EventBuilder, EventLog};
 use crate::factions::Factions;
 use crate::inventory::Stock;
-use crate::rng::SimRng;
 use crate::time::SimClock;
 
 /// Last delivery per supply: (imported, units already in the shops before the delivery).
@@ -68,7 +67,7 @@ pub fn imports(world: &mut World) {
         let local: u32 = shops.iter().map(|(n, _)| *n).sum();
         let gap: u32 = shops.iter().map(|(n, _)| s.per_shop.saturating_sub(*n)).sum();
         let factor = world.resource::<GlobalModifiers>().supply_factor(world.resource::<Content>(), &s.item, &item.tags);
-        let noise = 1.0 + s.variation * (world.resource_mut::<SimRng>().next_f32() * 2.0 - 1.0);
+        let noise = 1.0;
         let cap = if s.max_per_day == 0 { u32::MAX } else { s.max_per_day };
         let mut amount = ((gap.min(cap) as f32) * factor * noise).round().max(0.0) as u32;
         let wanted = amount;

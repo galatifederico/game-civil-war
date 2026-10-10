@@ -1244,8 +1244,7 @@ pub struct GlobalModifierDef {
 
 /// Steady flow of goods from outside the world: every `interval` ticks the shops that sell `item` are
 /// topped up towards `per_shop` units each, at most `max_per_day`. Local production fills shops first,
-/// so it covers a variable share of the total and imports cover the rest. `variation` adds randomness
-/// (±fraction), active global modifiers scale the flow, the owner faction pays `cost` × base price.
+/// so it covers a variable share of the total and imports cover the rest. Active global modifiers scale the flow; the owner faction pays `cost` × base price.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SupplyDef {
@@ -1254,7 +1253,6 @@ pub struct SupplyDef {
     pub item: Id,
     pub per_shop: u32,
     pub max_per_day: u32,
-    pub variation: f32,
     pub interval: u64,
     pub cost: f32,
     /// Only shops of buildings with this tag.
