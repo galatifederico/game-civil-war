@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Builds the Fidenza & Salsomaggiore region: tile maps (data/maps/*.map) and data/70_mappa.ron
-(legend, maps, sub-zones, borders between maps, doors, infrastructure networks, building positions).
+"""Builds the world: four big surface maps (Fidenza, Salsomaggiore, Fidenza Village and the fields, the Bassa)
+joined at their borders, the dwarves' underground level under Fidenza and the dungeons as separate maps reached
+by stairs. Writes the tile maps (data/maps/*.map) and data/70_mappa.ron (legend, maps, zones, borders, doors,
+infrastructure networks, building positions).
 
 Everything comes from this one script so that tiles, doors and buildings always agree.
 
@@ -179,6 +181,25 @@ class Map:
 
 
 MAPS, SUBZONES, PORTALS, EDGES, BUILDINGS = [], [], [], [], []
+RW, RH, GRID = 40, 28, 6  # every surface map is a 6×6 grid of 40×28 regions (240×168 cells)
+
+# Surface maps: id → (name, tags, filler for the cells without a named place).
+WORLDS = {
+    "fidenza": ("Fidenza", ["superficie", "fidenza"]),
+    "salsomaggiore": ("Salsomaggiore Terme", ["superficie", "salso"]),
+    "village": ("Fidenza Village e i campi", ["superficie", "campi"]),
+    "bassa": ("La Bassa", ["superficie", "campi", "selvatico"]),
+}
+
+
+def filler_kind(world, gx, gy):
+    if world == "fidenza":
+        return "citta" if 1 <= gx <= 4 and gy <= 3 else "campi"
+    if world == "salsomaggiore":
+        return "citta" if 1 <= gx <= 3 and gy <= 1 else "colline"
+    if world == "village":
+        return "campi"
+    return "bassa"
 
 
 def building(b, mid, x, y, owner=None, name=None):
@@ -189,9 +210,9 @@ def door(name, a, ax, ay, b, bx, by):
     PORTALS.append((name, (a, ax, ay), (b, bx, by)))
 
 
-def outdoor(mid, name, openings, tags=(), road="=", trees=True):
-    m = Map(mid, name, 40, 28, ".", tags)
-    m.road = road
+def outdoor(mid, name, openings, tags=(), road="=", trees=True, world="fidenza", at=(0, 0)):
+    m = Map(mid, name, RW, RH, ".", tags)
+    m.road, m.world, m.at = road, world, at
     if trees:
         m.frame("T", openings)
         m.rect(1, 1, 38, 1, "t")
@@ -201,6 +222,15 @@ def outdoor(mid, name, openings, tags=(), road="=", trees=True):
     m.roads(openings, road)
     m.scatter(",", 11, seed=stable_hash(mid) & 0xFFFF)
     m.scatter('"', 17, seed=(stable_hash(mid) >> 3) & 0xFFFF)
+    MAPS.append(m)
+    return m
+
+
+def dungeon(mid, name, w, h, tags, fill="K"):
+    """A dungeon: its own map, reached through stairs from the surface."""
+    m = Map(mid, name, w, h, fill, tags, underground=True)
+    m.depth = -1
+    m.dungeon = True
     MAPS.append(m)
     return m
 
@@ -227,17 +257,17 @@ def room(m, x0, y0, x1, y1, floor, doors=(), wall="W"):
         m.g[y][x] = "d"
 
 
-def path(m, a, b, ch=None):
-    """L-shaped walkable path (first along x, then along y)."""
-    tunnel(m, a, b, ch or m.road)
+def hall(m, x0, y0, x1, y1, floor="x"):
+    """A room carved in the rock of a dungeon."""
+    m.rect(x0, y0, x1, y1, floor)
 
 
-# ── Fidenza ──────────────────────────────────────────────────────────────────
-# The regions sit on a grid like the real towns: the station to the north, the Duomo, Piazza Garibaldi
-# on the Via Emilia, the borghi, the Village and the hospital at Vaio to the east, the Stirone to the
-# west and Salsomaggiore with Tabiano in the hills to the south-west. The important buildings are drawn
-# with their walls and rooms on the surface; their old map ids stay as zones.
-p = outdoor("piazza_garibaldi", "Piazza Garibaldi", "NSEW", ["pubblico", "pattuglia", "caldo", "fidenza"])
+def corridor(m, a, b, ch="x", width=2):
+    tunnel(m, a, b, ch, width)
+
+
+# ══ FIDENZA ═════════════════════════════════════════════════════════════════
+p = outdoor("piazza_garibaldi", "Piazza Garibaldi", "NSEW", ["pubblico", "pattuglia", "caldo", "fidenza"], at=(2, 2))
 p.rect(7, 5, 32, 22, "_")
 p.rect(18, 12, 21, 15, "F")
 p.rect(3, 19, 10, 25, ".")
@@ -251,48 +281,44 @@ clear_below(p, 6, 23, ch="=")
 link(p, 6, 23, "=")
 building("forno", "piazza_garibaldi", 24, 21, "anarchici_commercio", "Forno di Piazza")
 building("galleria_borgazzi", "piazza_garibaldi", 34, 5, None)
-# Comando di Polizia: a desk, the cells behind bars.
-room(p, 28, 15, 37, 25, "x", doors=[(32, 15)])
+room(p, 28, 15, 37, 25, "x", doors=[(32, 15)])          # Comando di Polizia
 p.rect(29, 18, 31, 18, "c")
 p.rect(32, 19, 36, 19, "|")
 p.rect(32, 19, 32, 24, "|")
 p.g[19][34] = "x"
 building("stazione_polizia", "piazza_garibaldi", 32, 16, "polizia_neutra")
 SUBZONES += [("stazione_polizia", "Comando di Polizia", "piazza_garibaldi", (29, 16, 8, 9), ["fidenza", "pattuglia"]),
-             ("celle", "Celle di Detenzione", "piazza_garibaldi", (33, 20, 4, 5), ["celle"])]
+             ("celle", "Celle di Detenzione", "piazza_garibaldi", (33, 20, 4, 5), ["celle"]),
+             ("centro_piazza", "Centro di Piazza Garibaldi", "piazza_garibaldi", (12, 8, 16, 12), ["fidenza"]),
+             ("redazione", "Redazione della Gazzetta", "piazza_garibaldi", (2, 18, 9, 9), ["fidenza"])]
 p.g[20][12] = "_"
 door("Tombino di Piazza Garibaldi", "piazza_garibaldi", 11, 20, "gallerie", 3, 3)
-SUBZONES.append(("redazione", "Redazione della Gazzetta", "piazza_garibaldi", (2, 18, 9, 9), ["fidenza"]))
-EDGES += [("piazza_garibaldi", "North", "cattedrale"), ("piazza_garibaldi", "East", "borgo_templari"),
-          ("piazza_garibaldi", "South", "strada_provinciale"), ("piazza_garibaldi", "West", "rotonde")]
 
-st = outdoor("stazione", "Stazione di Fidenza", "S", ["pubblico", "fidenza", "stazione"])
+st = outdoor("stazione", "Stazione di Fidenza", "S", ["pubblico", "fidenza", "stazione"], at=(2, 0))
 st.rect(0, 5, 39, 6, "x")                        # the Milano–Bologna line
 st.rect(0, 4, 39, 4, "f")
 st.rect(0, 7, 39, 7, "f")
 st.rect(5, 8, 34, 9, "_")                        # platform
-st.rect(19, 7, 20, 7, "_")
+st.rect(19, 0, 20, 7, "=")                       # level crossing towards the Bassa
 room(st, 12, 10, 27, 16, "m", doors=[(19, 10), (19, 16)])
-st.rect(13, 12, 16, 12, "c")                     # ticket office
+st.rect(13, 12, 16, 12, "c")
 st.rect(19, 17, 20, 27, "=")
-st.rect(3, 19, 12, 24, "g")                      # car park
-st.rect(13, 21, 18, 21, "g")
+st.rect(3, 19, 12, 24, "g")
 building("banco_mercato", "stazione", 24, 15, "anarchici_commercio", "Edicola della Stazione")
 SUBZONES.append(("stazione_fs", "Stazione di Fidenza", "stazione", (13, 11, 14, 5), ["fidenza", "stazione"]))
-EDGES += [("cattedrale", "North", "stazione")]
 
-s = outdoor("cattedrale", "Piazza del Duomo", "NSE", ["pubblico", "chiesa", "fidenza"])
-# Duomo di San Donnino: long nave with pews, the red carpet up to the presbytery and the altar.
-room(s, 4, 3, 16, 21, "m", doors=[(10, 21), (16, 12)])
+s = outdoor("cattedrale", "Piazza del Duomo", "NSE", ["pubblico", "chiesa", "fidenza"], at=(2, 1))
+room(s, 4, 3, 16, 21, "m", doors=[(10, 21), (16, 12)])   # Duomo di San Donnino
 s.rect(9, 6, 11, 20, "r")
 for y in range(8, 20, 2):
     s.rect(6, y, 8, y, "p")
     s.rect(12, y, 14, y, "p")
 s.rect(6, 4, 14, 5, "x")
 s.rect(17, 12, 18, 12, "_")
-s.rect(3, 22, 20, 24, "_")                       # sagrato
+s.rect(3, 22, 20, 24, "_")
 building("cattedrale", "cattedrale", 10, 20, "chiesa")
 SUBZONES.append(("duomo_interno", "Interno del Duomo", "cattedrale", (5, 4, 11, 17), ["chiesa", "sacro"]))
+door("Scala della Cripta di San Donnino", "cattedrale", 15, 4, "cripta_duomo", 3, 3)
 building("banchetto_santini", "cattedrale", 14, 24, "chiesa")
 building("mensa_poveri", "cattedrale", 27, 10, "chiesa")
 clear_below(s, 27, 10)
@@ -300,15 +326,13 @@ link(s, 27, 10)
 building("laboratorio_medico", "cattedrale", 33, 10, "chiesa")
 clear_below(s, 33, 10)
 link(s, 33, 10)
-EDGES += [("cattedrale", "East", "fumetteria")]
 
-b = outdoor("borgo_templari", "Borgo dei Templari", "NEW", ["pubblico", "templari", "fidenza", "caldo"])
+b = outdoor("borgo_templari", "Borgo dei Templari", "NEW", ["pubblico", "templari", "fidenza", "caldo"], at=(3, 2))
 b.rect(4, 17, 35, 18, "=")
-# Bar degli Ubriaconi: the counter and, at the back, the throne on its red carpet.
-room(b, 3, 3, 15, 11, "w", doors=[(9, 11)])
+room(b, 3, 3, 15, 11, "w", doors=[(9, 11)])              # Bar degli Ubriaconi
 b.rect(4, 8, 9, 8, "c")
 b.rect(11, 4, 14, 6, "r")
-b.rect(9, 12, 9, 12, "=")
+b.g[12][9] = "="
 building("bar_ubriaconi", "borgo_templari", 9, 10, "ubriaconi")
 building("trono_ubriaconi", "borgo_templari", 12, 6, "ubriaconi")
 SUBZONES += [("bar_ubriaconi", "Bar degli Ubriaconi", "borgo_templari", (4, 4, 11, 7), ["pubblico", "caldo", "fidenza"]),
@@ -318,39 +342,36 @@ building("forno", "borgo_templari", 27, 10, "templari_borgo", "Forno del Borgo")
 clear_below(b, 27, 10)
 link(b, 27, 10)
 b.rect(31, 5, 36, 9, "x")
-EDGES += [("borgo_templari", "East", "capannone_regali")]
 
-n = outdoor("fumetteria", "Quartiere Nerd", "SEW", ["pubblico", "nerd", "fidenza"])
-# La Fumetteria: shelves and the counter; the trapdoor to the basement is behind the counter.
-room(n, 14, 3, 26, 11, "w", doors=[(20, 11)])
+n = outdoor("fumetteria", "Quartiere Nerd", "SEW", ["pubblico", "nerd", "fidenza"], at=(3, 1))
+room(n, 14, 3, 26, 11, "w", doors=[(20, 11)])            # La Fumetteria
 n.rect(16, 5, 18, 5, "c")
 n.rect(22, 5, 24, 6, "c")
 n.rect(16, 8, 17, 8, "c")
 n.g[12][20] = "="
 building("fumetteria", "fumetteria", 20, 10, "gilda_nerd")
 SUBZONES.append(("negozio_fumetti", "Fumetteria", "fumetteria", (15, 4, 11, 7), ["nerd", "negozio"]))
+door("Botola dello Scantinato", "fumetteria", 16, 9, "scantinato_nerd", 3, 13)
 n.rect(24, 18, 34, 22, "_")
-EDGES += [("fumetteria", "South", "borgo_templari"), ("fumetteria", "East", "fidenza_village")]
+building("banco_mercato", "fumetteria", 28, 20, "gilda_nerd", "Bancarella della Gilda")
 
-v = outdoor("impero_vegano", "Impero Vegano del Monolite", "S", ["vegano"], road=":")
+v = outdoor("impero_vegano", "Impero Vegano del Monolite", "S", ["vegano"], road=":", at=(1, 1))
 v.rect(5, 16, 14, 23, "o")
 building("monolite_soia", "impero_vegano", 20, 10, "impero_vegano")
 v.rect(18, 3, 22, 11, ":")
 building("cattedrale_idroponica", "impero_vegano", 9, 11, "impero_vegano")
 clear_below(v, 9, 11, ":")
 link(v, 9, 11, ":")
-v.rect(9, 13, 20, 14, ":")
+v.rect(9, 13, 30, 14, ":")
 building("bar_estratti", "impero_vegano", 30, 11, "impero_vegano")
 clear_below(v, 30, 11, ":")
 link(v, 30, 11, ":")
-v.rect(20, 13, 30, 14, ":")
 building("laboratorio_fake_meat", "impero_vegano", 30, 23, "impero_vegano")
 clear_below(v, 30, 23, ":")
 v.rect(30, 15, 30, 23, ":")
 building("campo_soia", "impero_vegano", 9, 22, "impero_vegano")
-EDGES += [("impero_vegano", "East", "cattedrale"), ("impero_vegano", "South", "rotonde")]
 
-r = outdoor("rotonde", "Le Rotonde", "NSEW", ["rotonda", "pattuglia"], road="g")
+r = outdoor("rotonde", "Le Rotonde", "NSEW", ["rotonda", "pattuglia"], road="g", at=(1, 2))
 for (cx, cy) in [(20, 13), (20, 5), (20, 22)]:
     r.rect(cx - 3, cy - 2, cx + 3, cy + 3, "g")
     r.rect(cx - 1, cy, cx + 1, cy + 1, ",")
@@ -361,17 +382,64 @@ r.rect(12, 4, 12, 8, "f")
 r.rect(5, 9, 12, 9, "_")
 r.rect(12, 9, 18, 10, "g")
 SUBZONES.append(("circolo_boomer", "Circolo dei Boomer", "rotonde", (5, 5, 7, 5), ["boomer"]))
-EDGES += [("rotonde", "East", "piazza_garibaldi"), ("rotonde", "South", "campagna_bassa")]
+building("banco_mercato", "rotonde", 9, 12, "circolo_boomer", "Chiosco del Circolo")
 
-fv = outdoor("fidenza_village", "Fidenza Village", "SW", ["pubblico", "shopping"], road="=")
-# The outlet: a gallery of shops, the board's safes at the back.
-room(fv, 6, 2, 31, 11, "m", doors=[(20, 11)])
+ov = outdoor("ospedale_vaio", "Ospedale di Vaio", "EW", ["pubblico", "fidenza", "ospedale"], road="g", at=(4, 2))
+room(ov, 8, 3, 31, 11, "m", doors=[(20, 11)])
+for x in range(10, 30, 4):
+    ov.rect(x, 5, x + 1, 5, "c")
+ov.rect(10, 9, 14, 9, "c")
+ov.g[12][20] = "g"
+building("laboratorio_medico", "ospedale_vaio", 24, 10, None, "Pronto Soccorso di Vaio")
+SUBZONES.append(("ospedale", "Ospedale di Vaio", "ospedale_vaio", (9, 4, 22, 7), ["ospedale", "medicina"]))
+ov.rect(6, 17, 33, 23, "g")
+
+sp = outdoor("strada_provinciale", "Strada Provinciale", "NSEW", ["strada"], road="g", at=(2, 3))
+sp.rect(1, 20, 38, 21, "~")
+sp.rect(19, 20, 20, 21, "b")
+sp.rect(3, 22, 36, 22, "s")
+sp.rect(3, 19, 36, 19, "s")
+sp.g[19][19] = sp.g[19][20] = "g"
+sp.g[22][19] = sp.g[22][20] = "g"
+
+# Teatro Magnani: the stalls, the stage and the boxes.
+tm = outdoor("teatro_magnani", "Teatro Magnani", "NW", ["pubblico", "fidenza", "teatro"], at=(3, 3))
+room(tm, 6, 3, 33, 23, "w", doors=[(19, 3)])
+tm.rect(7, 4, 32, 4, "_")
+tm.g[2][19] = tm.g[1][19] = "="
+for y in range(6, 15, 2):
+    tm.rect(10, y, 17, y, "p")
+    tm.rect(22, y, 29, y, "p")
+tm.rect(8, 17, 31, 22, "r")                     # stage
+tm.rect(7, 16, 32, 16, "c")
+tm.g[16][19] = tm.g[16][20] = "r"
+SUBZONES.append(("teatro", "Teatro Magnani", "teatro_magnani", (7, 4, 26, 19), ["teatro", "svago"]))
+building("cinema", "teatro_magnani", 20, 21, "anarchici_commercio", "Palco del Teatro Magnani")
+
+# The cemetery: graves in rows, the chapel, and the mausoleum with stairs to San Donnino's crypt.
+ci = outdoor("cimitero", "Cimitero di Fidenza", "NE", ["cimitero", "fidenza"], at=(1, 3))
+room(ci, 3, 3, 36, 24, ".", doors=[(19, 3), (36, 13)], wall="#")
+for y in range(6, 23, 3):
+    for x in range(6, 34, 3):
+        if x not in (18, 21) and not (24 <= x <= 33 and y >= 15):
+            ci.g[y][x] = "K"
+ci.rect(19, 4, 20, 23, ":")
+ci.rect(4, 13, 35, 14, ":")
+room(ci, 26, 16, 33, 22, "x", doors=[(29, 16)])
+ci.g[15][29] = ":"
+SUBZONES.append(("cimitero", "Cimitero di Fidenza", "cimitero", (4, 4, 32, 20), ["cimitero"]))
+door("Mausoleo dei Vescovi", "cimitero", 30, 20, "cripta_duomo", 55, 35)
+
+# ══ FIDENZA VILLAGE E CAMPI ═════════════════════════════════════════════════
+fv = outdoor("fidenza_village", "Fidenza Village", "SW", ["pubblico", "shopping"], road="=", world="village", at=(1, 1))
+room(fv, 6, 2, 31, 11, "m", doors=[(20, 11)])             # outlet
 for x in range(8, 26, 5):
     fv.rect(x, 4, x + 2, 7, "c")
 fv.g[12][20] = "="
 building("outlet", "fidenza_village", 20, 10, "cda_fidenza_village")
 building("casseforti_cda", "fidenza_village", 28, 5, "cda_fidenza_village")
 SUBZONES.append(("outlet_interno", "Negozi dell'Outlet", "fidenza_village", (7, 3, 24, 8), ["shopping"]))
+door("Ascensore riservato del CdA", "fidenza_village", 29, 9, "covo_rettiliano", 3, 3)
 fv.rect(6, 16, 32, 24, "g")
 for x in range(7, 32, 3):
     if x not in (19, 20):
@@ -380,94 +448,39 @@ fv.rect(35, 0, 36, 27, "g")                      # Autostrada A1
 fv.rect(34, 0, 34, 27, "f")
 fv.rect(37, 0, 37, 27, "f")
 
-sp = outdoor("strada_provinciale", "Strada Provinciale", "NSEW", ["strada"], road="g")
-sp.rect(1, 20, 38, 21, "~")
-sp.rect(19, 20, 20, 21, "b")
-sp.rect(3, 22, 36, 22, "s")
-sp.rect(3, 19, 36, 19, "s")
-sp.g[19][19] = sp.g[19][20] = "g"
-sp.g[22][19] = sp.g[22][20] = "g"
-EDGES += [("strada_provinciale", "South", "tabiano_terme")]
-WALLS_NOTE = "Torrente Stirone: acqua (~) con il ponte (b) della provinciale"
-
-cy = outdoor("capannone_regali", "Capannone di Babbo Natale Estivo", "NEW", ["logistica"], road="g")
+cy = outdoor("capannone_regali", "Capannone di Babbo Natale Estivo", "NEW", ["logistica"], road="g", world="village", at=(1, 2))
 cy.rect(6, 4, 34, 22, "g")
 building("capannone_regali", "capannone_regali", 20, 12, "babbo_natale")
 building("banco_mercato", "capannone_regali", 10, 18, "babbo_natale", "Mensa aziendale degli Elfi")
-building("banco_mercato", "fumetteria", 28, 20, "gilda_nerd", "Bancarella della Gilda")
-building("banco_mercato", "rotonde", 9, 12, "circolo_boomer", "Chiosco del Circolo")
-EDGES += [("fidenza_village", "South", "capannone_regali"), ("capannone_regali", "East", "ospedale_vaio")]
 
-ov = outdoor("ospedale_vaio", "Ospedale di Vaio", "W", ["pubblico", "fidenza", "ospedale"], road="g")
-room(ov, 8, 3, 31, 11, "m", doors=[(20, 11)])
-for x in range(10, 30, 4):
-    ov.rect(x, 5, x + 1, 5, "c")                 # beds
-ov.rect(10, 9, 14, 9, "c")                       # reception
-ov.g[12][20] = "g"
-building("laboratorio_medico", "ospedale_vaio", 24, 10, None, "Pronto Soccorso di Vaio")
-SUBZONES.append(("ospedale", "Ospedale di Vaio", "ospedale_vaio", (9, 4, 22, 7), ["ospedale", "medicina"]))
-ov.rect(6, 17, 33, 23, "g")
-
-c = outdoor("campagna_bassa", "Campagna della Bassa", "NSEW", ["campi"], road=":")
+c = outdoor("campagna_bassa", "Campi e cascine", "NSEW", ["campi"], road=":", world="village", at=(2, 2))
 c.rect(2, 8, 37, 9, ":")
 c.rect(2, 19, 37, 20, ":")
-row_a = [("mulino", 6), ("forno", 12), ("cantina", 25), ("birrificio", 31), ("distilleria", 36)]
-for bid, x in row_a:
+for bid, x in [("mulino", 6), ("forno", 12), ("cantina", 25), ("birrificio", 31), ("distilleria", 36)]:
     building(bid, "campagna_bassa", x, 7, "contadini_bassa")
-row_b = [("macello", 6), ("salumificio", 12), ("porcilaia", 26), ("orto", 32)]
-for bid, x in row_b:
+for bid, x in [("macello", 6), ("salumificio", 12), ("porcilaia", 26), ("orto", 32)]:
     building(bid, "campagna_bassa", x, 18, "contadini_bassa")
-for i, (bid, x) in enumerate([("vigna", 4), ("luppoleto", 10), ("campo_orzo", 16), ("campo_grano", 24), ("campo_grano", 28), ("orto", 34)]):
+for bid, x in [("vigna", 4), ("luppoleto", 10), ("campo_orzo", 16), ("campo_grano", 24), ("campo_grano", 28), ("orto", 34)]:
     c.rect(x - 1, 22, x + 1, 24, "o")
     building(bid, "campagna_bassa", x, 25, "contadini_bassa")
 c.rect(2, 25, 37, 25, ":")
 c.rect(19, 13, 20, 27, ":")
-EDGES += [("campagna_bassa", "East", "strada_provinciale")]
+c.rect(14, 16, 16, 18, "x")                      # the salumificio's cellar door
+door("Botola delle Cantine", "campagna_bassa", 15, 17, "cantine_culatello", 3, 3)
 
-# ── Salsomaggiore ───────────────────────────────────────────────────────────
-t = outdoor("salsomaggiore_terme", "Salsomaggiore e le Terme", "NES", ["pubblico", "terme", "salso", "caldo"])
-# Terme Berzieri: the pools in the great hall; the stairs to the crypt in a corner.
-room(t, 22, 2, 37, 11, "m", doors=[(29, 11)])
-t.rect(25, 5, 34, 8, "P")
-t.g[12][29] = "="
-building("stabilimento_termale", "salsomaggiore_terme", 29, 10, "cripta_san_vitale")
-SUBZONES.append(("terme_interno", "Terme Berzieri", "salsomaggiore_terme", (23, 3, 14, 8), ["terme", "salso"]))
-door("Scale delle viscere", "salsomaggiore_terme", 24, 3, "cripta", 3, 3)
-t.rect(4, 4, 16, 10, "_")                        # Piazza Berzieri
-t.rect(6, 17, 34, 23, "_")
-building("banco_mercato", "salsomaggiore_terme", 12, 20, "anarchici_commercio")
-building("forno", "salsomaggiore_terme", 28, 21, "contadini_bassa")
-t.rect(27, 22, 29, 22, "_")
-building("orto", "salsomaggiore_terme", 6, 25, "contadini_bassa")
-EDGES += [("salsomaggiore_terme", "East", "casino"), ("bosco_stirone", "South", "salsomaggiore_terme")]
+cs = outdoor("caseificio", "Caseificio del Parmigiano", "S", ["campi", "produzione"], road=":", world="village", at=(3, 1))
+room(cs, 8, 4, 31, 12, "x", doors=[(19, 12)])
+for y in (6, 8, 10):
+    cs.rect(10, y, 17, y, "c")
+    cs.rect(22, y, 29, y, "c")
+cs.g[13][19] = ":"
+building("banco_mercato", "caseificio", 20, 11, "contadini_bassa", "Spaccio del Caseificio")
+SUBZONES.append(("magazzino_forme", "Magazzino delle forme", "caseificio", (9, 5, 22, 7), ["campi", "produzione"]))
+cs.rect(6, 17, 14, 23, "o")
+cs.rect(25, 17, 33, 23, "o")
 
-k = outdoor("casino", "Casinò Diablo Tentator", "NEW", ["pubblico", "vizio", "caldo"])
-k.rect(6, 3, 17, 11, "_")
-k.rect(22, 3, 33, 11, "_")
-# The gaming hall: tables on the carpet, the back room in the corner.
-room(k, 11, 16, 31, 25, "D", doors=[(20, 16)])
-for (x, y) in [(13, 19), (17, 19), (23, 19), (13, 22), (17, 22)]:
-    k.rect(x, y, x + 2, y, "c")
-k.g[15][20] = "="
-building("sala_giochi", "casino", 20, 17, "casino_diablo")
-building("spacciatore_casino", "casino", 28, 24, "casino_diablo")
-SUBZONES.append(("sala_casino", "Sala da gioco", "casino", (12, 17, 19, 8), ["vizio", "caldo"]))
-EDGES += [("casino", "North", "campagna_bassa"), ("casino", "East", "tabiano_terme")]
-
-tb = outdoor("tabiano_terme", "Tabiano Terme", "NW", ["pubblico", "terme", "salso"])
-room(tb, 6, 3, 18, 11, "m", doors=[(12, 11)])
-tb.rect(8, 5, 16, 8, "P")
-tb.g[12][12] = "="
-building("banco_mercato", "tabiano_terme", 15, 10, None, "Bottega delle Terme di Tabiano")
-SUBZONES.append(("terme_tabiano", "Terme di Tabiano", "tabiano_terme", (7, 4, 11, 7), ["terme", "salso"]))
-# Castello di Tabiano on its rock.
-tb.rect(25, 2, 36, 11, "R")
-room(tb, 27, 3, 34, 9, "x", doors=[(30, 9)], wall="#")
-tb.rect(30, 10, 30, 13, ":")
-SUBZONES.append(("castello_tabiano", "Castello di Tabiano", "tabiano_terme", (28, 4, 6, 5), ["castello", "salso"]))
-
-# ── Wild surface ────────────────────────────────────────────────────────────
-bo = outdoor("bosco_stirone", "Bosco dello Stirone", "ES", ["bosco", "selvatico"], road=":")
+# ══ SALSOMAGGIORE ═══════════════════════════════════════════════════════════
+bo = outdoor("bosco_stirone", "Bosco dello Stirone", "NSE", ["bosco", "selvatico"], road=":", world="salsomaggiore", at=(2, 0))
 bo.scatter("T", 4, seed=21)
 bo.scatter("t", 9, seed=22)
 bo.rect(15, 1, 18, 26, "~")
@@ -477,70 +490,136 @@ for y in range(1, 27):
 bo.rect(14, 13, 19, 14, "b")
 bo.rect(20, 13, 39, 14, ":")
 bo.rect(2, 13, 13, 14, ":")
-bo.rect(19, 15, 20, 27, ":")
+bo.rect(19, 0, 20, 27, ":")
 for (x, y) in [(6, 5), (8, 20), (28, 6), (32, 21)]:
     bo.rect(x - 2, y - 2, x + 2, y + 2, ",")
-EDGES += [("campagna_bassa", "West", "bosco_stirone")]
 
-co = outdoor("colline_di_salso", "Colline di Salso", "N", ["colline", "selvatico"], road=":")
-r = Rnd(31)
+t = outdoor("salsomaggiore_terme", "Salsomaggiore e le Terme", "NESW", ["pubblico", "terme", "salso", "caldo"], world="salsomaggiore", at=(2, 1))
+room(t, 22, 2, 37, 11, "m", doors=[(29, 11)])             # Terme Berzieri
+t.rect(25, 5, 34, 8, "P")
+t.g[12][29] = "="
+building("stabilimento_termale", "salsomaggiore_terme", 29, 10, "cripta_san_vitale")
+SUBZONES.append(("terme_interno", "Terme Berzieri", "salsomaggiore_terme", (23, 3, 14, 8), ["terme", "salso"]))
+door("Scale delle viscere", "salsomaggiore_terme", 24, 3, "cripta", 3, 3)
+t.rect(4, 4, 16, 10, "_")
+t.rect(6, 17, 34, 23, "_")
+building("banco_mercato", "salsomaggiore_terme", 12, 20, "anarchici_commercio")
+building("forno", "salsomaggiore_terme", 28, 21, "contadini_bassa")
+t.rect(27, 22, 29, 22, "_")
+building("orto", "salsomaggiore_terme", 6, 25, "contadini_bassa")
+
+k = outdoor("casino", "Casinò Diablo Tentator", "NEW", ["pubblico", "vizio", "caldo"], world="salsomaggiore", at=(3, 1))
+k.rect(6, 3, 17, 11, "_")
+k.rect(22, 3, 33, 11, "_")
+room(k, 11, 16, 31, 25, "D", doors=[(20, 16)])
+for (x, y) in [(13, 19), (17, 19), (23, 19), (13, 22), (17, 22)]:
+    k.rect(x, y, x + 2, y, "c")
+k.g[15][20] = "="
+building("sala_giochi", "casino", 20, 17, "casino_diablo")
+building("spacciatore_casino", "casino", 28, 24, "casino_diablo")
+SUBZONES.append(("sala_casino", "Sala da gioco", "casino", (12, 17, 19, 8), ["vizio", "caldo"]))
+
+gh = outdoor("palazzo_congressi", "Palazzo dei Congressi", "E", ["pubblico", "salso", "turismo"], world="salsomaggiore", at=(1, 1))
+room(gh, 4, 3, 33, 22, "m", doors=[(33, 13)])
+gh.rect(8, 6, 29, 19, "r")                       # the Moorish ballroom
+for (x, y) in [(10, 8), (27, 8), (10, 17), (27, 17)]:
+    gh.g[y][x] = "F"
+gh.rect(14, 11, 23, 14, "_")
+SUBZONES.append(("salone_moresco", "Salone Moresco", "palazzo_congressi", (5, 4, 28, 18), ["salso", "turismo", "svago"]))
+building("balera", "palazzo_congressi", 19, 14, None, "Gran Ballo del Palazzo dei Congressi")
+
+tb = outdoor("tabiano_terme", "Tabiano Terme", "W", ["pubblico", "terme", "salso"], world="salsomaggiore", at=(4, 1))
+room(tb, 6, 3, 18, 11, "m", doors=[(12, 11)])
+tb.rect(8, 5, 16, 8, "P")
+tb.g[12][12] = "="
+building("banco_mercato", "tabiano_terme", 15, 10, None, "Bottega delle Terme di Tabiano")
+SUBZONES.append(("terme_tabiano", "Terme di Tabiano", "tabiano_terme", (7, 4, 11, 7), ["terme", "salso"]))
+tb.rect(25, 2, 36, 11, "R")
+room(tb, 27, 3, 34, 9, "x", doors=[(30, 9)], wall="#")
+tb.rect(30, 10, 30, 13, ":")
+SUBZONES.append(("castello_tabiano", "Castello di Tabiano", "tabiano_terme", (28, 4, 6, 5), ["castello", "salso"]))
+
+co = outdoor("colline_di_salso", "Colline di Salso", "NE", ["colline", "selvatico"], road=":", world="salsomaggiore", at=(2, 2))
+rr = Rnd(31)
 for _ in range(14):
-    cx, cy = r.range(4, 35), r.range(4, 23)
-    for y in range(cy - 2, cy + 3):
-        for x in range(cx - 3, cx + 4):
-            if 1 < x < 38 and 1 < y < 26 and abs(x - cx) + abs(y - cy) < 5 and co.g[y][x] not in ":=":
+    cx_, cy_ = rr.range(4, 35), rr.range(4, 23)
+    for y in range(cy_ - 2, cy_ + 3):
+        for x in range(cx_ - 3, cx_ + 4):
+            if 1 < x < 38 and 1 < y < 26 and abs(x - cx_) + abs(y - cy_) < 5 and co.g[y][x] not in ":=":
                 co.g[y][x] = "R"
 co.rect(27, 18, 33, 22, "R")
 co.rect(29, 21, 31, 22, "k")
 co.rect(19, 14, 30, 15, ":")
 co.rect(30, 15, 30, 22, ":")
 door("Bocca della Miniera di Sale", "colline_di_salso", 30, 22, "miniera_di_sale", 3, 3)
-EDGES += [("salsomaggiore_terme", "South", "colline_di_salso")]
 
-# ── Under Fidenza: the dwarves' fortress and the depths ─────────────────────
-def under(mid, name, w, h, depth, tags):
+sc = outdoor("scipione", "Castello di Scipione", "E", ["castello", "salso", "colline"], road=":", world="salsomaggiore", at=(1, 2))
+sc.rect(6, 3, 30, 22, "R")
+room(sc, 9, 5, 27, 19, "x", doors=[(27, 13)], wall="#")
+room(sc, 11, 7, 16, 12, "w", doors=[(16, 10)], wall="#")  # the keep
+sc.rect(28, 13, 38, 14, ":")
+SUBZONES.append(("rocca_scipione", "Rocca di Scipione", "scipione", (10, 6, 17, 13), ["castello", "salso"]))
+
+# Leisure venues: (building, quarter or None, owner, name, footprint w, h, map for None).
+VENUES = [
+    ("gelateria", "piazza_garibaldi", "anarchici_commercio", "Gelateria di Piazza", 3, 2, None),
+    ("osteria", "borgo_templari", "templari_borgo", "Osteria del Borgo", 3, 3, None),
+    ("bocciofila", "rotonde", "circolo_boomer", "Bocciofila del Circolo", 5, 3, None),
+    ("cinema", "cattedrale", "chiesa", "Cinema Parrocchiale", 5, 4, None),
+    ("sala_slot", "casino", "casino_diablo", "Sala Slot Diablo Junior", 3, 3, None),
+    ("balera", None, "contadini_bassa", "Balera della Bassa", 5, 4, "village"),
+    ("campetto", "strada_provinciale", None, "Campetto della Provinciale", 5, 3, None),
+    ("gelateria", "salsomaggiore_terme", None, "Gelateria delle Terme", 3, 2, None),
+    ("cinema", None, "cda_fidenza_village", "Multisala del Village", 5, 4, "village"),
+    ("parco_giochi", "capannone_regali", None, "Parco giochi degli Elfi", 3, 2, None),
+    ("parco_giochi", "impero_vegano", None, "Parco giochi a impatto zero", 3, 2, None),
+    ("osteria", "colline_di_salso", "contadini_bassa", "Osteria delle Colline", 3, 3, None),
+    ("gelateria", "bosco_stirone", None, "Chiosco dello Stirone", 3, 2, None),
+    ("osteria", "fumetteria", "anarchici_commercio", "Osteria del Nerd Affamato", 3, 3, None),
+    ("osteria", None, "contadini_bassa", "Trattoria di campagna", 3, 3, "village"),
+    ("balera", None, "contadini_bassa", "Balera sotto le stelle", 5, 4, "village"),
+    ("campetto", "ospedale_vaio", None, "Campetto dell'oratorio", 5, 3, None),
+    ("parco_giochi", None, None, "Parco della Bassa", 3, 2, "village"),
+    ("bocciofila", None, "circolo_boomer", "Bocciofila di campagna", 5, 3, "village"),
+    ("osteria", "scipione", "contadini_bassa", "Locanda del Castello", 3, 3, None),
+]
+
+# ══ IL REGNO DEI NANI (one underground level under Fidenza) ═════════════════
+def under(mid, name, w, h, at, tags):
     m = Map(mid, name, w, h, "K", tags, underground=True)
-    m.depth = depth
+    m.depth, m.at = -1, at
     MAPS.append(m)
     return m
 
 
-# Scantinato della Fumetteria: the nerds' dungeon under the shop, where the octopus lives.
-sn = under("scantinato_nerd", "Scantinato della Fumetteria", 22, 16, -1, ["nerd", "dungeon", "scantinato"])
-sn.rect(1, 1, 20, 14, "x")
-for (x, y) in [(3, 3), (3, 7), (16, 3), (16, 9)]:
-    sn.rect(x, y, x + 2, y + 1, "c")
-sn.rect(8, 5, 13, 9, "~")
-building("baule_nerd", "scantinato_nerd", 18, 12, None)
-door("Botola dello Scantinato", "fumetteria", 16, 9, "scantinato_nerd", 3, 13)
-
-gl = under("gallerie", "Fortezza dei Nani", 64, 40, -1, ["gallerie", "sotterraneo", "fortezza"])
+gl = under("gallerie", "Fortezza dei Nani", 64, 40, (88, 73), ["gallerie", "sotterraneo", "fortezza"])
 veins(gl, "O", 14, 18, 101)
 veins(gl, "S", 8, 14, 102)
 veins(gl, "A", 2, 5, 103)
-gl.rect(2, 2, 8, 8, "x")                          # entrance from the manhole
-gl.rect(8, 5, 40, 6, "x")                         # main corridor
-gl.rect(20, 8, 34, 18, "x")                       # great hall
+gl.rect(2, 2, 8, 8, "x")
+gl.rect(8, 5, 40, 6, "x")
+gl.rect(20, 8, 34, 18, "x")
 gl.rect(26, 7, 27, 7, "x")
-gl.rect(40, 3, 52, 11, "x")                       # forge room
+gl.rect(40, 3, 52, 11, "x")
 gl.rect(36, 12, 38, 22, "x")
-cave(gl, 4, 22, 20, 36, 0.55, 104)                 # dinosaur den (natural)
+cave(gl, 4, 22, 20, 36, 0.55, 104)
 tunnel(gl, (10, 6), (10, 24), "x")
-cave(gl, 42, 18, 61, 35, 0.48, 105)                # the mine
+cave(gl, 42, 18, 61, 35, 0.48, 105)
 veins(gl, "O", 10, 10, 106, on="K")
 tunnel(gl, (37, 22), (45, 26), "k")
 gl.rect(58, 33, 60, 36, "k")
 tunnel(gl, (50, 30), (59, 34), "k")
-gl.g[35][59] = ">"
+tunnel(gl, (38, 22), (50, 30), "k")
+tunnel(gl, (33, 15), (37, 15), "x")             # great hall → east corridor
+tunnel(gl, (37, 11), (41, 11), "x")             # east corridor → forge             # keeps the halls joined whatever the caves do
 building("deposito", "gallerie", 27, 17, "nani_miniere")
 building("fungaia_porcini", "gallerie", 23, 11, "nani_miniere", "Fungaia della Fortezza")
 building("banco_mercato", "gallerie", 31, 11, "nani_miniere", "Dispensa dei Nani")
-building("fungaia_porcini", "miniera_di_sale", 24, 20, None, "Fungaia dei minatori")
 building("fucina", "gallerie", 46, 10, "nani_miniere")
 SUBZONES += [("miniera", "Filone di ferro", "gallerie", (42, 18, 20, 18), ["miniera", "gallerie"]),
              ("tana_dinosauri", "Tana dei Dinosauri", "gallerie", (4, 22, 17, 15), ["gallerie", "tana"])]
 
-mp = under("miniere_profonde", "Miniere Profonde", 72, 44, -2, ["sotterraneo", "profondo", "miniera"])
+mp = under("miniere_profonde", "Miniere Profonde", 72, 44, (160, 62), ["sotterraneo", "profondo", "miniera"])
 cave(mp, 2, 2, 69, 41, 0.42, 201)
 veins(mp, "S", 20, 22, 202)
 veins(mp, "O", 14, 16, 203)
@@ -549,16 +628,12 @@ veins(mp, "h", 10, 6, 205)
 veins(mp, "Y", 3, 3, 206)
 veins(mp, "A", 4, 5, 207)
 for y in range(4, 40):
-    x = 34 + (y // 5) % 3
-    mp.g[y][x] = "~"
+    mp.g[y][34 + (y // 5) % 3] = "~"
 mp.rect(2, 2, 6, 6, "k")
-mp.g[3][3] = "<"
 tunnel(mp, (5, 5), (66, 39), "k")
 mp.rect(32, 21, 38, 21, "b")
-mp.g[40][67] = ">"
-door("Scala delle Miniere Profonde", "gallerie", 59, 35, "miniere_profonde", 3, 3)
 
-cv = under("caverne", "Caverne dei Porcini", 80, 48, -3, ["sotterraneo", "profondo", "caverna"])
+cv = under("caverne", "Caverne dei Porcini", 80, 48, (152, 116), ["sotterraneo", "profondo", "caverna"])
 cave(cv, 2, 2, 77, 45, 0.58, 301)
 for i, (x, y) in enumerate([(20, 12), (52, 30), (64, 10), (14, 34)]):
     for yy in range(y - 4, y + 5):
@@ -568,297 +643,422 @@ for i, (x, y) in enumerate([(20, 12), (52, 30), (64, 10), (14, 34)]):
 cv.rect(36, 18, 46, 26, "~")
 veins(cv, "G", 6, 5, 302)
 cv.rect(2, 2, 6, 6, "k")
-cv.g[3][3] = "<"
 tunnel(cv, (5, 5), (74, 43), "q")
 cv.rect(36, 22, 46, 22, "b")
-cv.g[44][75] = ">"
 for (x, y) in [(20, 17), (52, 35), (64, 15)]:
     cv.rect(x - 1, y - 1, x + 1, y + 1, "q")
     building("fungaia_porcini", "caverne", x, y, None)
-door("Scala delle Caverne", "miniere_profonde", 67, 40, "caverne", 3, 3)
 
-ct = under("cuore_termale", "Cuore Termale", 60, 40, -4, ["sotterraneo", "profondo", "termale"])
+ct = under("cuore_termale", "Cuore Termale", 60, 40, (8, 120), ["sotterraneo", "profondo", "termale"])
 ct.rect(2, 2, 57, 37, "M")
 cave(ct, 2, 2, 57, 37, 0.35, 401, floor="n", rock="M")
 ct.rect(2, 2, 7, 7, "n")
-ct.g[3][3] = "<"
 tunnel(ct, (5, 5), (30, 20), "n")
 ct.rect(27, 17, 33, 23, "n")
 building("scrigno_antico", "cuore_termale", 30, 20, None)
-door("Scala del Cuore Termale", "caverne", 75, 44, "cuore_termale", 3, 3)
 
-# ── Under Salsomaggiore: the crypt, the catacombs and the salt mine ─────────
-cr = under("cripta", "Cripta di San Vitale", 48, 32, -1, ["cripta", "sotterraneo"])
+# Tunnels between the dwarves' halls (global coordinates on the level).
+DWARF_TUNNELS = [((147, 107), (164, 66)), ((226, 101), (156, 120)), ((226, 159), (12, 124))]
+
+# ══ DUNGEONS (separate maps) ════════════════════════════════════════════════
+# Cripta di San Donnino, under the Duomo: the bishops' tombs, the ossuary maze, the relic chapel.
+cd = dungeon("cripta_duomo", "Cripta di San Donnino", 60, 40, ["cripta", "sotterraneo", "dungeon", "sacro"])
+hall(cd, 1, 1, 9, 8, "m")
+corridor(cd, (8, 4), (20, 4), "x")
+hall(cd, 18, 2, 32, 10, "m")                    # bishops' tombs
+for x in range(20, 31, 3):
+    cd.rect(x, 4, x + 1, 4, "p")
+    cd.rect(x, 8, x + 1, 8, "p")
+maze(cd, 34, 1, 7, 6, 811)                      # ossuary
+cd.rect(34, 2, 35, 3, "x")
+corridor(cd, (31, 6), (35, 2), "x")
+corridor(cd, (25, 10), (25, 22), "x")
+hall(cd, 14, 20, 36, 30, "m")                   # relic chapel
+cd.rect(22, 21, 28, 22, "r")
+cd.rect(24, 23, 26, 29, "r")
+building("reliquiario_donnino", "cripta_duomo", 25, 22, "chiesa")
+corridor(cd, (36, 26), (55, 26), "x")
+corridor(cd, (54, 20), (54, 36), "x")
+hall(cd, 50, 32, 58, 38, "x")                   # under the cemetery
+corridor(cd, (5, 8), (5, 34), "x")
+hall(cd, 2, 30, 12, 38, "k")                    # flooded well
+cd.rect(4, 33, 9, 36, "~")
+corridor(cd, (12, 34), (14, 28), "x")
+SUBZONES += [("ossario", "Ossario", "cripta_duomo", (34, 1, 22, 19), ["cripta", "dungeon"]),
+             ("cappella_reliquie", "Cappella delle Reliquie", "cripta_duomo", (14, 20, 23, 11), ["cripta", "sacro"])]
+
+# Cripta e catacombe di San Vitale, under the Terme.
+cr = dungeon("cripta", "Cripta di San Vitale", 48, 32, ["cripta", "sotterraneo", "dungeon"])
 maze(cr, 1, 1, 15, 10, 501)
 cr.rect(18, 12, 29, 20, "x")
 cr.rect(2, 2, 5, 5, "x")
-cr.g[3][3] = "e"
-cr.g[29][44] = ">"
 cr.rect(40, 26, 45, 29, "x")
 tunnel(cr, (29, 16), (43, 27), "x")
 building("altare_cripta", "cripta", 24, 17, "cripta_san_vitale")
 
-ca = under("catacombe", "Catacombe di San Vitale", 60, 40, -2, ["cripta", "sotterraneo", "profondo"])
+ca = dungeon("catacombe", "Catacombe di San Vitale", 60, 40, ["cripta", "sotterraneo", "profondo", "dungeon"])
 maze(ca, 1, 1, 19, 12, 601)
 veins(ca, "h", 8, 4, 602)
 ca.rect(2, 2, 5, 5, "x")
-ca.g[3][3] = "<"
 door("Scala delle Catacombe", "cripta", 44, 29, "catacombe", 3, 3)
 
-ms = under("miniera_di_sale", "Miniera di Sale abbandonata", 64, 40, -1, ["sotterraneo", "miniera", "salso"])
+# Scantinato della Fumetteria: the nerds' dungeon (the octopus's room is the first one).
+sn = dungeon("scantinato_nerd", "Scantinato della Fumetteria", 64, 40, ["nerd", "dungeon", "scantinato"])
+sn.rect(1, 1, 20, 14, "x")
+for (x, y) in [(3, 3), (3, 7), (16, 3), (16, 9)]:
+    sn.rect(x, y, x + 2, y + 1, "c")
+sn.rect(8, 5, 13, 9, "~")
+corridor(sn, (20, 12), (30, 12))
+hall(sn, 28, 2, 46, 16, "w")                    # LAN party room
+for y in range(4, 15, 3):
+    sn.rect(30, y, 36, y, "c")
+    sn.rect(39, y, 44, y, "c")
+corridor(sn, (37, 16), (37, 22))
+maze(sn, 24, 20, 8, 5, 911, floor="w", wall="c")  # comics archive
+corridor(sn, (49, 9), (56, 9))
+corridor(sn, (46, 9), (49, 9))
+hall(sn, 48, 20, 62, 37, "r")                   # the Dungeon Master's lair
+sn.rect(52, 22, 58, 24, "c")
+corridor(sn, (56, 9), (56, 21))
+corridor(sn, (49, 35), (48, 35))
+building("baule_nerd", "scantinato_nerd", 55, 34, None)
+SUBZONES += [("sala_lan", "Sala LAN", "scantinato_nerd", (28, 2, 19, 15), ["nerd", "svago"]),
+             ("archivio_fumetti", "Archivio dei Fumetti", "scantinato_nerd", (24, 20, 25, 16), ["nerd", "dungeon"]),
+             ("tana_dungeon_master", "Tana del Dungeon Master", "scantinato_nerd", (48, 20, 15, 18), ["nerd", "dungeon"])]
+
+# Cantine del Culatello, under the salumificio: the gluttons' cellar.
+cc = dungeon("cantine_culatello", "Cantine del Culatello", 64, 40, ["cantina", "sotterraneo", "dungeon", "ciccioni"])
+hall(cc, 1, 1, 8, 8, "x")
+corridor(cc, (8, 4), (14, 4))
+hall(cc, 12, 1, 40, 12, "x")                    # hanging culatelli
+for y in range(3, 12, 2):
+    for x in range(14, 39, 6):
+        cc.rect(x, y, x + 3, y, "c")
+corridor(cc, (26, 12), (26, 18))
+hall(cc, 10, 18, 44, 30, "w")                   # banquet hall
+cc.rect(14, 23, 40, 24, "c")
+cc.rect(14, 22, 40, 22, "r")
+cc.rect(14, 25, 40, 25, "r")
+corridor(cc, (44, 24), (50, 24))
+hall(cc, 48, 14, 62, 34, "w")                   # the throne of the Great Glutton
+cc.rect(53, 16, 57, 30, "r")
+corridor(cc, (2, 8), (2, 34))
+hall(cc, 1, 32, 12, 38, "x")                    # cheese vault
+for x in range(3, 11, 3):
+    cc.rect(x, 34, x + 1, 36, "c")
+building("dispensa_proibita", "cantine_culatello", 55, 17, None)
+SUBZONES += [("sala_banchetto", "Sala del Banchetto", "cantine_culatello", (10, 18, 35, 13), ["ciccioni", "dungeon"]),
+             ("trono_gran_mangione", "Trono del Gran Mangione", "cantine_culatello", (48, 14, 15, 21), ["ciccioni", "trono"])]
+
+# Covo dei Rettiliani, under the outlet: servers, the egg hatchery, the council chamber.
+cvr = dungeon("covo_rettiliano", "Covo dei Rettiliani", 64, 40, ["rettiliani", "sotterraneo", "dungeon"], fill="#")
+hall(cvr, 1, 1, 9, 8, "m")
+corridor(cvr, (8, 4), (16, 4), "m")
+hall(cvr, 14, 1, 34, 12, "m")                   # server room
+for x in range(16, 33, 4):
+    cvr.rect(x, 3, x + 1, 10, "c")
+corridor(cvr, (24, 12), (24, 18), "m")
+hall(cvr, 6, 18, 40, 30, "x")                   # hatchery
+for (x, y) in [(9, 21), (15, 21), (21, 21), (27, 21), (33, 21), (9, 26), (15, 26), (27, 26), (33, 26)]:
+    cvr.rect(x, y, x + 2, y + 1, "P")
+corridor(cvr, (40, 24), (46, 24), "m")
+hall(cvr, 44, 6, 62, 36, "m")                   # council chamber
+cvr.rect(48, 10, 58, 32, "r")
+cvr.rect(50, 18, 56, 24, "c")
+cvr.rect(50, 18, 56, 18, "r")
+building("caveau_rettiliano", "covo_rettiliano", 53, 9, "cda_fidenza_village")
+SUBZONES += [("sala_server", "Sala Server", "covo_rettiliano", (14, 1, 21, 12), ["rettiliani"]),
+             ("incubatoio", "Incubatoio", "covo_rettiliano", (6, 18, 35, 13), ["rettiliani", "dungeon"]),
+             ("consiglio_rettiliano", "Sala del Consiglio", "covo_rettiliano", (44, 6, 19, 31), ["rettiliani", "dungeon"])]
+
+# Miniera di Sale abbandonata, under the hills of Salso.
+ms = dungeon("miniera_di_sale", "Miniera di Sale abbandonata", 64, 40, ["sotterraneo", "miniera", "salso", "dungeon"])
 cave(ms, 2, 2, 61, 37, 0.45, 701)
 veins(ms, "S", 28, 24, 702)
 veins(ms, "G", 10, 6, 703)
 ms.rect(2, 2, 7, 7, "n")
-ms.g[3][3] = "<"
 tunnel(ms, (6, 6), (40, 30), "n")
 ms.rect(10, 8, 18, 12, "n")
+tunnel(ms, (6, 6), (14, 12), "n")
+tunnel(ms, (14, 12), (24, 21), "n")
 building("deposito", "miniera_di_sale", 14, 11, None)
+building("fungaia_porcini", "miniera_di_sale", 24, 20, None, "Fungaia dei minatori")
 
 
-# ── One continuous world, Dwarf Fortress style ───────────────────────────────
-# The maps above are kept as regions: the outdoor ones are stitched by their borders into a single
-# surface layer, the underground ones are carved into full-size z-levels of diggable rock under their
-# entrances. Interiors stay separate maps reached through their doors.
-RW, RH = 40, 28
+# ── Assembling the maps ─────────────────────────────────────────────────────
 SIDES = {"North": (0, -1), "South": (0, 1), "East": (1, 0), "West": (-1, 0)}
-ZLEVELS = {-1: "Sottosuolo", -2: "Profondità", -3: "Caverne Profonde", -4: "Viscere Termali"}
 REGIONS = []  # (zone id, name, layer id, rect, tags)
-PLACE = {}  # old map id → (layer id, x offset, y offset)
+PLACE = {}  # region id → (layer id, x offset, y offset)
+# Roads across the borders between surface maps: (map, side, map, cells along the border).
+CROSSINGS = [
+    ("fidenza", "East", "village", [41, 42, 69, 70, 97, 98]),
+    ("fidenza", "South", "salsomaggiore", [99, 100, 179, 180]),
+    ("fidenza", "North", "bassa", [59, 60, 99, 100, 179, 180]),
+]
 
 
-def grid_positions(outdoor):
-    pos = {outdoor[0].id: (0, 0)}
-    changed = True
-    while changed:
-        changed = False
-        for a, side, b in EDGES:
-            dx, dy = SIDES[side]
-            if a in pos and b not in pos:
-                pos[b] = (pos[a][0] + dx, pos[a][1] + dy)
-                changed = True
-            if b in pos and a not in pos:
-                pos[a] = (pos[b][0] - dx, pos[b][1] - dy)
-                changed = True
-    return pos
-
-
-def countryside(m, ox, oy, seed, sides):
-    """Filler region between the named places: meadows, woods, a pond, dirt tracks to the neighbours."""
+def citta(m, ox, oy, seed):
+    """City block: streets on the cross, houses you can walk into, little gardens and squares."""
     r = Rnd(seed)
-    for y in range(oy, oy + RH):
-        for x in range(ox, ox + RW):
-            m.g[y][x] = "."
-    cave(m, ox + 1, oy + 1, ox + RW - 2, oy + RH - 2, 0.6 + (seed % 3) * 0.05, seed, floor=".", rock="T", steps=3)
+    m.rect(ox, oy, ox + RW - 1, oy + RH - 1, ".")
+    m.rect(ox, oy + 12, ox + RW - 1, oy + 15, "_")
+    m.rect(ox + 18, oy, ox + 21, oy + RH - 1, "_")
+    m.rect(ox, oy + 13, ox + RW - 1, oy + 14, "g")
+    m.rect(ox + 19, oy, ox + 20, oy + RH - 1, "g")
+    for (bx, top) in [(1, True), (22, True), (1, False), (22, False)]:
+        kind = r.range(0, 9)
+        if kind == 0:  # a little park
+            m.rect(ox + bx + 1, oy + (3 if top else 17), ox + bx + 15, oy + (10 if top else 24), ",")
+            m.g[oy + (6 if top else 20)][ox + bx + 8] = "F"
+            for (dx, dy) in [(2, 1), (14, 1), (2, 6), (14, 6)]:
+                m.g[oy + (3 if top else 17) + dy][ox + bx + dx] = "T"
+            continue
+        for hx in (bx + 1, bx + 9):
+            if r.chance(0.15):
+                continue
+            w = 6 + r.range(0, 1)
+            y0, y1 = (oy + 4, oy + 10) if top else (oy + 17, oy + 23)
+            x0 = ox + hx
+            dx = x0 + w // 2
+            dy = y1 if top else y0
+            floor = "w" if r.chance(0.6) else "x"
+            room(m, x0, y0, x0 + w, y1, floor, doors=[(dx, dy)])
+            if top:
+                m.g[oy + 11][dx] = "_"
+            else:
+                m.g[oy + 16][dx] = "_"
+            m.g[(y0 + 2) if top else (y1 - 2)][x0 + 2] = "c"
+            if r.chance(0.5):
+                m.g[(y0 + 2) if top else (y1 - 2)][x0 + w - 2] = "p"
+        if r.chance(0.5):
+            m.g[oy + (2 if top else 25)][ox + bx + r.range(2, 14)] = "t"
+
+
+def campi(m, ox, oy, seed, wild=False):
+    """Fields of the plain: strips of crops, hedgerows, poplars along the tracks, a ditch."""
+    r = Rnd(seed)
+    m.rect(ox, oy, ox + RW - 1, oy + RH - 1, ".")
+    crops = ["o", '"', "o", ",", '"']
+    for (qx0, qy0, qx1, qy1) in [(1, 1, 17, 11), (22, 1, 38, 11), (1, 16, 17, 26), (22, 16, 38, 26)]:
+        kind = r.range(0, 9)
+        if wild and kind < 4:  # untouched wood or marsh
+            cave(m, ox + qx0, oy + qy0, ox + qx1, oy + qy1, 0.55, r.next() & 0xFFFF, floor=".", rock="T", steps=3)
+            if kind == 0:
+                m.rect(ox + qx0 + 4, oy + qy0 + 3, ox + qx1 - 4, oy + qy1 - 3, "~")
+            continue
+        crop = crops[r.range(0, len(crops) - 1)]
+        for y in range(qy0, qy1 + 1):
+            for x in range(qx0, qx1 + 1):
+                m.g[oy + y][ox + x] = crop if (y - qy0) % 3 != 2 or crop == "," else '"'
+        if r.chance(0.5):
+            m.rect(ox + qx0, oy + qy0, ox + qx1, oy + qy0, "t")
+    for x in range(0, RW, 4):
+        m.g[oy + 12][ox + x] = "T"
+        m.g[oy + 15][ox + x] = "T"
     if r.chance(0.6):
-        cx, cy, rx, ry = ox + r.range(10, 30), oy + r.range(8, 20), r.range(3, 6), r.range(2, 4)
-        for y in range(cy - ry - 1, cy + ry + 2):
-            for x in range(cx - rx - 1, cx + rx + 2):
-                d = ((x - cx) / (rx + 1)) ** 2 + ((y - cy) / (ry + 1)) ** 2
-                if d <= 1.0:
-                    m.g[y][x] = "~" if ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1.0 else "s"
-    for y in range(oy, oy + RH):
-        for x in range(ox, ox + RW):
-            if m.g[y][x] == "." and r.chance(0.08):
-                m.g[y][x] = "," if r.chance(0.5) else '"'
-            elif m.g[y][x] == "T" and r.chance(0.12):
-                m.g[y][x] = "t"
-    cx, cy = ox + RW // 2 - 1, oy + 13
-    for side in sides:
-        dx, dy = SIDES[side]
-        if dx:
-            x0, x1 = (cx, ox + RW - 1) if dx > 0 else (ox, cx + 1)
-            m.rect(x0, cy, x1, cy + 1, ":")
-        else:
-            y0, y1 = (cy, oy + RH - 1) if dy > 0 else (oy, cy + 1)
-            m.rect(cx, y0, cx + 1, y1, ":")
+        cx = ox + (10 if r.chance(0.5) else 29)
+        m.rect(cx, oy, cx, oy + RH - 1, "~")
+        m.rect(cx, oy + 13, cx, oy + 14, "b")
+    m.rect(ox, oy + 13, ox + RW - 1, oy + 14, ":")
+    m.rect(ox + 19, oy, ox + 20, oy + RH - 1, ":")
 
 
-def free_spot(placed, w, h, want, W, H):
-    """Nearest offset to `want` where a w×h rectangle fits inside W×H without touching `placed`."""
-    def ok(x, y):
-        if x < 1 or y < 1 or x + w > W - 1 or y + h > H - 1:
-            return False
-        return all(x + w + 2 <= px or px + pw + 2 <= x or y + h + 2 <= py or py + ph + 2 <= y for px, py, pw, ph in placed)
-    wx, wy = want
-    for rad in range(0, max(W, H)):
-        best = None
-        for y in range(wy - rad, wy + rad + 1):
-            for x in range(wx - rad, wx + rad + 1):
-                if max(abs(x - wx), abs(y - wy)) == rad and ok(x, y):
-                    d = (x - wx) ** 2 + (y - wy) ** 2
-                    if best is None or d < best[0]:
-                        best = (d, x, y)
-        if best:
-            return best[1], best[2]
-    raise SystemExit(f"nessuno spazio per {w}x{h}")
+def colline(m, ox, oy, seed):
+    """Hills: rocky outcrops, woods, vineyards, a winding track."""
+    r = Rnd(seed)
+    m.rect(ox, oy, ox + RW - 1, oy + RH - 1, ".")
+    cave(m, ox + 1, oy + 1, ox + RW - 2, oy + RH - 2, 0.62, seed, floor=".", rock="T", steps=3)
+    for _ in range(4):
+        cx, cy = ox + r.range(4, 35), oy + r.range(3, 24)
+        for y in range(cy - 2, cy + 3):
+            for x in range(cx - 3, cx + 4):
+                if abs(x - cx) + abs(y - cy) < 4:
+                    m.g[y][x] = "R"
+    if r.chance(0.5):
+        vx, vy = ox + r.range(3, 22), oy + r.range(2, 16)
+        for y in range(vy, vy + 8):
+            for x in range(vx, vx + 12):
+                m.g[y][x] = "t" if y % 2 == 0 else "o"
+    m.rect(ox, oy + 13, ox + RW - 1, oy + 14, ":")
+    m.rect(ox + 19, oy, ox + 20, oy + RH - 1, ":")
 
 
-def merge():
-    global MAPS, PORTALS, EDGES, SUBZONES, BUILDINGS
-    outdoor = [m for m in MAPS if not m.indoor and not m.underground]
-    interiors = [m for m in MAPS if m.indoor]
-    unders = [m for m in MAPS if m.underground]
-    pos = grid_positions(outdoor)
-    minx, miny = min(p[0] for p in pos.values()), min(p[1] for p in pos.values())
-    cols, rows = max(p[0] for p in pos.values()) - minx + 1, max(p[1] for p in pos.values()) - miny + 1
-    W, H = cols * RW, rows * RH
-    surf = Map("fidenza", "Fidenza e Salsomaggiore", W, H, ".", ["superficie"])
-    place = {}  # map id → (layer id, ox, oy)
-    by_cell = {(p[0] - minx, p[1] - miny): mid for mid, p in pos.items()}
-    for m in outdoor:
-        gx, gy = pos[m.id][0] - minx, pos[m.id][1] - miny
+def bassa(m, ox, oy, seed, gy):
+    campi(m, ox, oy, seed, wild=True)
+    if gy == 0:  # il Po
+        m.rect(ox, oy + 1, ox + RW - 1, oy + 1, "s")
+        m.rect(ox, oy + 2, ox + RW - 1, oy + 9, "~")
+        m.rect(ox, oy + 10, ox + RW - 1, oy + 10, "s")
+        r = Rnd(seed)
+        if r.chance(0.4):
+            m.rect(ox + r.range(5, 20), oy + 5, ox + r.range(22, 34), oy + 6, "s")
+
+
+def build_world(world):
+    name, tags = WORLDS[world]
+    W, H = RW * GRID, RH * GRID
+    surf = Map(world, name, W, H, ".", tags)
+    used = {}
+    for m in [m for m in MAPS if getattr(m, "world", None) == world]:
+        gx, gy = m.at
+        used[(gx, gy)] = m
         ox, oy = gx * RW, gy * RH
-        place[m.id] = ("fidenza", ox, oy)
+        PLACE[m.id] = (world, ox, oy)
         rnd = Rnd(stable_hash(m.id) & 0xFFFF)
         for y in range(m.h):
             for x in range(m.w):
                 ch = m.g[y][x]
                 ring = min(x, y, m.w - 1 - x, m.h - 1 - y)
-                # The old borders between maps open up: a few trees stay, the hedges go.
                 if ring == 0 and ch == "T":
                     ch = "T" if rnd.chance(0.2) else ("t" if rnd.chance(0.15) else ".")
                 elif ring == 1 and ch == "t":
                     ch = "t" if rnd.chance(0.1) else "."
                 surf.g[oy + y][ox + x] = ch
-        REGIONS.append((m.id, m.name, "fidenza", (ox, oy, m.w, m.h), m.tags + ["quartiere"]))
-    for gy in range(rows):
-        for gx in range(cols):
-            if (gx, gy) in by_cell:
+        REGIONS.append((m.id, m.name, world, (ox, oy, m.w, m.h), m.tags + ["quartiere"]))
+    for gy in range(GRID):
+        for gx in range(GRID):
+            if (gx, gy) in used:
                 continue
-            sides = [s for s, (dx, dy) in SIDES.items() if 0 <= gx + dx < cols and 0 <= gy + dy < rows]
-            countryside(surf, gx * RW, gy * RH, 7919 * (gx + 1) + 104729 * (gy + 1), sides)
-    # The Via Emilia runs east–west through Piazza Garibaldi's row, the railway through the station's.
-    for mid, rows_, ch in (("piazza_garibaldi", (13, 14), "g"), ("stazione", (5, 6), "x")):
-        gy = pos[mid][1] - miny
-        for gx in range(cols):
-            if (gx, gy) not in by_cell:
-                surf.rect(gx * RW, gy * RH + rows_[0], gx * RW + RW - 1, gy * RH + rows_[1], ch)
-    # Edge of the world: the woods of the Po valley.
+            seed = stable_hash(f"{world}:{gx}:{gy}") & 0xFFFF
+            kind = filler_kind(world, gx, gy)
+            ox, oy = gx * RW, gy * RH
+            if kind == "citta":
+                citta(surf, ox, oy, seed)
+            elif kind == "campi":
+                campi(surf, ox, oy, seed)
+            elif kind == "colline":
+                colline(surf, ox, oy, seed)
+            else:
+                bassa(surf, ox, oy, seed, gy)
+    if world in ("fidenza", "village"):  # the Via Emilia, east–west through the middle row
+        for gx in range(GRID):
+            if (gx, 2) not in used:
+                surf.rect(gx * RW, 2 * RH + 13, gx * RW + RW - 1, 2 * RH + 14, "g")
+    if world == "fidenza":  # the railway, along the station's row
+        for gx in range(GRID):
+            if (gx, 0) not in used:
+                surf.rect(gx * RW, 5, gx * RW + RW - 1, 6, "x")
+                surf.rect(gx * RW + 19, 5, gx * RW + 20, 6, "g")
+    if world == "village":  # the A1 motorway, north–south
+        for gy in range(GRID):
+            if (1, gy) not in used:
+                surf.rect(RW + 35, gy * RH, RW + 36, gy * RH + RH - 1, "g")
     for x in range(W):
         surf.g[0][x] = surf.g[H - 1][x] = "T"
     for y in range(H):
         surf.g[y][0] = surf.g[y][W - 1] = "T"
+    if world == "bassa":
+        REGIONS.append(("la_bassa", "La Bassa", world, (0, 0, W, H), ["campi", "selvatico", "quartiere"]))
+        REGIONS.append(("fiume_po", "Il Po", world, (0, 0, W, 12), ["fiume", "selvatico"]))
+    return surf
 
-    # Underground z-levels: solid rock with veins and pockets, the old dungeons carved in.
-    levels = {}
-    for d, name in ZLEVELS.items():
-        z = Map(f"sottosuolo_{-d}", f"{name} (livello {d})", W, H, "K", ["sotterraneo"], underground=True)
-        z.depth = d
-        n = W * H // 2000
-        veins(z, "O", n * 2, 16, 300 + d)
-        veins(z, "S", n, 12, 310 + d)
-        veins(z, "G", max(1, n // 3) * (1 - d) // 2, 4, 320 + d)
-        veins(z, "A", max(1, n // 4) * -d, 4, 330 + d)
-        if d >= -2:
-            veins(z, "h", n, 6, 340 + d)
-        if d <= -2:
-            veins(z, "Y", max(1, n // 3), 4, 350 + d)
-        r = Rnd(360 - d)
-        for _ in range(n):
-            x, y = r.range(4, W - 16), r.range(4, H - 12)
-            cave(z, x, y, x + r.range(6, 12), y + r.range(5, 9), 0.5, r.next() & 0xFFFF, floor="k", rock="K", steps=3)
-        levels[d] = (z, [])
-    by = {m.id: m for m in MAPS}
-    parent = {}
-    for name, a, b in PORTALS:
-        if by[b[0]].underground and not by[a[0]].underground or (by[a[0]].underground and by[b[0]].underground and by[b[0]].depth < by[a[0]].depth):
-            parent[b[0]] = (a, b[1], b[2])
-    door_of = {b[0]: a for name, a, b in PORTALS if by[b[0]].indoor and not by[a[0]].indoor and not by[a[0]].underground}
 
-    def glob(mid, x, y):
-        lid, ox, oy = place.get(mid, (mid, 0, 0))
-        return lid, x + ox, y + oy
-
-    stairs = []
-    for m in sorted(unders, key=lambda m: -m.depth):
-        z, placed = levels[m.depth]
-        (pm, px, py), ex, ey = parent[m.id]
-        if by[pm].indoor:  # entered from an interior: lie under the building's door
-            pm, px, py = door_of[pm]
-        _, gx, gy = glob(pm, px, py)
-        ox, oy = free_spot(placed, m.w, m.h, (gx - ex, gy - ey), W, H)
-        placed.append((ox, oy, m.w, m.h))
+def build_under():
+    W, H = RW * GRID, RH * GRID
+    z = Map("sottosuolo_1", "Regno dei Nani", W, H, "K", ["sotterraneo"], underground=True)
+    z.depth = -1
+    n = W * H // 2000
+    veins(z, "O", n * 2, 16, 299)
+    veins(z, "S", n, 12, 309)
+    veins(z, "G", max(1, n // 3), 4, 319)
+    veins(z, "A", max(1, n // 4), 4, 329)
+    veins(z, "h", n, 6, 339)
+    veins(z, "Y", max(1, n // 3), 4, 349)
+    r = Rnd(361)
+    for _ in range(n):
+        x, y = r.range(4, W - 16), r.range(4, H - 12)
+        cave(z, x, y, x + r.range(6, 12), y + r.range(5, 9), 0.5, r.next() & 0xFFFF, floor="k", rock="K", steps=3)
+    for m in [m for m in MAPS if m.underground and not getattr(m, "dungeon", False)]:
+        ox, oy = m.at
         for y in range(m.h):
             for x in range(m.w):
                 z.g[oy + y][ox + x] = m.g[y][x]
-        place[m.id] = (z.id, ox, oy)
+        PLACE[m.id] = (z.id, ox, oy)
         REGIONS.append((m.id, m.name, z.id, (ox, oy, m.w, m.h), m.tags + ["quartiere"]))
-        if not by[parent[m.id][0][0]].indoor:
-            # Stairs straight down from the parent cell, then a tunnel to the old entrance if it moved.
-            tunnel(z, (gx, gy), (ox + ex, oy + ey))
-            stairs.append((m.id, gx, gy))
-    MAPS = [surf] + interiors + [levels[d][0] for d in sorted(levels, reverse=True)]
+    for a, b in DWARF_TUNNELS:
+        tunnel(z, a, b, "k", 2)
+    return z
+
+
+def merge():
+    global MAPS, PORTALS, EDGES, SUBZONES, BUILDINGS
+    surfaces = [build_world(w) for w in WORLDS]
+    z = build_under()
+    dungeons = [m for m in MAPS if getattr(m, "dungeon", False)]
+    by_layer = {m.id: m for m in surfaces + [z] + dungeons}
+
+    def glob(mid, x, y):
+        lid, ox, oy = PLACE.get(mid, (mid, 0, 0))
+        return lid, x + ox, y + oy
+
     new_portals = []
     for name, a, b in PORTALS:
         ga, gb = glob(*a), glob(*b)
-        if b[0] in dict((s[0], 0) for s in stairs) and not by[a[0]].indoor:
-            gb = (gb[0], ga[1], ga[2])
-            # Stair tiles at both ends.
-            src = next(mm for mm in MAPS if mm.id == ga[0])
-            dst = next(mm for mm in MAPS if mm.id == gb[0])
+        src, dst = by_layer[ga[0]], by_layer[gb[0]]
+        if dst.underground:
             src.g[ga[2]][ga[1]] = ">"
             dst.g[gb[2]][gb[1]] = "<"
+            for dy in (-1, 0, 1):  # a little landing so the stairs are never walled in
+                for dx in (-1, 0, 1):
+                    yy, xx = gb[2] + dy, gb[1] + dx
+                    if (dx or dy) and 0 < yy < dst.h - 1 and 0 < xx < dst.w - 1 and not WALK.get(dst.g[yy][xx], False):
+                        dst.g[yy][xx] = "x"
         new_portals.append((name, ga, gb))
     PORTALS = new_portals
     EDGES = []
-    SUBZONES = [(zid, n, place[l][0], (r[0] + place[l][1], r[1] + place[l][2], r[2], r[3]), t) if l in place else (zid, n, l, r, t)
+    for a, side, b, cells in CROSSINGS:
+        ma, mb = by_layer[a], by_layer[b]
+        for c in cells:
+            if side == "East":
+                ma.g[c][ma.w - 1] = ma.g[c][ma.w - 2] = ":"
+                mb.g[c][0] = mb.g[c][1] = ":"
+            elif side == "South":
+                ma.g[ma.h - 1][c] = ma.g[ma.h - 2][c] = ":"
+                mb.g[0][c] = mb.g[1][c] = ":"
+            elif side == "North":
+                ma.g[0][c] = ma.g[1][c] = ":"
+                mb.g[mb.h - 1][c] = mb.g[mb.h - 2][c] = ":"
+        EDGES.append((a, side, b))
+    SUBZONES = [(zid, n, PLACE[l][0], (r[0] + PLACE[l][1], r[1] + PLACE[l][2], r[2], r[3]), t) if l in PLACE else (zid, n, l, r, t)
                 for zid, n, l, r, t in SUBZONES]
+    for m in dungeons:
+        REGIONS.append((m.id, m.name, m.id, (0, 0, m.w, m.h), m.tags + ["quartiere"]))
     SUBZONES = REGIONS + SUBZONES
-    BUILDINGS = [(b, mid, x + place[mid][1], y + place[mid][2], o, n) if mid in place else (b, mid, x, y, o, n)
+    BUILDINGS = [(b, mid, x + PLACE[mid][1], y + PLACE[mid][2], o, n) if mid in PLACE else (b, mid, x, y, o, n)
                  for b, mid, x, y, o, n in BUILDINGS]
-    place_venues(surf, place, pos, minx, miny, cols, rows)
-    return place
+    MAPS = surfaces + [z] + dungeons
+    place_venues(by_layer)
 
 
-# Leisure venues: (building, quarter or None for open countryside, owner, name, footprint w, h).
-VENUES = [
-    ("gelateria", "piazza_garibaldi", "anarchici_commercio", "Gelateria di Piazza", 3, 2),
-    ("osteria", "borgo_templari", "templari_borgo", "Osteria del Borgo", 3, 3),
-    ("bocciofila", "rotonde", "circolo_boomer", "Bocciofila del Circolo", 5, 3),
-    ("cinema", "cattedrale", "chiesa", "Cinema Parrocchiale", 5, 4),
-    ("sala_slot", "casino", "casino_diablo", "Sala Slot Diablo Junior", 3, 3),
-    ("balera", None, "contadini_bassa", "Balera della Bassa", 5, 4),
-    ("campetto", "strada_provinciale", None, "Campetto della Provinciale", 5, 3),
-    ("gelateria", "salsomaggiore_terme", None, "Gelateria delle Terme", 3, 2),
-    ("cinema", None, "cda_fidenza_village", "Multisala del Village", 5, 4),
-    ("parco_giochi", "capannone_regali", None, "Parco giochi degli Elfi", 3, 2),
-    ("parco_giochi", "impero_vegano", None, "Parco giochi a impatto zero", 3, 2),
-    ("osteria", "colline_di_salso", "contadini_bassa", "Osteria delle Colline", 3, 3),
-    ("gelateria", None, None, "Chiosco dello Stirone", 3, 2),
-    ("osteria", "fumetteria", "anarchici_commercio", "Osteria del Nerd Affamato", 3, 3),
-    ("osteria", None, "contadini_bassa", "Trattoria di campagna", 3, 3),
-    ("balera", None, "contadini_bassa", "Balera sotto le stelle", 5, 4),
-    ("campetto", None, None, "Campetto dell'oratorio", 5, 3),
-    ("parco_giochi", None, None, "Parco della Bassa", 3, 2),
-    ("bocciofila", None, "circolo_boomer", "Bocciofila di campagna", 5, 3),
-]
-GRASS = set('.,"')
+GRASS = set('.,"o')  # where a venue can be built (fields get cleared)
 
 
-def place_venues(surf, place, pos, minx, miny, cols, rows):
+def place_venues(by_layer):
     taken = set()
     for _, mid, x, y, _, _ in BUILDINGS:
-        if place.get(mid, ("",))[0] == "fidenza" or mid == "fidenza":
-            for yy in range(y - 6, y + 3):
-                for xx in range(x - 4, x + 5):
-                    taken.add((xx, yy))
-    used_cells = {(p[0] - minx, p[1] - miny) for p in pos.values()}
-    empty = [(gx * RW, gy * RH) for gy in range(rows) for gx in range(cols) if (gx, gy) not in used_cells]
-    free_rects = iter(empty)
-    for bid, region, owner, name, fw, fh in VENUES:
+        lid = PLACE.get(mid, (mid,))[0]
+        for yy in range(y - 6, y + 3):
+            for xx in range(x - 4, x + 5):
+                taken.add((lid, xx, yy))
+    free = {}
+    for w in WORLDS:
+        used = {(r[0] // RW, r[1] // RH) for zid, n, l, r, t in REGIONS if l == w and r[2] == RW}
+        free[w] = iter([(gx * RW, gy * RH) for gy in range(GRID) for gx in range(GRID) if (gx, gy) not in used])
+    for bid, region, owner, name, fw, fh, world in VENUES:
         if region:
-            _, ox, oy = place[region]
+            lid, ox, oy = PLACE[region]
             zone = region
         else:
-            ox, oy = next(free_rects)
-            zone = "fidenza"
+            lid = world
+            ox, oy = next(free[world])
+            zone = world
+        surf = by_layer[lid]
         cx, cy = ox + RW // 2, oy + RH // 2
         best = None
         for ay in range(oy + fh + 1, oy + RH - 3):
             for ax in range(ox + fw // 2 + 2, ox + RW - fw // 2 - 2):
                 cells = [(x, y) for y in range(ay - fh, ay + 2) for x in range(ax - fw // 2 - 1, ax + fw // 2 + 2)]
-                if any(c in taken or surf.g[c[1]][c[0]] not in GRASS for c in cells):
+                if any((lid, *c) in taken or surf.g[c[1]][c[0]] not in GRASS for c in cells):
                     continue
                 d = (ax - cx) ** 2 + (ay - cy) ** 2
                 if best is None or d < best[0]:
@@ -869,7 +1069,7 @@ def place_venues(surf, place, pos, minx, miny, cols, rows):
         _, ax, ay = best
         for y in range(ay - fh - 2, ay + 4):
             for x in range(ax - fw // 2 - 3, ax + fw // 2 + 4):
-                taken.add((x, y))
+                taken.add((lid, x, y))
         for y in range(ay - fh + 1, ay + 1):
             for x in range(ax - fw // 2, ax + fw // 2 + 1):
                 surf.g[y][x] = "."
@@ -946,9 +1146,7 @@ def check():
 
 
 def main():
-    place = merge()
-    PLACE.update(place)
-    print("origine delle regioni:", {k: v for k, v in place.items()})
+    merge()
     (DATA / "maps").mkdir(parents=True, exist_ok=True)
     for old in (DATA / "maps").glob("*.map"):
         old.unlink()

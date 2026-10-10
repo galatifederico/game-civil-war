@@ -842,3 +842,24 @@ fn beliefs_spread_and_values_judge() {
     }
     assert_eq!(opinion(&sim.world, sceptic, &faction_key("casino_diablo")), 0.0, "col tempo si dimentica");
 }
+
+#[test]
+fn every_map_and_dungeon_can_be_reached_and_has_its_boss() {
+    let mut sim = sim(5);
+    let map = sim.world.resource::<WorldMap>().clone();
+    let piazza = map.zone("piazza_garibaldi").unwrap().clone();
+    let from = Position::new(piazza.layer, piazza.x + 17, piazza.y + 17);
+    for (i, l) in map.layers.iter().enumerate() {
+        let to = Position::new(i as u16, 1, 1);
+        assert!(map.travel_cost(&from, &to, 25) < 100_000, "la mappa {} non si raggiunge da Piazza Garibaldi", l.id);
+    }
+    for z in ["cripta_duomo", "cantine_culatello", "covo_rettiliano", "scantinato_nerd", "cripta", "catacombe", "miniera_di_sale", "gallerie", "la_bassa", "salsomaggiore_terme", "fidenza_village"] {
+        assert!(map.zone(z).is_some(), "manca la zona {z}");
+    }
+    sim.run(2);
+    for (boss, zone) in [("gran_mangione", "cantine_culatello"), ("regina_rettiliana", "covo_rettiliano"), ("vescovo_non_morto", "cripta_duomo"), ("dungeon_master", "scantinato_nerd")] {
+        let (_, e) = id_of(&mut sim, boss);
+        let pos = *sim.world.get::<Position>(e).unwrap();
+        assert!(map.in_zone(zone, &pos), "{boss} dovrebbe stare in {zone}");
+    }
+}

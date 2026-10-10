@@ -1,0 +1,75 @@
+// I dungeon: mappe separate raggiungibili con le scale da alcuni luoghi (tools/maps/build_maps.py).
+// - Cripta di San Donnino (scala nel Duomo, e dal Mausoleo dei Vescovi al Cimitero): tombe, ossario, cappella
+//   delle reliquie, il Vescovo Non Morto.
+// - Cantine del Culatello (botola vicino al Salumificio, nei campi del Village): la Confraternita dei ciccioni e il
+//   Gran Mangione sul trono.
+// - Covo dei Rettiliani (ascensore riservato nell'Outlet): sala server, incubatoio, consiglio e la Regina.
+// - Scantinato della Fumetteria (botola in negozio): il polipo, la Sala LAN, l'Archivio e il Dungeon Master.
+// Gli altri (Cripta e Catacombe di San Vitale, Miniera di Sale, Regno dei Nani) sono in 90_mondo.ron.
+(
+    factions: [
+        (id: "confraternita_culatello", name: "Confraternita del Culatello", neutral: true, treasury: 200,
+         description: "Ciccioni che vivono nelle cantine sotto il salumificio: difendono la dispensa da chiunque scenda.",
+         values: {"carne": 100, "tradizione": 80},
+         relations: {"chiesa": -80, "cripta_san_vitale": -80, "nani_miniere": -80, "cda_fidenza_village": -80, "anarchici_commercio": -80, "templari_borgo": -80, "contadini_bassa": -40, "casino_diablo": -80, "circolo_boomer": -80, "gilda_nerd": -80, "impero_vegano": -100, "ubriaconi": -20, "babbo_natale": -80, "polizia_neutra": -80, "redazione_gazzetta": -80, "fauna_selvatica": -80},
+         ranks: [(id: "gran_mangione", name: "Gran Mangione", level: 5, unique: true, salary: 0), (id: "confratello", name: "Confratello", level: 1, salary: 0)],
+         zones: ["cantine_culatello"]),
+    ],
+    templates: [
+        (id: "vescovo_non_morto", name: "Vescovo Non Morto", unique: true, race: "zombie", classes: ["non_morto"], faction: "fauna_selvatica", slots: 1,
+         items: {"rosario": 1}, stats: {"attacco": 45, "difesa": 40, "forza": 30}),
+        (id: "ciccione_cantina", name: "Confratello del Culatello", race: "fidentino", classes: ["ciccione"], faction: "confraternita_culatello", rank: "confratello",
+         items: {"cotechino": 1}, stats: {"grasso": 90, "attacco": 25, "difesa": 30}),
+        (id: "gran_mangione", name: "Il Gran Mangione", unique: true, race: "fidentino", classes: ["ciccione"], faction: "confraternita_culatello", rank: "gran_mangione",
+         items: {"cotechino": 3, "salumi": 2}, money: 300, stats: {"grasso": 100, "attacco": 45, "difesa": 50, "eta": 58}),
+        (id: "guardia_rettiliana", name: "Guardia del Covo", race: "rettiliano", classes: ["spia"], faction: "cda_fidenza_village", rank: "commesso",
+         stats: {"attacco": 35, "difesa": 30}),
+        (id: "regina_rettiliana", name: "La Regina dei Rettiliani", unique: true, race: "rettiliano", classes: ["spia"], faction: "cda_fidenza_village",
+         items: {"catenone_oro": 1}, money: 800, stats: {"attacco": 50, "difesa": 45, "eloquenza": 80, "eta": 400}),
+        (id: "dungeon_master", name: "Il Dungeon Master", unique: true, race: "salsese", classes: ["hacker"], faction: "gilda_nerd",
+         items: {"boomerang": 1, "occhiali": 1}, stats: {"con_lore_nerd": 100, "attacco": 35, "difesa": 30, "eloquenza": 60}),
+    ],
+    buildings: [
+        (id: "reliquiario_donnino", name: "Reliquiario di San Donnino", footprint: (1, 1), hp: 300, tags: ["cassaforte", "chiesa", "sacro"],
+         description: "Nella cappella in fondo alla cripta: rosari, santini e quello che i vescovi si sono portati nella tomba.",
+         stock: {"rosario": 2, "santino": 15, "pentacolo": 1, "catenone_oro": 1}),
+        (id: "dispensa_proibita", name: "Dispensa Proibita", footprint: (1, 1), hp: 300, tags: ["cassaforte", "cibo"],
+         description: "Dietro al trono del Gran Mangione: i salumi migliori della Bassa e una scorta di vino.",
+         stock: {"salumi": 12, "cotechino": 4, "vino": 6, "grappa": 3, "catenone_oro": 1}),
+        (id: "caveau_rettiliano", name: "Caveau dei Rettiliani", footprint: (1, 1), hp: 500, tags: ["cassaforte", "rettiliani"],
+         description: "Il vero tesoro del CdA, sotto l'Outlet: piumini, oro e i sieri del laboratorio.",
+         stock: {"piumino_moncler": 2, "catenone_oro": 2, "siero_mutageno": 2, "droga_sintetica": 3}),
+    ],
+    actions: [
+        (id: "scendi_in_cripta_duomo", name: "Scende nella Cripta di San Donnino", weight: 0.1, cooldown: 120,
+         requires: StatAtLeast(stat: "curiosita", value: 60),
+         kind: Job(job: "scendi_in_cripta_duomo", target: Zone("cripta_duomo")),
+         considerations: [(input: Stat(stat: "curiosita", max: 100), curve: Identity)], label: "Esplora la Cripta di San Donnino", tags: ["esplorazione", "fede"],
+         how: Some((duration: 3, effects: [ModStat(stat: "mistica", amount: 1), ModStat(stat: "curiosita", amount: 0.5), Chance(0.05, GiveRandomItem(items: ["rosario", "santino"]))]))),
+        (id: "scendi_nelle_cantine", name: "Scende nelle Cantine del Culatello", weight: 0.1, cooldown: 120,
+         requires: StatAtLeast(stat: "grasso", value: 60),
+         kind: Job(job: "scendi_nelle_cantine", target: Zone("cantine_culatello")),
+         considerations: [(input: Stat(stat: "grasso", max: 100), curve: Identity)], label: "Va a mangiare nelle Cantine del Culatello", tags: ["esplorazione", "sopravvivenza"],
+         how: Some((duration: 3, effects: [ModStat(stat: "fame", amount: 40), ModStat(stat: "grasso", amount: 1), Chance(0.05, GiveRandomItem(items: ["salumi", "cotechino"]))]))),
+        (id: "spia_il_covo", name: "Spia il Covo dei Rettiliani", weight: 0.1, cooldown: 120,
+         requires: StatAtLeast(stat: "con_investigazione", value: 40),
+         kind: Job(job: "spia_il_covo", target: Zone("covo_rettiliano")),
+         considerations: [(input: Stat(stat: "curiosita", max: 100), curve: Identity)], label: "Scende nel Covo dei Rettiliani", tags: ["esplorazione", "informazioni"], suspicious: true,
+         how: Some((duration: 3, effects: [ModStat(stat: "con_investigazione", amount: 1), ModStat(stat: "curiosita", amount: 0.5)]))),
+    ],
+    events: [
+        (id: "vescovo_non_morto", every: 96, effects: [Spawn(template: "vescovo_non_morto", zone: Some("cappella_reliquie"), faction: Some("fauna_selvatica"), tether: Some((zone: "cripta_duomo", release: Never)), max_alive: 1)]),
+        (id: "zombie_ossario", every: 24, effects: [Spawn(template: "zombie", zone: Some("ossario"), faction: Some("fauna_selvatica"), tether: Some((zone: "cripta_duomo", release: Never)), max_alive: 4)]),
+        (id: "gran_mangione", every: 96, effects: [Spawn(template: "gran_mangione", zone: Some("trono_gran_mangione"), tether: Some((zone: "cantine_culatello", release: Never)), max_alive: 1)]),
+        (id: "confratelli", every: 24, effects: [Spawn(template: "ciccione_cantina", zone: Some("sala_banchetto"), tether: Some((zone: "cantine_culatello", release: Never)), max_alive: 5)]),
+        (id: "regina_rettiliana", every: 96, effects: [Spawn(template: "regina_rettiliana", zone: Some("consiglio_rettiliano"), tether: Some((zone: "covo_rettiliano", release: Never)), max_alive: 1)]),
+        (id: "guardie_covo", every: 24, effects: [Spawn(template: "guardia_rettiliana", zone: Some("incubatoio"), tether: Some((zone: "covo_rettiliano", release: Never)), max_alive: 4)]),
+        (id: "ragni_archivio", every: 36, effects: [Spawn(template: "ragno_di_soia", zone: Some("archivio_fumetti"), faction: Some("fauna_selvatica"), tether: Some((zone: "scantinato_nerd", release: Never)), max_alive: 3)]),
+        (id: "dungeon_master", every: 96, effects: [Spawn(template: "dungeon_master", zone: Some("tana_dungeon_master"), tether: Some((zone: "scantinato_nerd", release: Never)), max_alive: 1)]),
+    ],
+    sprites: {
+        "building:reliquiario_donnino": (sheet: "bld_altare_cripta"),
+        "building:dispensa_proibita": (sheet: "bld_scrigno_antico"),
+        "building:caveau_rettiliano": (sheet: "bld_casseforti_cda"),
+    },
+)

@@ -4,14 +4,14 @@
         Player(id: "giocatore", name: "Giocatore", faction: "anarchici_commercio"),
 
         // Piazza Garibaldi: la scena della demo.
-        Entity(template: "leader_anarchico", zone: "piazza_garibaldi", at: (97, 45), leader_of: "giocatore"),
-        Entity(template: "scippatore", zone: "piazza_garibaldi", at: (101, 46), name: "Tommy lo Scippatore"),
-        Entity(template: "commerciante_ricco", zone: "piazza_garibaldi", at: (102, 47), name: "Sior Ernesto"),
-        Entity(template: "agente", zone: "piazza_garibaldi", at: (106, 48), name: "Agente Scelto Ferrari"),
-        Entity(template: "cronista", zone: "piazza_garibaldi", at: (99, 44), name: "Lucia Taccuino"),
+        Entity(template: "leader_anarchico", zone: "piazza_garibaldi", at: (97, 73), leader_of: "giocatore"),
+        Entity(template: "scippatore", zone: "piazza_garibaldi", at: (101, 74), name: "Tommy lo Scippatore"),
+        Entity(template: "commerciante_ricco", zone: "piazza_garibaldi", at: (102, 75), name: "Sior Ernesto"),
+        Entity(template: "agente", zone: "piazza_garibaldi", at: (106, 76), name: "Agente Scelto Ferrari"),
+        Entity(template: "cronista", zone: "piazza_garibaldi", at: (99, 72), name: "Lucia Taccuino"),
         Entity(template: "fidentino", count: 4, zone: "piazza_garibaldi"),
-        Entity(template: "gerolamo_borgazzi", zone: "piazza_garibaldi", at: (108, 37)),
-        Entity(template: "oracolo", zone: "piazza_garibaldi", at: (92, 35)),
+        Entity(template: "gerolamo_borgazzi", zone: "piazza_garibaldi", at: (108, 65)),
+        Entity(template: "oracolo", zone: "piazza_garibaldi", at: (92, 63)),
 
         // Istituzioni e fazioni.
         Entity(template: "commissario", zone: "stazione_polizia"),
@@ -65,6 +65,7 @@
         (id: "talpe", every: 24, effects: [Spawn(template: "talpa_del_prosciutto", zone: Some("miniere_profonde"), faction: Some("fauna_selvatica"), tether: Some((zone: "miniere_profonde", release: Never)), max_alive: 4)]),
         (id: "vermi", every: 24, effects: [Spawn(template: "verme_del_lambrusco", zone: Some("caverne"), faction: Some("fauna_selvatica"), tether: Some((zone: "caverne", release: Never)), max_alive: 3)]),
         (id: "ragni", every: 24, effects: [Spawn(template: "ragno_di_soia", zone: Some("caverne"), faction: Some("fauna_selvatica"), tether: Some((zone: "caverne", release: Never)), max_alive: 4)]),
+        (id: "cinghiali_bassa", every: 36, effects: [Spawn(template: "cinghiale", zone: Some("la_bassa"), faction: Some("fauna_selvatica"), tether: Some((zone: "la_bassa", release: Never)), max_alive: 4)]),
         (id: "cinghiali", every: 36, effects: [Spawn(template: "cinghiale", zone: Some("bosco_stirone"), faction: Some("fauna_selvatica"), tether: Some((zone: "bosco_stirone", release: Never)), max_alive: 3)]),
         (id: "zombie_catacombe", every: 12, effects: [Spawn(template: "zombie", zone: Some("catacombe"), faction: Some("cripta_san_vitale"), tether: Some((zone: "catacombe", release: Flag(flag: "cripta_aperta", min: 1))), max_alive: 6)]),
         (id: "arrivi_fidentini", every: 12, when: PopulationBelow(template: "fidentino", count: 6), effects: [Spawn(template: "fidentino", zone: Some("piazza_garibaldi"))]),

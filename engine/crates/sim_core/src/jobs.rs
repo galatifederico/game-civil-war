@@ -263,6 +263,10 @@ pub fn best_board_job(world: &mut World, e: Entity) -> Option<(f32, BoardJob)> {
             }
             _ => 0.0,
         };
+        // Nobody crosses the whole world for a job.
+        if dist > world.resource::<crate::params::Params>().get("jobs.max_distance", 90.0) as f32 {
+            continue;
+        }
         // Who is good at a job prefers it (its skill stat, 0..100).
         let skill = def.skill.as_ref().and_then(|s| world.get::<crate::stats::Stats>(e).map(|x| x.get(s))).unwrap_or(0.0);
         let score = (5 - prio as i32) as f32 / 4.0 * (1.0 + j.priority as f32 * 0.1) * rank_mult * (1.0 + skill.max(0.0) / 100.0) / (1.0 + dist / 20.0);

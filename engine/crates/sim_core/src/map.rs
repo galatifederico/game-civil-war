@@ -427,10 +427,23 @@ impl MapData {
         if a.layer == b.layer {
             return a.distance(b).unwrap_or(0);
         }
-        match self.hops.get(a.layer as usize).and_then(|h| h.get(b.layer as usize)) {
-            Some(&h) if h != u16::MAX => h as i32 * hop_cost,
-            _ => 100_000,
+        let hops = |x: u16, y: u16| self.hops.get(x as usize).and_then(|h| h.get(y as usize)).copied().unwrap_or(u16::MAX);
+        let h = hops(a.layer, b.layer);
+        if h == u16::MAX {
+            return 100_000;
         }
+        // Walk to the best passage that gets closer to b's map (borders between big maps are far apart).
+        let mut best = i32::MAX;
+        for p in &self.portals {
+            let (from, to) = if p.a.layer == a.layer { (p.a, p.b) } else if p.b.layer == a.layer { (p.b, p.a) } else { continue };
+            let rest = hops(to.layer, b.layer);
+            if to.layer == a.layer || rest >= h {
+                continue;
+            }
+            let after = if rest == 0 { to.distance(b).unwrap_or(0) } else { rest as i32 * hop_cost };
+            best = best.min(from.distance(a).unwrap_or(0) + hop_cost + after);
+        }
+        if best == i32::MAX { h as i32 * hop_cost } else { best }
     }
 
     pub fn tile(&self, p: &Position) -> Option<char> {
