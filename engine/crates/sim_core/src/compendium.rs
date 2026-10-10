@@ -34,7 +34,7 @@ pub fn build(content: &Content, params: &Params) -> Value {
         "jobs": content.jobs.values().map(|j| json!({ "id": j.id, "name": j.name, "description": j.description, "work_type": j.work_type, "crime": j.crime.as_ref().map(|c| &c.id) })).collect::<Vec<_>>(),
         "factions": content.factions.values().map(|f| json!({
             "id": f.id, "name": f.name, "description": f.description, "role": f.role, "neutral": f.neutral,
-            "playable": f.playable, "ideology": f.ideology, "ranks": f.ranks.iter().map(|r| r.name.clone()).collect::<Vec<_>>(),
+            "playable": f.playable, "values": f.values, "ranks": f.ranks.iter().map(|r| r.name.clone()).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "buildings": content.buildings.values().map(|b| json!({
             "id": b.id, "name": b.name, "description": b.description,

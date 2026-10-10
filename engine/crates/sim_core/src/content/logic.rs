@@ -85,6 +85,11 @@ pub enum Effect {
         #[serde(default)] tether: Option<crate::content::Tether>,
         #[serde(default)] max_alive: u32,
     },
+    /// The target comes to believe something about `about` (seen from the subject, who says it): stance
+    /// −100 (unreliable, enemy) … 100 (reliable, idol), with this strength.
+    Tell { about: About, stance: f32, #[serde(default = "thirty")] strength: f32 },
+    /// The subject itself comes to believe something about `about`.
+    Believe { about: About, stance: f32, #[serde(default = "thirty")] strength: f32 },
     /// One of these in turn, a different one each time the same source applies it (in order).
     Cycle(Vec<Effect>),
     MarketShock {
@@ -325,4 +330,23 @@ mod tests {
             _ => panic!(),
         }
     }
+}
+
+fn thirty() -> f32 {
+    30.0
+}
+
+/// Who a belief is about, seen from the effect's subject (and target).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum About {
+    /// The subject (the one speaking).
+    Subject,
+    SubjectFaction,
+    /// The faction the subject trusts least (its own beliefs, else its faction's worst relation).
+    SubjectEnemy,
+    /// The pawn the subject trusts least.
+    SubjectEnemyPawn,
+    Target,
+    TargetFaction,
+    Faction(String),
 }

@@ -436,6 +436,7 @@ fn complete_job(world: &mut World, e: Entity, active: &ActiveJob, def: &JobDef) 
             crate::crime::commit(world, e, crime, target, pos);
         }
         crate::social::ideology_witnesses(world, e, def);
+        crate::beliefs::witness(world, e, &def.id);
         if def.suspicious {
             crate::infiltration::suspicious_act(world, e);
         }

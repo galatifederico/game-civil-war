@@ -134,6 +134,9 @@ pub struct EntityView {
     /// Current mode, the one the pawn would choose, the player's order and where the current one comes from.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mode: Option<crate::modes::Mode>,
+    /// What it believes: (about, name, stance −100..100, strength 0..100), strongest first.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub beliefs: Vec<(String, String, f32, f32)>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub statuses: Vec<StatusView>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -206,6 +209,9 @@ pub struct FactionView {
     pub controlled_by: Option<String>,
     pub absorbed_into: Option<String>,
     pub relations: BTreeMap<String, f32>,
+    /// What outsiders believe of it (−100..100).
+    pub public_trust: f32,
+    pub mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -305,6 +311,30 @@ pub fn entity_view(world: &World, e: Entity, truth: bool) -> Option<EntityView> 
         }),
         stats: visible_stats,
         mode: world.get::<crate::modes::Mode>(e).cloned(),
+        beliefs: {
+            let content = world.resource::<Content>();
+            let mut v: Vec<(String, String, f32, f32)> = world
+                .get::<crate::beliefs::Beliefs>(e)
+                .map(|b| {
+                    b.0.iter()
+                        .map(|(k, x)| {
+                            let name = if let Some(f) = k.strip_prefix("f:") {
+                                content.factions.get(f).map_or(f.to_string(), |d| d.name.clone())
+                            } else {
+                                k.strip_prefix("p:")
+                                    .and_then(|i| i.parse::<u64>().ok())
+                                    .and_then(|i| world.resource::<crate::ids::IdIndex>().get(SimId(i)))
+                                    .and_then(|o| world.get::<DisplayName>(o).map(|n| n.0.clone()))
+                                    .unwrap_or_else(|| k.clone())
+                            };
+                            (k.clone(), name, (x.stance * 10.0).round() / 10.0, (x.strength * 10.0).round() / 10.0)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            v.sort_by(|a, b| b.3.total_cmp(&a.3).then(a.0.cmp(&b.0)));
+            v
+        },
         needs: world
             .get::<Stats>(e)
             .map(|s| {
@@ -363,6 +393,8 @@ pub fn snapshot(world: &mut World, truth: bool) -> WorldSnapshot {
             controlled_by: s.controlled_by.clone(),
             absorbed_into: s.absorbed_into.clone(),
             relations: s.relations.clone(),
+            public_trust: (s.public_trust * 10.0).round() / 10.0,
+            mode: s.mode.clone(),
         })
         .collect();
     let market = world.resource::<Market>();

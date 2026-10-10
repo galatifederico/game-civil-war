@@ -163,7 +163,12 @@ fn candidates(world: &mut World, t: &TitleDef, luck: f32) -> Vec<(f32, SimId, En
         if others.iter().any(|x| x != &t.id) || !eligible(world, e, t) {
             continue;
         }
-        let s = score(world, e, t);
+        let mut s = score(world, e, t);
+        // In elections public opinion counts: what everybody believes of the candidate.
+        if t.mode == TitleMode::Election {
+            let w = world.resource::<Params>().get("titles.opinion_weight", 0.5) as f32;
+            s *= (1.0 + public_opinion(world, e) / 100.0 * w).max(0.1);
+        }
         let roll = if luck > 0.0 { world.resource_mut::<SimRng>().next_f32() } else { 0.0 };
         let s = s * (1.0 - luck / 2.0 + luck * roll);
         out.push((s, *world.get::<SimId>(e).unwrap(), e));
@@ -340,4 +345,13 @@ pub fn player_challenge(world: &mut World, player: &str, title: &str) -> Result<
         }
         Some(_) => Err(format!("{} non si conquista con una sfida ({})", t.name, mode_name(t.mode))),
     }
+}
+
+/// What all living pawns believe of `e`, on average (−100…100).
+pub fn public_opinion(world: &mut World, e: Entity) -> f32 {
+    let Some(id) = world.get::<SimId>(e).copied() else { return 0.0 };
+    let key = crate::beliefs::pawn_key(id);
+    let pawns = crate::sorted_entities::<Pawn>(world);
+    let n = pawns.len().max(1) as f32;
+    pawns.into_iter().filter(|p| world.get::<Dead>(*p).is_none()).map(|p| crate::beliefs::opinion(world, p, &key)).sum::<f32>() / n
 }

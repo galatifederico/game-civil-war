@@ -42,6 +42,8 @@ pub fn effect(c: &Content, e: &Effect) -> String {
             format!("{who}{}", effect(c, inner))
         }
         Effect::All(list) => list.iter().map(|x| effect(c, x)).collect::<Vec<_>>().join(", "),
+        Effect::Tell { about, stance, .. } => format!("convince il bersaglio che {} è {}", about_text(c, about), if *stance >= 0.0 { "affidabile" } else { "inaffidabile" }),
+        Effect::Believe { about, stance, .. } => format!("si convince che {} è {}", about_text(c, about), if *stance >= 0.0 { "affidabile" } else { "inaffidabile" }),
         Effect::Cycle(list) => format!("a turno: {}", list.iter().map(|x| effect(c, x)).collect::<Vec<_>>().join(" / ")),
         Effect::Chance(p, inner) => format!("una volta su {}: {}", num(1.0 / p.max(0.001)), effect(c, inner)),
         Effect::If(_, inner) => format!("a volte: {}", effect(c, inner)),
@@ -236,3 +238,15 @@ pub fn ability(c: &Content, a: &crate::content::AbilityDef) -> String {
     parts.join("; ")
 }
 
+fn about_text(c: &Content, a: &crate::content::About) -> String {
+    use crate::content::About;
+    match a {
+        About::Subject => "chi parla".into(),
+        About::SubjectFaction => "la sua fazione".into(),
+        About::SubjectEnemy => "la fazione che detesta".into(),
+        About::SubjectEnemyPawn => "la persona che detesta".into(),
+        About::Target => "il bersaglio".into(),
+        About::TargetFaction => "la fazione del bersaglio".into(),
+        About::Faction(f) => c.factions.get(f).map_or(f.clone(), |x| x.name.clone()),
+    }
+}

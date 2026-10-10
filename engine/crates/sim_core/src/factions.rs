@@ -44,6 +44,9 @@ pub struct FactionState {
     /// Mode of the members unless the player orders otherwise (see `modes`).
     #[serde(default)]
     pub mode: Option<String>,
+    /// What outsiders believe of it, −100 (unreliable) … 100 (reliable) (see `beliefs`).
+    #[serde(default)]
+    pub public_trust: f32,
 }
 
 #[derive(Resource, Debug, Clone, Default, Serialize, Deserialize)]

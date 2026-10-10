@@ -22,6 +22,7 @@ pub struct ContentPack {
     pub races: Vec<RaceDef>,
     pub action_sets: Vec<ActionSetDef>,
     pub modes: Vec<ModeDef>,
+    pub values: Vec<ValueDef>,
     pub classes: Vec<ClassDef>,
     pub statuses: Vec<StatusDef>,
     pub fluids: Vec<FluidDef>,
@@ -90,6 +91,10 @@ pub struct Bindings {
     pub default_class: Option<Id>,
     /// Mode of pawns whose own choice finds none (see `ModeDef`).
     pub default_mode: Option<Id>,
+    /// How much others believe what a pawn says (0..100).
+    pub credibility: Id,
+    /// How easily a pawn believes what it hears (0..100).
+    pub suggestibility: Id,
     /// Combat stats: damage dealt grows with `attack`, damage taken shrinks with `defense` (both 0..100).
     pub attack: Option<Id>,
     pub defense: Option<Id>,
@@ -116,6 +121,8 @@ impl Default for Bindings {
             crime_record: None,
             default_class: None,
             default_mode: None,
+            credibility: "credibilita".into(),
+            suggestibility: "influenzabilita".into(),
             attack: None,
             defense: None,
         }
@@ -306,6 +313,20 @@ impl Default for ModeDef {
             priority: 0,
         }
     }
+}
+
+/// A value pawns hold more or less (its stat, 0..100, 50 = indifferent) and factions stand for. It makes
+/// actions of some categories more (or less) attractive, and pawns judge who does them.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ValueDef {
+    pub id: Id,
+    pub name: String,
+    pub description: String,
+    /// The stat holding it (default "v_" + id; created 0..100, 50 ± 15 at birth, group "Valori", if missing).
+    pub stat: Id,
+    /// Action category → weight: positive = liked, negative = disliked.
+    pub likes: BTreeMap<String, f32>,
 }
 
 /// A named group of base actions shared by races (daily life, animal instincts…).
@@ -750,8 +771,8 @@ pub struct FactionDef {
     pub neutral: bool,
     /// Can be led by a player.
     pub playable: bool,
-    /// Ideology axes (e.g. "carne": -1..1).
-    pub ideology: BTreeMap<Id, f32>,
+    /// The faction's values (value id → 0..100, 50 = indifferent): members far from them grow dissent.
+    pub values: BTreeMap<Id, f32>,
     /// Ideology tags this faction forbids: members that see a job with such a tag gain dissent.
     pub forbids: Vec<String>,
     /// Initial relation towards other factions, -100..100.

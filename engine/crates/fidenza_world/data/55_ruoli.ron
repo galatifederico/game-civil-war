@@ -5,7 +5,7 @@
     factions: [
         (id: "massoni", name: "Loggia Massonica del Borgo", treasury: 3000,
          description: "Grembiulini, compassi e favori. Nessuno sa chi ne fa parte.",
-         ideology: {"capitale": 0.8, "tradizione": 0.5}, relations: {"chiesa": -20, "istituzioni": 40, "cda_fidenza_village": 30},
+         values: {"capitale": 90, "tradizione": 75}, relations: {"chiesa": -20, "istituzioni": 40, "cda_fidenza_village": 30},
          ranks: [(id: "gran_maestro_loggia", name: "Gran Maestro Venerabile", level: 5, unique: true, salary: 50), (id: "fratello", name: "Fratello", level: 2, salary: 20)]),
     ],
     classes: [

@@ -796,3 +796,49 @@ fn productions_happen_by_themselves() {
     let gained = sim.world.resource::<sim_core::factions::Factions>().states[f].treasury - t0;
     assert!(gained >= money * (b.hp / b.max_hp) as f64 - 0.01, "incasso {gained}, atteso almeno {money}");
 }
+
+/// Beliefs spread like a contagion (credibility of who speaks, suggestibility of who listens), fade, and
+/// make a faction's public trust; values weigh actions and make witnesses judge who does them.
+#[test]
+fn beliefs_spread_and_values_judge() {
+    use sim_core::beliefs::{faction_key, opinion, values_weight};
+    use sim_core::map::Position;
+    use sim_core::stats::Stats;
+    let mut sim = sim(1);
+    let tpl = sim.content().templates.values().find(|t| t.race == "fidentino" && !t.unique && !t.virtual_entity).unwrap().id.clone();
+    let (_, someone) = id_of(&mut sim, "scippatore");
+    let p = *sim.world.get::<Position>(someone).unwrap();
+    let far = Position { x: p.x + 40, ..p };
+    let spawn = |sim: &mut Simulation, pos: Position| sim_core::lifecycle::spawn_template(&mut sim.world, &tpl, Some(pos), &SpawnOverrides::default()).unwrap();
+    let (speaker, gullible, sceptic) = (spawn(&mut sim, far), spawn(&mut sim, Position { x: far.x + 1, ..far }), spawn(&mut sim, Position { x: far.x - 1, ..far }));
+    let set = |sim: &mut Simulation, e: Entity, k: &str, v: f32| {
+        let mut s = sim.world.get_mut::<Stats>(e).unwrap();
+        s.base.insert(k.into(), v);
+        s.effective.insert(k.into(), v);
+    };
+    set(&mut sim, speaker, "credibilita", 90.0);
+    set(&mut sim, gullible, "influenzabilita", 95.0);
+    set(&mut sim, sceptic, "influenzabilita", 5.0);
+    let key = faction_key("chiesa");
+    sim_core::beliefs::believe(&mut sim.world, speaker, key.clone(), -80.0, 90.0);
+    sim.world.resource_mut::<sim_core::time::SimClock>().tick = 300;
+    sim_core::beliefs::tick(&mut sim.world);
+    let (g, s) = (opinion(&sim.world, gullible, &key), opinion(&sim.world, sceptic, &key));
+    assert!(g < 0.0 && g < s, "il credulone ci crede più dello scettico: {g} vs {s}");
+    // Public trust of the faction goes down.
+    assert!(sim.world.resource::<sim_core::factions::Factions>().states["chiesa"].public_trust < 0.0);
+    // Defamation: a Tell effect plants the belief in the listener.
+    let ctx = sim_core::effects::EffectCtx::new(Some(speaker), Some(sceptic), "test");
+    sim_core::effects::apply_effects(&mut sim.world, &ctx, &[Effect::Tell { about: sim_core::content::About::Faction("casino_diablo".into()), stance: -70.0, strength: 40.0 }]);
+    assert!(opinion(&sim.world, sceptic, &faction_key("casino_diablo")) < -20.0);
+    // Values: a devout pawn likes faith actions more.
+    set(&mut sim, gullible, "v_fede", 100.0);
+    let w = values_weight(sim.content(), sim.world.get::<Stats>(gullible), &["fede".to_string()]);
+    assert!(w > 1.5, "{w}");
+    // Beliefs fade.
+    for i in 1..400 {
+        sim.world.resource_mut::<sim_core::time::SimClock>().tick = 300 + i * 3;
+        sim_core::beliefs::tick(&mut sim.world);
+    }
+    assert_eq!(opinion(&sim.world, sceptic, &faction_key("casino_diablo")), 0.0, "col tempo si dimentica");
+}

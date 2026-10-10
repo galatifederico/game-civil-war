@@ -426,6 +426,16 @@ pub fn apply_effect(world: &mut World, ctx: &EffectCtx, effect: &Effect) {
             let msg = substitute(world, msg, subj, ctx.target);
             world.resource_mut::<EventLog>().push(tick, EventBuilder::new("log", msg));
         }
+        Effect::Tell { about, stance, strength } => {
+            if let (Some(listener), Some(key)) = (ctx.target, crate::beliefs::resolve_about(world, about, subj, ctx.target)) {
+                crate::beliefs::believe(world, listener, key, *stance, *strength);
+            }
+        }
+        Effect::Believe { about, stance, strength } => {
+            if let (Some(holder), Some(key)) = (subj, crate::beliefs::resolve_about(world, about, subj, ctx.target)) {
+                crate::beliefs::believe(world, holder, key, *stance, *strength);
+            }
+        }
         Effect::ModBond { friendship, attraction } => {
             if let (Some(a), Some(b)) = (subj, ctx.target)
                 && a != b

@@ -97,14 +97,16 @@ pub fn defections(world: &mut World) {
             continue;
         }
         let factions = world.resource::<Factions>().clone();
-        let cur_ideo = content.factions.get(&cur).map(|f| f.ideology.clone()).unwrap_or_default();
+        // Where to go: closest values, what the pawn believes of it, how its faction gets on with it.
         let best = content
             .factions
             .values()
             .filter(|f| f.id != cur && f.role == FactionRole::Regular && factions.states.get(&f.id).is_some_and(|s| s.absorbed_into.is_none()))
             .map(|f| {
-                let ideo: f32 = f.ideology.iter().map(|(k, v)| 1.0 - (v - cur_ideo.get(k).copied().unwrap_or(0.0)).abs()).sum();
-                (factions.relation(&cur, &f.id) + ideo * 20.0, f.id.clone())
+                let score = crate::beliefs::affinity(world, e, &f.id) * 100.0
+                    + crate::beliefs::opinion(world, e, &crate::beliefs::faction_key(&f.id))
+                    + factions.relation(&cur, &f.id) * 0.5;
+                (score, f.id.clone())
             })
             .max_by(|a, b| a.0.total_cmp(&b.0).then(b.1.cmp(&a.1)));
         if let Some((_, to)) = best {

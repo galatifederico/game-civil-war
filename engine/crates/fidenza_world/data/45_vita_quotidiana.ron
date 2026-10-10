@@ -248,11 +248,11 @@
          how: Some((duration: 2, effects: [SetStat(stat: "iniziato_cristianesimo", value: 1), ModStat(stat: "santita", amount: 3)]))),
         (id: "propaganda", name: "Propaganda", weight: 0.08, cooldown: 72, kind: Job(job: "propaganda"),
          considerations: [(input: Stat(stat: "fanatismo_leader", max: 50), curve: Identity)], tags: ["sociale"],
-         how: Some((duration: 2, effects: [On(Radius(5), ModStat(stat: "fanatismo_leader", amount: 1)), ModStat(stat: "eloquenza", amount: 0.2)]))),
+         how: Some((duration: 2, effects: [On(Radius(5), All([ModStat(stat: "fanatismo_leader", amount: 1), Believe(about: TargetFaction, stance: 60, strength: 20)])), ModStat(stat: "eloquenza", amount: 0.2)]))),
         (id: "diffama", name: "Diffama", weight: 0.1, cooldown: 72,
-         kind: Job(job: "diffama", target: Nearest((pawn: true, relation: Hostile, max_distance: 8, visible: true))),
-         considerations: [(input: Stat(stat: "punti_razzismo", max: 50), curve: Linear(slope: 0.7, intercept: 0.3)), (input: TargetExists)], tags: ["crimine", "sociale"],
-         how: Some((duration: 2, range: 3, effects: [On(Target, ModStat(stat: "reputazione", amount: -3)), On(Radius(5), ModStat(stat: "punti_razzismo", amount: 0.5)), ModStat(stat: "fanatismo_leader", amount: 0.5)], crime: (id: "diffamazione", severity: 2, witness_radius: 4, news: 0.3)))),
+         kind: Job(job: "diffama", target: Nearest((pawn: true, max_distance: 6, visible: true))),
+         considerations: [(input: Stat(stat: "punti_razzismo", max: 50), curve: Linear(slope: 0.7, intercept: 0.3)), (input: TargetExists)], tags: ["crimine", "sociale", "potere"],
+         how: Some((duration: 2, range: 2, effects: [Tell(about: SubjectEnemy, stance: -70, strength: 35), Tell(about: SubjectEnemyPawn, stance: -70, strength: 35), On(Radius(5), ModStat(stat: "punti_razzismo", amount: 0.5)), ModStat(stat: "fanatismo_leader", amount: 0.5)], crime: (id: "diffamazione", severity: 2, witness_radius: 4, news: 0.3)))),
 
         // Prepotenze.
         (id: "rissa", name: "Fa a botte", weight: 0.3, cooldown: 36,

@@ -1,0 +1,18 @@
+// Valori: quanto una pedina tiene a una cosa (caratteristica 0–100, 50 = indifferente) e cosa difende una fazione.
+// «likes»: categorie di azioni che piacciono (peso positivo) o dispiacciono (negativo) a chi ha il valore alto:
+// le sceglie più (o meno) volentieri e giudica chi le fa.
+(
+    values: [
+        (id: "fede", name: "Fede", description: "Dio, i santi, la Chiesa.", likes: {"fede": 1.0, "crimine": -0.6}),
+        (id: "tradizione", name: "Tradizione", description: "Come si è sempre fatto a Fidenza.", likes: {"fede": 0.3, "lavoro": 0.3, "studio": -0.2}),
+        (id: "lavoro", name: "Lavoro", description: "Il lavoro nobilita.", likes: {"lavoro": 1.0, "riposo": -0.3, "svago": -0.3}),
+        (id: "capitale", name: "Capitale", description: "I soldi prima di tutto.", likes: {"soldi": 1.0, "sociale": -0.2}),
+        (id: "liberta", name: "Libertà", description: "Nessuno mi dice cosa fare.", likes: {"crimine": 0.4, "svago": 0.4, "potere": -0.3}),
+        (id: "onore", name: "Onore", description: "La parola data, il duello.", likes: {"crimine": -0.8, "violenza": 0.2}),
+        (id: "vizio", name: "Vizio", description: "Bere, fumare, giocare.", likes: {"svago": 1.0, "fede": -0.4}),
+        (id: "tecnologia", name: "Tecnologia", description: "Computer, robot, progresso.", likes: {"studio": 0.6, "informazioni": 0.6}),
+        (id: "carne", name: "Carne", description: "Culatello, salame, spalla cotta.", likes: {"sopravvivenza": 0.3}),
+        (id: "morte", name: "Morte", description: "Il fascino della fine.", likes: {"violenza": 0.6, "cura": -0.4, "fede": -0.3}),
+        (id: "magia_nera", name: "Magia nera", description: "San Vitale e i suoi segreti.", likes: {"fede": -0.5}),
+    ],
+)

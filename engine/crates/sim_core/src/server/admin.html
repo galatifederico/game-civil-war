@@ -443,6 +443,10 @@ const CATALOG = {
     cols: [["Nome", (d) => esc(d.name)], ["Pesi", (d) => chips(Object.entries(d.weights ?? {}).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ×${fmt(v, 2)}`))],
       ["Quando la sceglie da sola", (d) => (d.when === "Never" ? '<span class="muted">mai (solo di default o per ordine)</span>' : esc(condText(d.when)))], ["Priorità", (d) => d.priority ?? 0, true],
       ["In gioco", (d) => L.byMode[d.id] ?? 0, true]] },
+  values: { title: "Valori", group: "Catalogo",
+    cols: [["Nome", (d) => esc(d.name)], ["Piace", (d) => chips(Object.entries(d.likes ?? {}).filter(([, w]) => w > 0).map(([k, w]) => `${k} +${fmt(w, 1)}`))],
+      ["Non piace", (d) => chips(Object.entries(d.likes ?? {}).filter(([, w]) => w < 0).map(([k, w]) => `${k} ${fmt(w, 1)}`))],
+      ["Media nel mondo", (d) => { const a = agg(L.stats[d.stat]); return a.avg == null ? "—" : `${bar(a.avg, 100)} ${fmt(a.avg, 0)}`; }]] },
   action_sets: { title: "Gruppi di azioni", group: "Catalogo",
     cols: [["Nome", (d) => esc(d.name)], ["Azioni", (d) => (d.actions ?? []).length, true], ["Razze", (d) => chips(Object.values(C("races")).filter((r) => (r.action_sets ?? []).includes(d.id)).map((r) => r.id), "races")],
       ["Descrizione", (d) => `<span class="muted">${esc(d.description ?? "")}</span>`]] },
@@ -489,7 +493,8 @@ const CATALOG = {
       ["Vende", (d) => chips(Object.keys(d.sells ?? {}).map((i) => name("items", i)))], ["In gioco", (d) => L.byBuilding[d.id] ?? 0, true]] },
   factions: { title: "Fazioni", group: "Catalogo", sprite: true,
     facets: [["Giocabile", (d) => (d.playable ? "sì" : "no")]],
-    cols: [["Nome", (d) => esc(d.name)], ["Giocabile", (d) => (d.playable ? "sì" : "")], ["Ideologia", (d) => chips(Object.entries(d.ideology ?? {}).map(([k, v]) => `${k} ${v}`))],
+    cols: [["Nome", (d) => esc(d.name)], ["Giocabile", (d) => (d.playable ? "sì" : "")], ["Valori", (d) => chips(Object.entries(d.values ?? {}).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${name("values", k)} ${fmt(v, 0)}`))],
+      ["Affidabilità pubblica", (d) => trustText(S.state?.factions?.find((f) => f.id === d.id)?.public_trust)],
       ["Membri", (d) => L.byFaction[d.id] ?? 0, true], ["Tesoro", (d) => fmt(S.state?.factions?.find((f) => f.id === d.id)?.treasury, 0), true],
       ["Punti", (d) => S.state?.scores?.[d.id] ?? "", true]] },
   events: { title: "Eventi", group: "Catalogo",
@@ -553,7 +558,7 @@ const WORLD = {
 // ── Sidebar and routing ───────────────────────────────────────────────────────
 // Sections of the catalog in the side menu.
 const CATALOG_SECTIONS = [
-  ["Pedine", ["races", "classes", "titles", "templates", "stats", "needs", "abilities", "statuses", "body_plans"]],
+  ["Pedine", ["races", "classes", "titles", "templates", "stats", "needs", "values", "abilities", "statuses", "body_plans"]],
   ["Comportamento", ["actions", "action_sets", "modes"]],
   ["Oggetti", ["items", "collections", "supplies", "fluids"]],
   ["Edifici", ["buildings"]],
@@ -1237,6 +1242,8 @@ function eventSections(d) {
     used: ["when", "every", "from_tick", "by", "news", "effects"],
   };
 }
+// Public trust / opinion −100..100 in words.
+const trustText = (v) => (v == null ? "—" : `${v > 15 ? '<span class="ok">' : v < -15 ? '<span class="bad">' : "<span>"}${v > 40 ? "molto affidabile" : v > 15 ? "affidabile" : v < -40 ? "per niente affidabile" : v < -15 ? "poco affidabile" : "né sì né no"}</span> <span class="muted">(${fmt(v, 0)})</span>`);
 const statMapChips = (m) => chips(Object.entries(m ?? {}).map(([k, v]) => `${name("stats", k)} ${sgn(v, 1)}`));
 const itemTags = () => [...new Set(Object.values(C("items")).flatMap((i) => [...(i.tags ?? []), i.category]).filter(Boolean))].sort();
 /** Circumstances: a status of the whole world. */
@@ -1443,7 +1450,7 @@ const REFLIST = { action_sets: "action_sets", abilities: "abilities", actions: "
 const REF = { mode: "modes", race: "races", faction: "factions", body_plan: "body_plans", template: "templates", skill: "stats", escalates_to: "statuses", item: "items",
   challenge_stat: "stats", summoner: "templates", author: "templates", carries: "statuses" };
 const STATMAP = new Set(["stats", "carried_stats", "score"]);
-const KEYMAP = { items: "items", stock: "items", cost: "items", passive: "items", need_rates: "needs", relations: "factions", capacities: null, ideology: null, work: null };
+const KEYMAP = { items: "items", stock: "items", cost: "items", passive: "items", need_rates: "needs", relations: "factions", values: "values", likes: null, capacities: null, work: null };
 // Conditions and effects: edited as JSON, with their description in words.
 const LOGIC = new Set(["requires", "claim_requires", "when", "active_when", "release", "effects", "on_apply", "per_tick", "on_expire", "on_use", "on_hit",
   "on_enter", "bonus", "effects_when_low", "considerations", "stages", "contagion", "consequences", "recipes", "ranks", "goals", "headlines", "tether", "disguise", "crime", "params"]);
@@ -1456,7 +1463,7 @@ const TITLES = { loses_when: "si perde se", action_sets: "gruppi di azioni", abi
   titles: "ruoli", immunities: "immunità", innate_statuses: "stati innati", statuses: "stati", needs_exempt: "bisogni assenti", exports: "esporta", items: "oggetti",
   tags: "tag", grants_tags: "tag che dà", required_tags: "tag richiesti", ideology_tags: "tag ideologici", forbids: "vieta", types: "tipi", zones: "zone",
   work: "lavori (priorità)", stock: "scorte iniziali", cost: "costo di costruzione", passive: "produzione passiva", need_rates: "velocità dei bisogni",
-  relations: "rapporti iniziali", capacities: "capacità", ideology: "ideologia", requires: "requisiti", claim_requires: "requisiti per il ruolo",
+  relations: "rapporti iniziali", capacities: "capacità", values: "valori", likes: "piace e dispiace", requires: "requisiti", claim_requires: "requisiti per il ruolo",
   effects: "effetti", on_apply: "all'inizio", per_tick: "ogni tick", on_expire: "alla fine", on_use: "all'uso", on_hit: "quando colpisce", stages: "stadi",
   contagion: "contagio", considerations: "considerazioni dell'AI", kind: "tipo", ranks: "ranghi", goals: "obiettivi", recipes: "ricette", sells: "vende",
   consequences: "conseguenze dei danni", crime: "reato", params: "parametri", when: "quando", active_when: "attivo quando", tether: "legato a", bonus: "bonus",
@@ -1591,6 +1598,7 @@ function liveInfo(kind, d) {
   } else if (kind === "factions") {
     const f = S.state?.factions?.find((x) => x.id === d.id);
     extra["Tesoro"] = fmt(f?.treasury, 0) + " €"; extra["Punti"] = S.state?.scores?.[d.id] ?? "";
+    extra["Affidabilità pubblica"] = trustText(f?.public_trust) + ' <span class="muted">ciò che credono di lei quelli che non ne fanno parte</span>';
     extra["Rapporti"] = chips(Object.entries(f?.relations ?? {}).sort((a, b) => a[1] - b[1]).map(([k, v]) => `${name("factions", k)} ${fmt(v, 0)}`));
     cards.push(["Membri", pawnsWhere((e) => e.faction === d.id)]);
     extra["Modalità ora"] = f?.mode ? link("modes", f.mode) : '<span class="muted">nessuna: ogni membro sceglie da sé</span>';
@@ -1632,6 +1640,11 @@ function renderDetail() {
   if (kind === "items") { const r = itemSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "buildings") { const r = buildingSections(d); main = r.sections; used = [...used, ...r.used]; }
   if (kind === "factions") { main.push(factionRanksCard(d)); used = [...used, "ranks"]; }
+  if (kind === "values") {
+    main.push(card("Cosa piace e cosa dispiace", mapTable(["likes"], d.likes, null, { keyLabel: "Categoria di azioni", valLabel: "Peso (+ piace, − dispiace)", value: 0.5, keys: actionTags() }) +
+      `<div class="muted">Chi ha il valore alto sceglie più volentieri le azioni che gli piacciono e giudica chi le fa; chi lo ha basso il contrario. Caratteristica: ${link("stats", d.stat)}.</div>`));
+    used = [...used, "likes", "stat"];
+  }
   if (kind === "actions") { const j = actionJobSection(d); if (j) main.push(j); used = [...used, "how"]; }
   const values = {}, details = [], logic = [];
   for (const f of Object.keys(d)) {
@@ -1663,7 +1676,7 @@ function renderDetail() {
   const statBox = $("dBody").querySelector(".tcustom")?.closest(".card");
   if (statBox) applyStatFilter(statBox);
 }
-const EDITABLE = ["stats", "needs", "body_plans", "races", "action_sets", "modes", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
+const EDITABLE = ["stats", "needs", "body_plans", "races", "action_sets", "modes", "values", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
   "buildings", "templates", "events", "collections", "titles", "global_modifiers", "supplies"];
 $("dBody").addEventListener("change", (ev) => {
   const el = ev.target.closest("[data-set]"); if (!el || !draft) return;
@@ -1846,6 +1859,9 @@ async function entityPage(id) {
     (inv ? `<div class="card"><h4>Inventario</h4>${inv}</div>` : "") +
     (journal ? `<div class="card"><h4>Taccuino</h4>${journal}</div>` : "") + `</div>` +
     (statCard ? `<h4>Caratteristiche</h4><div class="grid2">${statCard}</div>` : "") +
+    ((e.beliefs ?? []).length ? `<div class="card"><h4>Convinzioni</h4><table class="ed"><thead><tr><th>Su chi</th><th>Giudizio</th><th class="num">Forza</th></tr></thead><tbody>` +
+      e.beliefs.map(([k, n, st, fo]) => `<tr><td>${k.startsWith("f:") ? link("factions", k.slice(2), n) : `<a class="chip" href="#ent/${k.slice(2)}">${esc(n)}</a>`}</td><td>${trustText(st)}</td><td class="num">${bar(fo, 100)} ${fmt(fo, 0)}</td></tr>`).join("") +
+      `</tbody></table><div class="muted">Passano a chi gli sta vicino (credibilità di chi parla, influenzabilità di chi ascolta) e col tempo si affievoliscono.</div></div>` : "") +
     (ai ? `<details class="card"><summary>Utility AI</summary><pre>${esc(JSON.stringify(ai, null, 1))}</pre></details>` : "") +
     `<details class="card"><summary>Dati completi (JSON)</summary><pre>${esc(JSON.stringify(e, null, 1))}</pre></details>`;
 }

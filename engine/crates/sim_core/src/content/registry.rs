@@ -37,6 +37,7 @@ pub struct ContentData {
     pub races: BTreeMap<Id, RaceDef>,
     pub action_sets: BTreeMap<Id, ActionSetDef>,
     pub modes: BTreeMap<Id, ModeDef>,
+    pub values: BTreeMap<Id, ValueDef>,
     pub classes: BTreeMap<Id, ClassDef>,
     pub statuses: BTreeMap<Id, StatusDef>,
     pub fluids: BTreeMap<Id, FluidDef>,
@@ -81,6 +82,21 @@ fn action_jobs(c: &mut ContentData) {
     }
 }
 
+/// Every value names its stat; a missing one is created (0..100, 50 ± 15 at birth, group "Valori").
+fn value_stats(c: &mut ContentData) {
+    for v in c.values.values_mut() {
+        if v.stat.is_empty() {
+            v.stat = format!("v_{}", v.id);
+        }
+        if !c.stats.contains_key(&v.stat) {
+            c.stats.insert(v.stat.clone(), StatDef {
+                id: v.stat.clone(), name: v.name.clone(), description: format!("Valore: {}", v.name), min: 0.0, max: 100.0,
+                default: 50.0, visible: true, rest_value: None, recovery: 0.0, per_day: 0.0, group: "Valori".into(), spread: 15.0,
+            });
+        }
+    }
+}
+
 /// Every need names its stat; a missing one is created (0..100, full at birth, group "Bisogni").
 fn need_stats(c: &mut ContentData) {
     for n in c.needs.values_mut() {
@@ -98,7 +114,7 @@ fn need_stats(c: &mut ContentData) {
 
 /// Kinds of definitions (keyed by id) the admin console can replace while the game runs.
 pub const EDITABLE_KINDS: &[&str] = &[
-    "stats", "needs", "body_plans", "races", "action_sets", "modes", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
+    "stats", "needs", "body_plans", "races", "action_sets", "modes", "values", "classes", "statuses", "fluids", "items", "abilities", "jobs", "actions", "factions",
     "buildings", "templates", "events", "collections", "titles", "global_modifiers", "supplies",
 ];
 
@@ -117,6 +133,7 @@ fn merge_pack(c: &mut ContentData, p: ContentPack) {
     merge(&mut c.races, p.races, |d| &d.id);
     merge(&mut c.action_sets, p.action_sets, |d| &d.id);
     merge(&mut c.modes, p.modes, |d| &d.id);
+    merge(&mut c.values, p.values, |d| &d.id);
     merge(&mut c.classes, p.classes, |d| &d.id);
     merge(&mut c.statuses, p.statuses, |d| &d.id);
     merge(&mut c.fluids, p.fluids, |d| &d.id);
@@ -170,6 +187,7 @@ impl Content {
         let mut c = (*self.0).clone();
         merge_pack(&mut c, pack);
         need_stats(&mut c);
+        value_stats(&mut c);
         action_jobs(&mut c);
         let errors = c.validate();
         if errors.is_empty() { Ok(Content(Arc::new(c))) } else { Err(ContentError::Invalid(errors)) }
@@ -185,6 +203,7 @@ impl Content {
             merge_pack(&mut c, p);
         }
         need_stats(&mut c);
+        value_stats(&mut c);
         action_jobs(&mut c);
         if let Some(m) = c.map.as_mut() {
             for l in m.layers.iter_mut() {
@@ -325,6 +344,9 @@ impl Validator<'_> {
             self.check(&c.modes, "modalità", m, "bindings");
         }
         for f in c.factions.values() {
+            for v in f.values.keys() {
+                self.check(&c.values, "valore", v, &format!("fazione {}", f.id));
+            }
             for r in &f.ranks {
                 let ctx = format!("rango {} di {}", r.id, f.id);
                 if let Some(q) = &r.requires {
@@ -783,6 +805,9 @@ impl Validator<'_> {
             }
             Effect::MarketShock { item: Some(i), .. } => self.check(&c.items, "oggetto", i, ctx),
             Effect::GlobalModifier { id, .. } => self.check(&c.global_modifiers, "circostanza", id, ctx),
+            Effect::Tell { about: super::logic::About::Faction(f), .. } | Effect::Believe { about: super::logic::About::Faction(f), .. } => {
+                self.check(&c.factions, "fazione", f, ctx)
+            }
             Effect::Shapeshift { race, faction, .. } => {
                 if let Some(r) = race {
                     self.check(&c.races, "razza", r, ctx);

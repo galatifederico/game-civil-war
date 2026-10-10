@@ -78,6 +78,7 @@ pub fn use_action(world: &mut World, e: Entity, action: &str, target: Option<Ent
     if def.suspicious {
         crate::infiltration::suspicious_act(world, e);
     }
+    crate::beliefs::witness(world, e, action);
     let pos = world.get::<Position>(e).copied();
     let actor = world.get::<SimId>(e).copied();
     let tid = target.and_then(|t| world.get::<SimId>(t).copied());

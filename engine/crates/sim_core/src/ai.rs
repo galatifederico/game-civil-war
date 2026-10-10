@@ -146,7 +146,7 @@ fn score_action(world: &mut World, e: Entity, a: &ActionDef, tick: u64) -> Optio
     let mut factors = Vec::new();
     let mode_w = {
         let content = world.resource::<Content>();
-        crate::modes::weight(content, world.get::<crate::modes::Mode>(e), &a.tags)
+        crate::modes::weight(content, world.get::<crate::modes::Mode>(e), &a.tags) * crate::beliefs::values_weight(content, world.get::<Stats>(e), &a.tags)
     };
     if mode_w != 1.0 {
         factors.push(("modalità".to_string(), mode_w));
