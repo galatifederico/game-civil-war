@@ -80,5 +80,11 @@ oggetti e inserire degli NPC; il più completo possibile.
   specchiati o ruotati). Eliminare una zona usata da fazioni, azioni o eventi fa fallire la Verifica, che
   dice da chi è usata.
 
+- **Zone usate dal gioco:** l'editor sa quali zone (per id o per tag) sono nominate da fazioni, azioni ed
+  eventi (`used_zones`, `used_tags` in `GET /api/admin/map`): non si eliminano e il loro id non si cambia
+  (🔒 nella scheda), ma si spostano e ridimensionano; l'eliminazione in massa le salta e lo dice. Se il
+  salvataggio è rifiutato perché ne mancano, la Verifica offre **Ripristina le zone mancanti**, che le rimette
+  dai file salvati senza toccare il resto. La bozza automatica avvisa se i file sono cambiati dopo di lei.
+
 **Da rifinire.** Le decorazioni (`props`) non hanno ancora un uso nei client e l'editor non le tocca; `Applica caselle` non porta nella partita in corso i
 tipi di casella appena creati (serve ricominciare); i parametri della scoperta sono da bilanciare.

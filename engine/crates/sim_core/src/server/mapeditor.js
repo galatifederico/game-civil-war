@@ -45,6 +45,13 @@ const ME = (() => {
     const li = layerIdx(id);
     return li >= 0 ? { layer: li, x: 0, y: 0, w: st.doc.map.layers[li].width, h: st.doc.map.layers[li].height } : null;
   }
+  /** Zones (or maps) the rest of the game names — factions, actions, events…: removing them or changing
+   *  their id would make the content invalid. A tag counts for the last zone carrying it. */
+  function isUsed(id) {
+    if (st.usedZones?.has(id)) return true;
+    const z = zones().find((z) => z.id === id);
+    return !!z && (z.tags ?? []).some((t) => st.usedTags?.has(t) && !zones().some((o) => o !== z && (o.tags ?? []).includes(t)));
+  }
   /** Kind, body and position of a placement (`{Building: {...}}`, `{Entity: {...}}`). */
   function pl(p) {
     const kind = Object.keys(p)[0], b = p[kind];
@@ -177,7 +184,7 @@ const ME = (() => {
   function touched() {
     st.dirty = true; renderStatus();
     clearTimeout(draftTimer);
-    draftTimer = setTimeout(() => { try { localStorage.setItem("mapEditorDraft", JSON.stringify({ file: st.file, at: Date.now(), doc: serialize() })); } catch (e) {} }, 1500);
+    draftTimer = setTimeout(() => { try { localStorage.setItem("mapEditorDraft", JSON.stringify({ file: st.file, at: Date.now(), base: st.base, doc: serialize() })); } catch (e) {} }, 1500);
   }
 
   // ── Loading and saving ──────────────────────────────────────────────────────
@@ -204,11 +211,18 @@ const ME = (() => {
   async function load(askDraft = true) {
     const r = await api("/api/admin/map");
     st.file = r.file; st.others = r.others ?? [];
+    st.usedZones = new Set(r.used_zones ?? []); st.usedTags = new Set(r.used_tags ?? []);
     st.doc = adopt({ map: r.map, placements: r.placements });
     let draft = null;
     try { draft = JSON.parse(localStorage.getItem("mapEditorDraft") || "null"); } catch (e) {}
-    if (askDraft && draft?.doc && JSON.stringify(draft.doc) !== JSON.stringify(serialize()) &&
-        confirm(`C'è una bozza dell'editor non salvata (${new Date(draft.at).toLocaleString("it-IT")}). Ripristinarla?`)) {
+    // Fingerprint of the saved files: a draft made on other files would undo what changed since.
+    const text = JSON.stringify(serialize());
+    let hsh = 0; for (let i = 0; i < text.length; i++) hsh = (hsh * 31 + text.charCodeAt(i)) | 0;
+    st.base = text.length + ":" + hsh;
+    const stale = draft && draft.base !== st.base;
+    if (askDraft && draft?.doc && JSON.stringify(draft.doc) !== text &&
+        confirm(`C'è una bozza dell'editor non salvata (${new Date(draft.at).toLocaleString("it-IT")}). Ripristinarla?` +
+          (stale ? "\n\nATTENZIONE: i file della mappa sono cambiati dopo questa bozza. Ripristinandola e salvando, quei cambiamenti (per esempio personaggi o zone aggiunti nel frattempo) andrebbero persi. Annulla per partire dai file attuali." : ""))) {
       st.doc = adopt(JSON.parse(JSON.stringify(draft.doc)));
       st.dirty = true;
     } else { st.dirty = false; try { localStorage.removeItem("mapEditorDraft"); } catch (e) {} }
@@ -829,13 +843,19 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
       for (const n of st.doc.map.networks) n.zones = n.zones.filter((z) => !it.zones.includes(z));
     }
   }
+  /** Leaves out the zones the game needs. */
+  function dropUsed(it) {
+    const zs = it.zones.filter((id) => !isUsed(id));
+    it.kept = it.zones.length - zs.length; it.zones = zs; it.n = it.pls.length + zs.length + it.portals.length;
+    return it;
+  }
   function deleteAreaItems() {
-    const it = areaItems();
-    if (!it.n) { toast("Nessun elemento nell'area (controlla cosa è spuntato)", true); return false; }
+    const it = dropUsed(areaItems());
+    if (!it.n) { toast(it.kept ? `Nell'area ci sono solo zone usate dal gioco (${it.kept}): non si eliminano, ma si possono spostare e ridimensionare` : "Nessun elemento nell'area (controlla cosa è spuntato)", true); return false; }
     const text = areaSummary(it);
     if (it.n > 5 && !confirm(`Eliminare ${text}?`)) return false;
     change(`elimina ${it.n} elementi`, () => { removeItems(it); });
-    st.sel = null; toast(`Eliminati: ${text} (Ctrl+Z per annullare)`); renderSel(); renderToolBox(); draw(); if (st.tab !== "palette") renderTab();
+    st.sel = null; toast(`Eliminati: ${text}${it.kept ? ` · ${it.kept} zone lasciate perché usate dal gioco` : ""} (Ctrl+Z per annullare)`); renderSel(); renderToolBox(); draw(); if (st.tab !== "palette") renderTab();
     return true;
   }
   function moveArea(dx, dy) {
@@ -931,6 +951,7 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     if (s.type === "pl") change("elimina", () => { st.doc.placements.splice(s.i, 1); });
     else if (s.type === "portal") change("elimina il passaggio", () => { st.doc.map.portals.splice(s.i, 1); });
     else if (s.type === "zone") {
+      if (isUsed(s.id)) { toast("Questa zona è usata dal gioco (fazioni, azioni o eventi la nominano): non si può eliminare. Puoi spostarla, ridimensionarla e cambiarle nome.", true); return; }
       const users = st.doc.placements.filter((p) => pl(p).b.zone === s.id).length + st.others.filter((o) => pl(o.placement).b.zone === s.id).length;
       if (users && !confirm(`${users} piazzamenti usano questa zona: verranno spostati nella zona che li contiene. Eliminarla?`)) return;
       change("elimina la zona", () => {
@@ -1057,10 +1078,11 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
       if (a === "copy") copyArea(false); else if (a === "cut") copyArea(true);
       else if (a === "delitems") deleteAreaItems();
       else if (a === "delall" && st.area) {
-        const it = areaItems(true);
+        const it = dropUsed(areaItems(true));
         if (it.n > 5 && !confirm(`Eliminare ${areaSummary(it)} e svuotare le caselle?`)) return;
         beginTiles(); forArea((x, y) => setTile(x, y, st.secondary)); endTiles("svuota l'area"); drawMini();
         if (it.n) change(`elimina ${it.n} elementi`, () => { removeItems(it); });
+        if (it.kept) toast(`${it.kept} zone lasciate perché usate dal gioco`);
         st.sel = null; renderSel(); renderToolBox(); if (st.tab !== "palette") renderTab();
       }
       else if (a === "paste") { st.pasting = true; toast("Clic per incollare, R ruota, Esc per finire"); }
@@ -1119,7 +1141,7 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
       h += `<div class="row" style="justify-content:space-between"><b>Zona</b><span><button id="meZoneArea">Seleziona l'area</button> <button class="danger" id="meDel">Elimina</button></span></div><div class="me-form">
         Nome <input data-z="name" value="${esc(z.name)}"> Id <input data-z="id" value="${esc(z.id)}"> Tag <input data-z="tags" value="${esc((z.tags ?? []).join(", "))}" placeholder="pubblico, quartiere…">
         Rettangolo <span><input class="num" data-r="0" value="${z.rect[0]}" style="width:52px"> <input class="num" data-r="1" value="${z.rect[1]}" style="width:52px"> <input class="num" data-r="2" value="${z.rect[2]}" style="width:52px"> <input class="num" data-r="3" value="${z.rect[3]}" style="width:52px"></span></div>
-        <div class="muted">x, y, larghezza, altezza · ${users} piazzamenti in questa zona. Il tag «quartiere» la rende conquistabile.</div>`;
+        <div class="muted">x, y, larghezza, altezza · ${users} piazzamenti in questa zona. Il tag «quartiere» la rende conquistabile.${isUsed(z.id) ? " <b>🔒 Usata dal gioco</b>: non si elimina e l'id non si cambia, ma si sposta e si ridimensiona." : ""}</div>`;
     } else if (s.type === "portal") {
       const p = st.doc.map.portals[s.i]; if (!p) { st.sel = null; box.hidden = true; return; }
       const end = (k) => `<select data-pe="${k}">${opts(st.doc.map.layers.map((l) => [l.id, l.name]), p[k][0])}</select> <input class="num" data-px="${k}" value="${p[k][1]}" style="width:52px"> <input class="num" data-py="${k}" value="${p[k][2]}" style="width:52px"> <button data-go="${k}">Vai</button>`;
@@ -1164,6 +1186,7 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
         const f = el.dataset.z, v = el.value.trim();
         if (f === "id") {
           if (!/^[a-z0-9_]+$/.test(v)) { toast("L'id può avere solo lettere minuscole, cifre e _", true); redraw(); return; }
+          if (v !== z.id && isUsed(z.id)) { toast("Il gioco usa questo id (fazioni, azioni o eventi): cambia il nome, non l'id", true); redraw(); return; }
           if (v !== z.id && (zones().some((x) => x.id === v) || layerIdx(v) >= 0)) { toast("Esiste già una zona o mappa con questo id", true); redraw(); return; }
           const old = z.id;
           change("rinomina la zona", () => {
@@ -1312,6 +1335,8 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     };
     $("mlDel").onclick = () => {
       if (m.layers.length < 2) { toast("Serve almeno una mappa", true); return; }
+      const need = [l.id, ...zones().filter((z) => z.layer === l.id).map((z) => z.id)].filter(isUsed);
+      if (need.length) { toast(`Questa mappa non si può eliminare: il gioco usa ${need.slice(0, 4).join(", ")}${need.length > 4 ? "…" : ""}`, true); return; }
       const nz = zones().filter((z) => z.layer === l.id).map((z) => z.id), np = st.doc.placements.filter((p) => pl(p).pos?.layer === st.layer).length;
       if (!confirm(`Eliminare «${l.name}» con ${nz.length} zone, ${np} piazzamenti, i suoi passaggi e bordi?`)) return;
       change("elimina la mappa", () => {
@@ -1328,6 +1353,7 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
   }
   function renameLayer(l, id) {
     if (id === l.id) return;
+    if (isUsed(l.id)) { toast("Il gioco usa l'id di questa mappa: cambia il nome, non l'id", true); tabMap(); return; }
     if (!/^[a-z0-9_]+$/.test(id) || layerIdx(id) >= 0 || zones().some((z) => z.id === id)) { toast("Id non valido o già usato", true); tabMap(); return; }
     const old = l.id, m = st.doc.map;
     change("rinomina la mappa", () => {
@@ -1490,6 +1516,25 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     st.tab = "check"; showCheck(out, false);
     save(false, true);
   }
+  /** Puts back, from the saved files, zones the content needs and the edit lost. */
+  async function restoreZones(ids) {
+    let saved; try { saved = await api("/api/admin/map"); } catch (e) { toast(e.message, true); return; }
+    const back = [], lost = [];
+    for (const id of ids) {
+      if (id.startsWith("#")) { lost.push(id + " (serve una zona con questo tag)"); continue; }
+      if (zones().some((z) => z.id === id) || layerIdx(id) >= 0) continue;
+      const z = saved.map.zones.find((z) => z.id === id);
+      if (!z) { lost.push(id + (saved.map.layers.some((l) => l.id === id) ? " (era una mappa: annulla l'eliminazione con Ctrl+Z)" : "")); continue; }
+      const li = layerIdx(z.layer);
+      if (li < 0) { lost.push(`${id} (stava nella mappa ${z.layer}, che non c'è più)`); continue; }
+      const l = st.doc.map.layers[li], [x, y, w, h] = z.rect;
+      const nx = clampN(x, 0, Math.max(0, l.width - 1)), ny = clampN(y, 0, Math.max(0, l.height - 1));
+      back.push({ ...z, rect: [nx, ny, Math.max(1, Math.min(w, l.width - nx)), Math.max(1, Math.min(h, l.height - ny))] });
+    }
+    if (back.length) change(`ripristina ${back.length} zone`, () => { zones().push(...back); });
+    toast(`${back.length} zone ripristinate` + (lost.length ? ` · non recuperabili: ${lost.join("; ")}` : ""), lost.length > 0);
+    draw(); runCheck();
+  }
   function showCheck(items, fromServer) {
     if (fromServer) items = [...(st.lastCheck ?? []).filter((x) => !x.pending && !x.server), ...items.map((x) => ({ ...x, server: true }))];
     st.lastCheck = items;
@@ -1499,6 +1544,14 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     $("meTab").innerHTML = `<div class="row"><button id="meReCheck">Verifica di nuovo</button> <span class="${bad ? "bad" : "ok"}">${bad} errori</span> <span class="muted">${warn} avvisi</span></div><div class="me-check">` +
       (items.map((x, i) => `<div data-c="${i}" class="${x.bad ? "bad" : x.ok ? "ok" : x.pending ? "muted" : ""}">${x.bad ? "✖" : x.ok ? "✔" : x.pending ? "…" : "⚠"} ${esc(x.text)}${x.server ? ' <span class="muted">(server)</span>' : ""}</div>`).join("") || '<div class="muted">Premi Verifica.</div>') + `</div>`;
     $("meReCheck").onclick = runCheck;
+    const missing = [...new Set(items.flatMap((x) => [...x.text.matchAll(/zona '([^']+)' non esiste/g)].map((m) => m[1])))];
+    if (missing.length) {
+      const b = document.createElement("div");
+      b.className = "card"; b.style.marginTop = "8px";
+      b.innerHTML = `<b>Mancano ${missing.length} zone che il gioco usa</b><div class="muted">${esc(missing.join(", "))}</div><div class="muted" style="margin:4px 0">Sono state eliminate o rinominate: per questo il salvataggio viene rifiutato. Posso rimetterle dove erano nei file salvati, senza toccare il resto del tuo lavoro; poi le sposti o ridimensioni come vuoi.</div><button class="primary" id="meRestoreZones">Ripristina le zone mancanti</button>`;
+      $("meTab").appendChild(b);
+      $("meRestoreZones").onclick = () => restoreZones(missing);
+    }
     for (const d of $("meTab").querySelectorAll("[data-c]")) d.onclick = () => {
       const x = items[Number(d.dataset.c)]; if (!x.go) return;
       if (x.go.li !== st.layer) setLayer(x.go.li);

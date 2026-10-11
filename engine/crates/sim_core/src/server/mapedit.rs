@@ -86,13 +86,30 @@ pub async fn get_map(State(s): State<AppState>) -> ApiResult {
     let dir = data_dir(&s)?;
     let (file, pack) = map_file(&dir)?;
     let mut others = Vec::new();
+    // Text of every other pack, to tell which zones (by id or `#tag`) the rest of the content names.
+    let mut rest = String::new();
     for f in pack_files(&dir)? {
         if f == file {
             continue;
         }
         let pack = read_pack(&dir, &f)?;
+        rest.push_str(&serde_json::to_string(&pack).map_err(bad)?);
         for p in pack.placements {
             others.push(json!({ "file": name(&f), "placement": p }));
+        }
+    }
+    let quoted = |s: &str| rest.contains(&format!("\"{s}\""));
+    let (mut used_zones, mut used_tags) = (std::collections::BTreeSet::new(), std::collections::BTreeSet::new());
+    if let Some(m) = &pack.map {
+        for id in m.zones.iter().map(|z| &z.id).chain(m.layers.iter().map(|l| &l.id)) {
+            if quoted(id) {
+                used_zones.insert(id.clone());
+            }
+        }
+        for t in m.zones.iter().flat_map(|z| &z.tags).chain(m.layers.iter().flat_map(|l| &l.tags)) {
+            if quoted(&format!("#{t}")) {
+                used_tags.insert(t.clone());
+            }
         }
     }
     let mut map = pack.map.unwrap_or_default();
@@ -100,7 +117,8 @@ pub async fn get_map(State(s): State<AppState>) -> ApiResult {
         l.width = l.tiles.iter().map(|r| r.chars().count()).max().unwrap_or(l.width as usize) as i32;
         l.height = if l.tiles.is_empty() { l.height } else { l.tiles.len() as i32 };
     }
-    Ok(Json(json!({ "file": name(&file), "map": map, "placements": pack.placements, "others": others })))
+    Ok(Json(json!({ "file": name(&file), "map": map, "placements": pack.placements, "others": others,
+                     "used_zones": used_zones, "used_tags": used_tags })))
 }
 
 #[derive(Deserialize)]
