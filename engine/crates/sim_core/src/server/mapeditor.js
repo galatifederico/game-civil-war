@@ -10,7 +10,7 @@ const ME = (() => {
     tool: "brush", primary: ".", secondary: ".", brush: 1, round: false, fillAll: false, outline: false,
     undo: [], redo: [], dirty: false, sel: null, area: null, clip: null, pasting: false,
     view: { scale: 1, ox: 0, oy: 0, fitted: false }, hover: null, drag: null, stroke: null, pan: null, space: false,
-    pendingPortal: null, terrain: null, tctx: null, built: false, tab: "palette", liveTiles: null,
+    areaKinds: { tiles: true, Building: true, Entity: true, Hidden: true, zone: true, portal: true }, pendingPortal: null, terrain: null, tctx: null, built: false, tab: "palette", liveTiles: null,
     show: { grid: true, zones: true, portals: true, buildings: true, npcs: true, hidden: true, solid: false, others: true, labels: true },
     opt: { building: "", owner: "", bname: "", template: "", faction: "", npcName: "", count: 1, hideItem: "", hideQty: 1, wall: "W", floor: "w", door: "d" },
   };
@@ -503,7 +503,7 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     ctx.setTransform(dpr * v.scale, 0, 0, dpr * v.scale, dpr * v.ox, dpr * v.oy);
     ctx.imageSmoothingEnabled = false;
     if (st.terrain) ctx.drawImage(st.terrain, 0, 0);
-    const px = 1 / v.scale;
+    const px = 1 / v.scale, inArea = areaItems();
     // Visible cell range.
     const r = cv.getBoundingClientRect();
     const vx0 = clampN(Math.floor(-v.ox / v.scale / TS), 0, l.width), vy0 = clampN(Math.floor(-v.oy / v.scale / TS), 0, l.height);
@@ -540,7 +540,7 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     if (st.show.zones) {
       for (const z of zones()) {
         if (z.layer !== l.id) continue;
-        const [x, y, w, h] = z.rect, on = st.sel?.type === "zone" && st.sel.id === z.id;
+        const [x, y, w, h] = z.rect, on = (st.sel?.type === "zone" && st.sel.id === z.id) || inArea.zones.includes(z.id);
         ctx.strokeStyle = on ? "#ffeb3b" : (z.tags ?? []).includes("quartiere") ? "rgba(255,255,255,.75)" : "rgba(140,220,255,.75)";
         ctx.lineWidth = (on ? 3 : 1.5) * px; ctx.setLineDash(on ? [] : [6 * px, 3 * px]); ctx.strokeRect(x * TS, y * TS, w * TS, h * TS); ctx.setLineDash([]);
         if (on) { ctx.fillStyle = "rgba(255,235,59,.12)"; ctx.fillRect(x * TS, y * TS, w * TS, h * TS); for (const [hx, hy] of corners(z)) { ctx.fillStyle = "#ffeb3b"; ctx.fillRect(hx * TS - 4 * px, hy * TS - 4 * px, 8 * px, 8 * px); } }
@@ -550,7 +550,7 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     if (st.show.portals) {
       for (const [i, p] of st.doc.map.portals.entries()) for (const [end, o] of [[p.a, p.b], [p.b, p.a]]) {
         if (end[0] !== l.id) continue;
-        const on = st.sel?.type === "portal" && st.sel.i === i;
+        const on = (st.sel?.type === "portal" && st.sel.i === i) || inArea.portals.includes(i);
         const cx = (end[1] + 0.5) * TS, cy = (end[2] + 0.5) * TS;
         ctx.fillStyle = on ? "#ffeb3b" : "#b46cff"; ctx.beginPath(); ctx.arc(cx, cy, Math.max(6, 4 * px), 0, 7); ctx.fill();
         ctx.strokeStyle = "#000"; ctx.lineWidth = px; ctx.stroke();
@@ -564,7 +564,7 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
       if (!P.pos || P.pos.layer !== st.layer) return;
       const show = P.kind === "Hidden" ? st.show.hidden : P.kind === "Building" ? st.show.buildings : st.show.npcs;
       if (!show) return;
-      const on = !other && st.sel?.type === "pl" && st.sel.i === i;
+      const on = !other && ((st.sel?.type === "pl" && st.sel.i === i) || inArea.pls.includes(i));
       const { x, y } = P.pos;
       ctx.globalAlpha = other ? 0.55 : 1;
       if (P.kind === "Building") {
@@ -617,7 +617,8 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
       const h = st.hover;
       if (st.pasting && st.clip) {
         ctx.globalAlpha = 0.65;
-        st.clip.cells.forEach((row, dy) => row.forEach((ch, dx) => ctx.drawImage(art(st.leg[ch]), (h.x + dx) * TS, (h.y + dy) * TS)));
+        st.clip.cells?.forEach((row, dy) => row.forEach((ch, dx) => ctx.drawImage(art(st.leg[ch]), (h.x + dx) * TS, (h.y + dy) * TS)));
+        ctx.fillStyle = "#ffeb3b"; for (const p of st.clip.items ?? []) { const b = Object.values(p)[0]; ctx.beginPath(); ctx.arc((h.x + b.at[0] + 0.5) * TS, (h.y + b.at[1] + 0.5) * TS, 5, 0, 7); ctx.fill(); }
         ctx.globalAlpha = 1; ctx.strokeStyle = "#ffeb3b"; ctx.lineWidth = 2 * px; ctx.strokeRect(h.x * TS, h.y * TS, st.clip.w * TS, st.clip.h * TS);
       } else if (["brush", "eraser"].includes(st.tool) || (["line", "rect", "ellipse", "fill"].includes(st.tool) && !st.drag)) {
         ctx.strokeStyle = "#ffeb3b"; ctx.lineWidth = 1.5 * px;
@@ -797,24 +798,91 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     endTiles("stanza"); drawMini();
   }
   function areaCells(a) { return Array.from({ length: a.h }, (_, dy) => Array.from({ length: a.w }, (_, dx) => getTile(a.x + dx, a.y + dy))); }
+  const AREA_KINDS = [["tiles", "caselle"], ["Building", "edifici"], ["Entity", "NPC"], ["Hidden", "nascosti"], ["zone", "zone"], ["portal", "passaggi"]];
+  /** What the selected area holds of the kinds ticked in the tool box: placements and passages with a
+   *  point inside it (NPCs placed at random in a zone are drawn, and taken, at the zone's centre), zones
+   *  entirely inside it. */
+  function areaItems(all) {
+    const a = st.area, out = { pls: [], zones: [], portals: [], n: 0 };
+    if (!a) return out;
+    const k = st.areaKinds, lid = L().id, inside = (x, y) => x >= a.x && y >= a.y && x < a.x + a.w && y < a.y + a.h;
+    st.doc.placements.forEach((p, i) => { const P = pl(p); if (P.pos && P.pos.layer === st.layer && (all || k[P.kind]) && inside(P.pos.x, P.pos.y)) out.pls.push(i); });
+    if (all || k.zone) for (const z of zones()) if (z.layer === lid && inside(z.rect[0], z.rect[1]) && inside(z.rect[0] + z.rect[2] - 1, z.rect[1] + z.rect[3] - 1)) out.zones.push(z.id);
+    if (all || k.portal) st.doc.map.portals.forEach((p, i) => { if ([p.a, p.b].some((e) => e[0] === lid && inside(e[1], e[2]))) out.portals.push(i); });
+    out.n = out.pls.length + out.zones.length + out.portals.length;
+    return out;
+  }
+  function areaSummary(it) {
+    const c = { Building: 0, Entity: 0, Hidden: 0 };
+    for (const i of it.pls) c[pl(st.doc.placements[i]).kind]++;
+    return [[c.Building, "edifici"], [c.Entity, "NPC"], [c.Hidden, "nascosti"], [it.zones.length, "zone"], [it.portals.length, "passaggi"]].filter(([n]) => n).map(([n, t]) => `${n} ${t}`).join(", ");
+  }
+  /** Removes the elements of the area (inside a `change`). */
+  function removeItems(it) {
+    const li = st.layer, lid = L().id, gone = new Set(it.pls);
+    st.doc.placements = st.doc.placements.filter((_, i) => !gone.has(i));
+    const pg = new Set(it.portals);
+    st.doc.map.portals = st.doc.map.portals.filter((_, i) => !pg.has(i));
+    if (it.zones.length) {
+      st.doc.map.zones = zones().filter((z) => !it.zones.includes(z.id));
+      for (const p of st.doc.placements) { const b = Object.values(p)[0]; if (it.zones.includes(b.zone)) b.zone = b.at ? zoneAt(b.at[0], b.at[1], li) : lid; if (b.tether && it.zones.includes(b.tether.zone)) delete b.tether; }
+      for (const n of st.doc.map.networks) n.zones = n.zones.filter((z) => !it.zones.includes(z));
+    }
+  }
+  function deleteAreaItems() {
+    const it = areaItems();
+    if (!it.n) { toast("Nessun elemento nell'area (controlla cosa è spuntato)", true); return false; }
+    const text = areaSummary(it);
+    if (it.n > 5 && !confirm(`Eliminare ${text}?`)) return false;
+    change(`elimina ${it.n} elementi`, () => { removeItems(it); });
+    st.sel = null; toast(`Eliminati: ${text} (Ctrl+Z per annullare)`); renderSel(); renderToolBox(); draw(); if (st.tab !== "palette") renderTab();
+    return true;
+  }
+  function moveArea(dx, dy) {
+    const l = L(), a = st.area, it = areaItems();
+    if (a.x + dx < 0 || a.y + dy < 0 || a.x + a.w + dx > l.width || a.y + a.h + dy > l.height) return;
+    if (it.n) {
+      const before = snap(false);
+      for (const i of it.pls) { const b = Object.values(st.doc.placements[i])[0]; if (b.at) b.at = [b.at[0] + dx, b.at[1] + dy]; }
+      for (const id of it.zones) { const z = zones().find((z) => z.id === id); z.rect[0] += dx; z.rect[1] += dy; }
+      for (const i of it.portals) for (const e of [st.doc.map.portals[i].a, st.doc.map.portals[i].b]) if (e[0] === l.id && e[1] >= a.x && e[2] >= a.y && e[1] < a.x + a.w && e[2] < a.y + a.h) { e[1] += dx; e[2] += dy; }
+      for (const i of it.pls) fixZone(st.doc.placements[i]);
+      const last = st.undo[st.undo.length - 1];
+      if (last?.areaMove) last.after = snap(false); else st.undo.push({ kind: "doc", label: `sposta ${it.n} elementi`, before, after: snap(false), areaMove: true });
+      st.redo = []; touched();
+    }
+    a.x += dx; a.y += dy; renderToolBox(); draw();
+  }
   function copyArea(cut) {
     if (!st.area) { toast("Prima seleziona un'area con lo strumento Selezione (M)", true); return; }
-    st.clip = { w: st.area.w, h: st.area.h, cells: areaCells(st.area) };
-    if (cut) { beginTiles(); forArea((x, y) => setTile(x, y, st.secondary)); endTiles("taglia"); drawMini(); }
-    toast(`${cut ? "Tagliate" : "Copiate"} ${st.area.w}×${st.area.h} caselle: Ctrl+V per incollare`); renderToolBox();
+    const a = st.area, k = st.areaKinds, it = areaItems();
+    const items = it.pls.filter((i) => Object.values(st.doc.placements[i])[0].at).map((i) => { const c = JSON.parse(JSON.stringify(st.doc.placements[i])), b = Object.values(c)[0]; b.at = [b.at[0] - a.x, b.at[1] - a.y]; return c; });
+    st.clip = { w: a.w, h: a.h, cells: k.tiles ? areaCells(a) : null, items };
+    if (cut) {
+      if (k.tiles) { beginTiles(); forArea((x, y) => setTile(x, y, st.secondary)); endTiles("taglia"); drawMini(); }
+      const cutPls = it.pls.filter((i) => Object.values(st.doc.placements[i])[0].at);
+      if (cutPls.length) change(`taglia ${cutPls.length} elementi`, () => { removeItems({ pls: cutPls, zones: [], portals: [] }); });
+    }
+    const what = [k.tiles ? `${a.w}×${a.h} caselle` : "", items.length ? `${items.length} elementi` : ""].filter(Boolean).join(" e ") || "niente";
+    toast(`${cut ? "Tagliato" : "Copiato"}: ${what}. Ctrl+V per incollare`); renderToolBox(); draw();
   }
   function forArea(f) { const a = st.area; for (let y = a.y; y < a.y + a.h; y++) for (let x = a.x; x < a.x + a.w; x++) f(x, y); }
   function pasteAt(c) {
-    beginTiles();
-    st.clip.cells.forEach((row, dy) => row.forEach((ch, dx) => setTile(c.x + dx, c.y + dy, ch)));
-    endTiles("incolla"); draw(); drawMini();
+    const l = L();
+    if (st.clip.cells) { beginTiles(); st.clip.cells.forEach((row, dy) => row.forEach((ch, dx) => setTile(c.x + dx, c.y + dy, ch))); endTiles("incolla"); }
+    const items = (st.clip.items ?? []).filter((p) => { const b = Object.values(p)[0]; return c.x + b.at[0] < l.width && c.y + b.at[1] < l.height; });
+    if (items.length) change(`incolla ${items.length} elementi`, () => {
+      for (const p of items) { const n = JSON.parse(JSON.stringify(p)), b = Object.values(n)[0]; b.at = [c.x + b.at[0], c.y + b.at[1]]; b.zone = zoneAt(b.at[0], b.at[1]); delete b.leader_of; st.doc.placements.push(n); }
+    });
+    draw(); drawMini(); if (st.tab === "items") renderTab();
   }
   function transformClip(kind) {
     if (!st.clip) return;
-    const c = st.clip.cells;
-    if (kind === "h") c.forEach((r) => r.reverse());
-    else if (kind === "v") c.reverse();
-    else { const n = Array.from({ length: st.clip.w }, (_, y) => Array.from({ length: st.clip.h }, (_, x) => c[st.clip.h - 1 - x][y])); st.clip = { w: st.clip.h, h: st.clip.w, cells: n }; }
+    const c = st.clip.cells, { w, h } = st.clip;
+    for (const p of st.clip.items ?? []) { const b = Object.values(p)[0], [x, y] = b.at; b.at = kind === "h" ? [w - 1 - x, y] : kind === "v" ? [x, h - 1 - y] : [h - 1 - y, x]; }
+    if (kind === "h") c?.forEach((r) => r.reverse());
+    else if (kind === "v") c?.reverse();
+    else st.clip = { w: h, h: w, items: st.clip.items, cells: c && Array.from({ length: w }, (_, y) => Array.from({ length: h }, (_, x) => c[h - 1 - x][y])) };
     draw();
   }
 
@@ -891,11 +959,15 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     if (mod) return;
     if (k === "escape") { st.pasting = false; st.pendingPortal = null; st.drag = null; st.area = null; st.sel = null; renderSel(); renderToolBox(); draw(); return; }
     if (k === "delete" || k === "backspace") {
-      if (st.area && !st.sel) { beginTiles(); forArea((x, y) => setTile(x, y, st.secondary)); endTiles("cancella l'area"); draw(); drawMini(); }
-      else deleteSel();
+      if (st.area && !st.sel) {
+        // Elements first; an area without any gets its tiles cleared.
+        if (areaItems().n) deleteAreaItems();
+        else if (st.areaKinds.tiles) { beginTiles(); forArea((x, y) => setTile(x, y, st.secondary)); endTiles("svuota l'area"); draw(); drawMini(); }
+      } else deleteSel();
       e.preventDefault(); return;
     }
     if (st.pasting && k === "r") { transformClip("r"); return; }
+    if (k.startsWith("arrow") && st.area && !st.sel) { e.preventDefault(); moveArea(k === "arrowleft" ? -1 : k === "arrowright" ? 1 : 0, k === "arrowup" ? -1 : k === "arrowdown" ? 1 : 0); return; }
     if (k.startsWith("arrow") && st.sel && st.sel.type !== "other") {
       e.preventDefault();
       const before = snap(false);
@@ -945,9 +1017,15 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     else if (st.tool === "room") {
       h += `<div class="me-form">Muri ${tileSelect("meWall", o.wall)} Pavimento ${tileSelect("meFloor", o.floor)} Porta ${tileSelect("meDoor", o.door)}</div><div class="muted">Trascina per disegnare la stanza: la porta va al centro del lato in basso.</div>`;
     } else if (st.tool === "area") {
-      h += st.area ? `<div>Area ${st.area.w}×${st.area.h} in (${st.area.x}, ${st.area.y})</div>` : `<div class="muted">Trascina per selezionare un'area di caselle.</div>`;
-      h += `<div class="row" style="margin-top:6px"><button data-a="copy">Copia</button><button data-a="cut">Taglia</button><button data-a="paste"${st.clip ? "" : " disabled"}>Incolla</button><button data-a="fillp">Riempi con la primaria</button><button data-a="clear">Svuota (secondaria)</button><button data-a="zone">Crea una zona qui</button></div>`;
-      if (st.clip) h += `<div class="row">Appunti ${st.clip.w}×${st.clip.h}: <button data-a="h">Specchia ↔</button><button data-a="v">Specchia ↕</button><button data-a="r">Ruota ↻</button></div>`;
+      const it = areaItems(), sum = areaSummary(it);
+      h += st.area ? `<div>Area <b>${st.area.w}×${st.area.h}</b> in (${st.area.x}, ${st.area.y})${sum ? ` · dentro: <b>${esc(sum)}</b>` : " · nessun elemento dentro"}</div>` : `<div class="muted">Trascina per selezionare un'area: prende le caselle e gli elementi che ci stanno dentro (edifici, NPC, oggetti nascosti, passaggi; le zone se ci stanno per intero).</div>`;
+      h += `<div class="row" style="margin-top:6px">Prende: ${AREA_KINDS.map(([k, t]) => `<label><input type="checkbox" data-ak="${k}"${st.areaKinds[k] ? " checked" : ""}> ${t}</label>`).join(" ")}</div>`;
+      if (st.area) {
+        h += `<div class="row"><button class="danger" data-a="delitems"${it.n ? "" : " disabled"}>Elimina gli elementi${it.n ? ` (${it.n})` : ""}</button><button data-a="clear"${st.areaKinds.tiles ? "" : " disabled"}>Svuota le caselle</button><button class="danger" data-a="delall">Elimina tutto</button></div>
+          <div class="row"><button data-a="copy">Copia</button><button data-a="cut">Taglia</button><button data-a="paste"${st.clip ? "" : " disabled"}>Incolla</button><button data-a="fillp">Riempi con la primaria</button><button data-a="zone">Crea una zona qui</button></div>
+          <div class="muted">Canc elimina gli elementi (o svuota le caselle, se non ce ne sono) · le frecce spostano gli elementi · Esc toglie la selezione.</div>`;
+      } else if (st.clip) h += `<div class="row"><button data-a="paste">Incolla</button></div>`;
+      if (st.clip) h += `<div class="row">Appunti ${st.clip.w}×${st.clip.h}${st.clip.items?.length ? `, ${st.clip.items.length} elementi` : ""}: <button data-a="h">Specchia ↔</button><button data-a="v">Specchia ↕</button><button data-a="r">Ruota ↻</button></div>`;
     } else if (st.tool === "zone") h += `<div class="muted">Trascina un rettangolo: diventa una zona (quartiere, stanza, area di apparizione…). Poi modifica nome, id e tag qui sotto.</div>`;
     else if (st.tool === "portal") h += st.pendingPortal ? `<div>Primo capo: ${esc(st.doc.map.layers[st.pendingPortal.layer].name)} (${st.pendingPortal.x}, ${st.pendingPortal.y}). <b>Clicca l'altro capo</b> (cambia mappa in alto se serve). Esc annulla.</div>` : `<div class="muted">Clicca un capo e poi l'altro: scale, botole, porte fra le mappe. Una pedina sul capo passa dall'altra parte.</div>`;
     else if (st.tool === "building") {
@@ -973,9 +1051,18 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     bind("meBld", (el) => (o.building = el.value)); bind("meOwner", (el) => (o.owner = el.value)); bind("meBName", (el) => (o.bname = el.value), "oninput");
     bind("meTpl", (el) => (o.template = el.value)); bind("meNpcName", (el) => (o.npcName = el.value), "oninput"); bind("meFac", (el) => (o.faction = el.value)); bind("meCount", (el) => (o.count = el.value), "oninput");
     bind("meHideItem", (el) => (o.hideItem = el.value)); bind("meHideQty", (el) => (o.hideQty = el.value), "oninput");
+    for (const c of box.querySelectorAll("[data-ak]")) c.onchange = () => { st.areaKinds[c.dataset.ak] = c.checked; renderToolBox(); draw(); };
     for (const b of box.querySelectorAll("[data-a]")) b.onclick = () => {
       const a = b.dataset.a;
       if (a === "copy") copyArea(false); else if (a === "cut") copyArea(true);
+      else if (a === "delitems") deleteAreaItems();
+      else if (a === "delall" && st.area) {
+        const it = areaItems(true);
+        if (it.n > 5 && !confirm(`Eliminare ${areaSummary(it)} e svuotare le caselle?`)) return;
+        beginTiles(); forArea((x, y) => setTile(x, y, st.secondary)); endTiles("svuota l'area"); drawMini();
+        if (it.n) change(`elimina ${it.n} elementi`, () => { removeItems(it); });
+        st.sel = null; renderSel(); renderToolBox(); if (st.tab !== "palette") renderTab();
+      }
       else if (a === "paste") { st.pasting = true; toast("Clic per incollare, R ruota, Esc per finire"); }
       else if (a === "fillp" && st.area) { beginTiles(); forArea((x, y) => setTile(x, y, st.primary)); endTiles("riempi l'area"); drawMini(); }
       else if (a === "clear" && st.area) { beginTiles(); forArea((x, y) => setTile(x, y, st.secondary)); endTiles("svuota l'area"); drawMini(); }

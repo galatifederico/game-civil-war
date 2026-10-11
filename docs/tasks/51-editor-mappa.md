@@ -44,8 +44,9 @@ oggetti e inserire degli NPC; il più completo possibile.
 - **Salva e ricomincia** inizia subito una nuova partita con la mappa salvata.
 - **Applica caselle alla partita** manda alla partita in corso solo le caselle cambiate (comando `SetTiles`),
   senza ricominciare; zone, edifici e NPC nuovi arrivano con la partita successiva.
-- I piazzamenti che stanno in altri file (`90_mondo.ron`, `55_ruoli.ron`) si vedono, col lucchetto, ma non si
-  modificano da qui.
+- Giocatore e popolazione iniziale stanno con la mappa (prima erano in `90_mondo.ron`): `build_maps.py` li copia
+  da `tools/maps/popolazione.ron`, così l'editor li modifica tutti. Piazzamenti messi in altri file si
+  vedrebbero col lucchetto, in sola lettura.
 
 ## Nel motore
 - **Caselle:** `TileDef` ha `sprite` (figura `tile_<sprite>.png`, default l'id), `color` (`#rrggbb`, tinge la
@@ -72,6 +73,12 @@ oggetti e inserire degli NPC; il più completo possibile.
 - **⤡ Amplia** nella barra in alto: caselle da aggiungere (o togliere, con un numero negativo) a nord, sud, est e
   ovest, con la casella delle parti nuove; zone, passaggi e piazzamenti seguono il contenuto.
 
-**Da rifinire.** Le decorazioni (`props`) non hanno ancora un uso nei client e l'editor non le tocca; i
-piazzamenti degli altri file restano in sola lettura; `Applica caselle` non porta nella partita in corso i
+- **La selezione prende anche gli elementi** dentro l'area: edifici, NPC (quelli «a caso nella zona» al centro
+  della zona, dove sono disegnati), oggetti nascosti, passaggi e le zone che ci stanno per intero; le spunte
+  «Prende» scelgono cosa. *Elimina gli elementi* (o Canc), *Svuota le caselle*, *Elimina tutto*; le frecce
+  spostano gli elementi; copia, taglia e incolla portano con sé edifici, NPC e oggetti nascosti (anche
+  specchiati o ruotati). Eliminare una zona usata da fazioni, azioni o eventi fa fallire la Verifica, che
+  dice da chi è usata.
+
+**Da rifinire.** Le decorazioni (`props`) non hanno ancora un uso nei client e l'editor non le tocca; `Applica caselle` non porta nella partita in corso i
 tipi di casella appena creati (serve ricominciare); i parametri della scoperta sono da bilanciare.

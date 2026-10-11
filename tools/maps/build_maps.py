@@ -1152,6 +1152,8 @@ def ron():
     out.append("        ],")
     out.append("    ),")
     out.append("    placements: [")
+    # The player and the starting population, kept as written in popolazione.ron.
+    out += [line.rstrip() for line in (Path(__file__).parent / "popolazione.ron").read_text().splitlines() if not line.startswith("//")]
     for bid, mid, x, y, owner, name in BUILDINGS:
         extra = f', owner_faction: "{owner}"' if owner else ""
         extra += f', name: "{name}"' if name else ""
