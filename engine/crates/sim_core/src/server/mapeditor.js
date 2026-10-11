@@ -293,8 +293,9 @@ const ME = (() => {
 .me-side > #meSelBox { max-height: 45%; overflow: auto; }
 .me-tabs { display: flex; flex-wrap: wrap; gap: 3px; }
 .me-tabs button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.me-pal { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 3px; }
+.me-pal { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 3px; }
 .me-pal button { padding: 2px; position: relative; display: flex; flex-direction: column; align-items: center; font-size: 9px; line-height: 1.1; overflow: hidden; }
+.me-pal button span:last-child { max-width: 100%; overflow-wrap: anywhere; text-align: center; }
 .me-pal img, img.me-t { width: 28px; height: 28px; image-rendering: pixelated; display: block; }
 img.me-t.s { width: 18px; height: 18px; display: inline-block; vertical-align: middle; }
 .me-pal button.p { outline: 2px solid var(--accent); }
@@ -1227,7 +1228,7 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     let h = `<div class="row"><input id="mePalQ" placeholder="cerca casella…" value="${esc(st.palQ ?? "")}" style="flex:1"></div>`;
     for (const g of order) {
       if (!groups[g]) continue;
-      h += `<h4>${esc(g)}</h4><div class="me-pal">` + groups[g].map((t) => `<button data-ch="${esc(t.ch)}" class="${t.ch === st.primary ? "p" : ""} ${t.ch === st.secondary ? "s2" : ""}" title="${esc(t.name || t.id)} · '${esc(t.ch)}'${t.walkable === false ? " · solido" : ""}${t.dig_to ? " · si scava" : ""}${t.color ? " · " + t.color : ""}"><img src="${artUrl(t)}" alt="">${t.walkable === false ? '<span class="solid">■</span>' : ""}<span>${esc((t.name || t.id).slice(0, 9))}</span></button>`).join("") + `</div>`;
+      h += `<h4>${esc(g)}</h4><div class="me-pal">` + groups[g].map((t) => `<button data-ch="${esc(t.ch)}" class="${t.ch === st.primary ? "p" : ""} ${t.ch === st.secondary ? "s2" : ""}" title="${esc(t.name || t.id)} · '${esc(t.ch)}'${t.walkable === false ? " · solido" : ""}${t.dig_to ? " · si scava" : ""}${t.color ? " · " + t.color : ""}"><img src="${artUrl(t)}" alt="">${t.walkable === false ? '<span class="solid">■</span>' : ""}<span>${esc(t.name || t.id)}</span></button>`).join("") + `</div>`;
     }
     const base = st.leg[st.primary];
     h += `<h4>Nuova variante colorata</h4><div class="me-form">Da <select id="meVarBase">${st.doc.map.legend.filter((t) => !t.color).map((t) => `<option value="${esc(t.ch)}"${t.id === (base?.sprite || base?.id) || (t.ch === st.primary) ? " selected" : ""}>${esc(t.name || t.id)}</option>`).join("")}</select>

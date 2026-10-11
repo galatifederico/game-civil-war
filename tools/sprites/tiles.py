@@ -312,13 +312,21 @@ def tiles():
     ce.rect(0, 15, 15, 15, "#a8a8a4")
     ce.rect(15, 0, 15, 15, "#a8a8a4")
     out["cemento"] = ce
-    sp = T("#4a4a50")
+    # Sampietrini: small basalt cubes of uneven grey, rounded at the corners, in staggered rows.
+    sp = T("#3a3a40")
+    shades = [("#7c7c84", "#9a9aa2", "#5c5c64"), ("#6c6c75", "#8a8a93", "#505058"), ("#86827c", "#a39f98", "#64605a"), ("#727880", "#9096a0", "#555a62")]
     for row in range(4):
         off = 0 if row % 2 == 0 else 2
-        for col in range(-1, 4):
+        for col in range(-1, 5):
             x0, y0 = col * 4 + off, row * 4
-            sp.rect(x0, y0, x0 + 2, y0 + 2, "#6a6a72" if noise(col, row, 62) % 3 else "#5e5e66")
-            sp.set(x0, y0, "#8a8a92")
+            base, hi, lo = shades[noise(col % 4, row, 62) % len(shades)]
+            sp.rect(x0, y0, x0 + 2, y0 + 2, base)
+            sp.set(x0, y0, hi)
+            sp.set(x0 + 1, y0, hi)
+            sp.set(x0 + 2, y0 + 2, lo)
+            sp.set(x0 + 1, y0 + 2, lo)
+            if noise(col % 4, row, 71) % 4 == 0:
+                sp.set(x0 + 2, y0, "#3a3a40")
     out["sampietrini"] = sp
     pz = T("#f4f4f4")  # light, so a colour can tint it
     for i in range(S):
