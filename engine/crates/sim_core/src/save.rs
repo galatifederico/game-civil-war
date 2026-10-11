@@ -59,7 +59,7 @@ use crate::classes::ClassState;
 use crate::modes::Mode;
 use crate::beliefs::Beliefs;
 use crate::equipment::Equipment;
-use crate::buildings::{Building, Shop};
+use crate::buildings::{Building, Hidden, Shop};
 use crate::crime::{Detained, Wanted};
 use crate::dungeon::{SpawnedBy, Tethered};
 use crate::factions::{Dissent, FactionMember, Leader};
@@ -76,7 +76,7 @@ use crate::stats::{Bonds, Classes, Journal, Dead, DisplayName, Immortal, Needs, 
 use crate::status::StatusEffects;
 
 components!(
-    DisplayName, TemplateId, Race, Classes, Tags, Stats, Needs, StatusEffects, Inventory, Wallet, Dissent, Wanted,
+    Hidden, DisplayName, TemplateId, Race, Classes, Tags, Stats, Needs, StatusEffects, Inventory, Wallet, Dissent, Wanted,
     Detained, Brain, Task, PersonalQueue, WorkPriorities, ActivityState, Notebook, Movement, Pawn, Virtual, Position,
     Body, Immortal, Dead, FactionMember, Leader, Controlled, Follow, Disguise, Cover, StealthState, Tethered,
     SpawnedBy, AbilityCooldowns, Building, Shop, Stock, Contaminated, KnockedOut, Transmuted, ManualHold, Sex,

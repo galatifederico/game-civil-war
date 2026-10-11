@@ -164,7 +164,7 @@ impl SimBuilder {
         schedule.add_systems(crate::commands::apply_commands.in_set(SimSet::Input));
         schedule.add_systems((crate::stats::stat_recovery, crate::equipment::update, crate::modes::update, crate::abilities::auras, crate::stats::recompute_stats, crate::stats::decay_needs, low_needs).chain().in_set(SimSet::Derive));
         schedule.add_systems((crate::status::tick_statuses, crate::anatomy::natural_healing, crate::hygiene::hygiene_tick).chain().in_set(SimSet::Health));
-        schedule.add_systems((crate::dungeon::tethers, crate::dungeon::events).chain().in_set(SimSet::World));
+        schedule.add_systems((crate::dungeon::tethers, crate::dungeon::events, crate::buildings::find_hidden).chain().in_set(SimSet::World));
         schedule.add_systems((crate::player::wake_up, crate::player::follow_system, crate::ai::think).chain().in_set(SimSet::Ai));
         schedule.add_systems((crate::jobs::run_jobs, crate::crime::crime_upkeep).chain().in_set(SimSet::Act));
         schedule.add_systems((crate::buildings::buildings_tick, crate::buildings::circumstances_tick, crate::logistics::post_logistics, crate::market::update_market, crate::supply::imports, crate::economy::exports, crate::economy::payroll).chain().in_set(SimSet::Economy));
@@ -272,7 +272,7 @@ impl Simulation {
             }
         }
         for p in &placements {
-            if let Placement::Building { building, zone, at, name, owner_faction, owner_template } = p {
+            if let Placement::Building { building, zone, at, name, owner_faction, owner_template, hidden, stock } = p {
                 let Some(pos) = pos_in(world, zone, *at) else { continue };
                 let owner = match (owner_faction, owner_template) {
                     (Some(f), _) => Owner::Faction(f.clone()),
@@ -283,7 +283,13 @@ impl Simulation {
                         .map_or(Owner::None, Owner::Entity),
                     _ => Owner::None,
                 };
-                crate::buildings::spawn_building(world, building, pos, name.clone(), owner);
+                let Some(e) = crate::buildings::spawn_building(world, building, pos, name.clone(), owner) else { continue };
+                if let Some(s) = stock {
+                    world.entity_mut(e).insert(crate::inventory::Stock(s.clone()));
+                }
+                if *hidden {
+                    world.entity_mut(e).insert(crate::buildings::Hidden);
+                }
             }
         }
         block_building_footprints(world);

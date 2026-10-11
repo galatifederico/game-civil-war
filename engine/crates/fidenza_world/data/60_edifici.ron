@@ -107,6 +107,8 @@
         (id: "scrigno_antico", name: "Scrigno degli antichi Nani", footprint: (1, 1), hp: 300, tags: ["cassaforte"],
          stock: {"oro_dei_nani": 5, "fossile_osso_dinosauro": 1}),
         (id: "acquedotto", name: "Serbatoio dell'acquedotto", footprint: (1, 2), hp: 200, tags: ["acqua", "infrastruttura"]),
+        (id: "nascondiglio", name: "Nascondiglio", hp: 50, tags: ["nascondiglio"],
+         description: "Oggetti nascosti dall'editor della mappa: chi ci passa accanto può trovarli e se li prende."),
     ],
     global_modifiers: [
         (id: "ritardo_regali", name: "Ritardi nelle consegne dei regali", per_tick: -1.389, stats: {"morale": -8}, prices: {"regalo": 1.8, "merce": 1.3}, logistics_disruption: 0.4),

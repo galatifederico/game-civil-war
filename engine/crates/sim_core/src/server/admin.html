@@ -200,6 +200,9 @@ h3.group { margin: 18px 0 8px; font-size: 13px; text-transform: uppercase; lette
     </div>
   </section>
 
+  <!-- Editor della mappa (mapeditor.js) -->
+  <section id="s-mapedit"></section>
+
   <section id="s-sprites">
     <h2>Sprite</h2>
     <div class="card">
@@ -255,6 +258,7 @@ h3.group { margin: 18px 0 8px; font-size: 13px; text-transform: uppercase; lette
   <div class="row" style="margin-top:8px;justify-content:space-between"><span id="pkCount" class="muted"></span><button id="pkOk" class="primary">Aggiungi</button></div>
 </div></div>
 <div id="toast"></div>
+<script src="/admin/mapeditor.js"></script>
 
 <script>
 "use strict";
@@ -565,7 +569,7 @@ const CATALOG_SECTIONS = [
   ["Fazioni e mondo", ["factions", "events", "global_modifiers"]],
 ];
 const SIDE = [
-  ["Mondo", [["overview", "Panoramica"], ["map", "Mappa"], ["list/pawns", "Pedine"], ["list/bld", "Edifici in gioco"], ["events", "Eventi"]]],
+  ["Mondo", [["overview", "Panoramica"], ["map", "Mappa"], ["mapedit", "Editor della mappa"], ["list/pawns", "Pedine"], ["list/bld", "Edifici in gioco"], ["events", "Eventi"]]],
   ...CATALOG_SECTIONS.map(([g, kinds]) => [g, kinds.filter((k) => CATALOG[k] && !CATALOG[k].hidden).map((k) => ["cat/" + k, CATALOG[k].title, k])]),
   ["Strumenti", [["sprites", "Sprite"], ["params", "Parametri"], ["commands", "Comandi"], ["raw", "Contenuti grezzi"]]],
 ];
@@ -602,6 +606,7 @@ function render() {
   else if (v === "list") { $("lFilter").value = filters.q[route.kind] ?? ""; renderList(); }
   else if (v === "detail") renderDetail();
   else if (v === "map") resize();
+  else if (v === "mapedit") ME.open();
   else if (v === "sprites") renderSprites();
   else if (v === "params") loadParams();
   else if (v === "events") loadEvents();
@@ -1898,10 +1903,12 @@ function tileImg(id) {
 function legendOf(ch) { return S.map.legend[ch]; }
 function drawCell(x, y) {
   const l = S.map.layers[view.layer], row = l.tiles[y] ?? "", ch = row[x] ?? ".";
-  const lg = legendOf(ch), id = lg ? lg[0] : null;
+  const lg = legendOf(ch), id = lg ? lg[2] ?? lg[0] : null, tint = lg?.[3];
   const im = id ? tileImg(id) : null;
-  if (im) tctx.drawImage(im, x * TS, y * TS, TS, TS);
-  else { tctx.fillStyle = id ? hashColor(id) : "#f0f"; tctx.fillRect(x * TS, y * TS, TS, TS); }
+  if (im) {
+    tctx.drawImage(im, x * TS, y * TS, TS, TS);
+    if (tint) { tctx.globalCompositeOperation = "multiply"; tctx.fillStyle = tint; tctx.fillRect(x * TS, y * TS, TS, TS); tctx.globalCompositeOperation = "source-over"; }
+  } else { tctx.fillStyle = tint || (id ? hashColor(id) : "#f0f"); tctx.fillRect(x * TS, y * TS, TS, TS); }
 }
 function rebuildTerrain() {
   if (!S.map) return;
@@ -2074,7 +2081,8 @@ function fillMapControls() {
   $("layer").innerHTML = S.map.layers.map((l, i) => `<option value="${i}">${esc(l.name)}${l.depth < 0 ? " (livello " + l.depth + ")" : l.indoor ? " (interno)" : ""} · ${l.width}×${l.height}</option>`).join("");
   $("palette").innerHTML = Object.entries(S.map.legend).map(([ch, [id, walk]]) => {
     const def = S.content?.map?.legend?.find((d) => d.ch === ch);
-    const img = S.assets.has("tile_" + id + ".png") ? `<img src="/assets/tile_${esc(id)}.png" alt="">` : `<span class="tileimg" style="background:${hashColor(id)}"></span>`;
+    const pic = S.map.legend[ch][2] ?? id, tint = S.map.legend[ch][3];
+    const img = S.assets.has("tile_" + pic + ".png") ? `<img src="/assets/tile_${esc(pic)}.png" alt=""${tint ? ` style="background:${esc(tint)};mix-blend-mode:multiply"` : ""}>` : `<span class="tileimg" style="background:${tint || hashColor(id)}"></span>`;
     return `<button data-ch="${esc(ch)}" title="${esc(def?.name ?? id)} (${esc(ch)})${walk ? "" : " · solido"}">${img}<span>${esc(ch)}</span></button>`;
   }).join("");
   for (const b of $("palette").querySelectorAll("button")) b.onclick = () => { paintChar = b.dataset.ch; for (const o of $("palette").querySelectorAll("button")) o.classList.toggle("on", o === b); };
@@ -2181,6 +2189,7 @@ const examples = {
   "Sposta un'entità": { type: "move_entity", entity: 1, layer: "fidenza", x: 100, y: 50 },
   "Rimuovi un'entità": { type: "remove", entity: 0 },
   "Dipingi una casella": { type: "set_tile", layer: "fidenza", x: 100, y: 50, tile: "~" },
+  "Dipingi più caselle": { type: "set_tiles", layer: "fidenza", cells: [[100, 50, "~"], [101, 50, "~"]] },
   "Designa lo scavo": { type: "designate", faction: "nani_miniere", layer: "sottosuolo_1", rect: [90, 47, 6, 4] },
   "Applica un effetto": { type: "apply_effect", subject: 1, effect: { ModMoney: 100 } },
   "Lancia un evento": { type: "fire_trigger", id: "c_festa_birra" },

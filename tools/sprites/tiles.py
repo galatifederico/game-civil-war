@@ -306,6 +306,112 @@ def tiles():
                 ru.set(x, y, "#9a8a7a" if dy < 0 else "#7a6a5a")
     ru.rect(3, 4, 11, 4, "#b8a898")
     out["rupe"] = ru
+    # ── Map editor additions: city floors, fields, water and plants ──
+    ce = T("#c4c4c0")
+    ce.specks(["#b4b4b0", "#d0d0cc"], 14, 61)
+    ce.rect(0, 15, 15, 15, "#a8a8a4")
+    ce.rect(15, 0, 15, 15, "#a8a8a4")
+    out["cemento"] = ce
+    sp = T("#4a4a50")
+    for row in range(4):
+        off = 0 if row % 2 == 0 else 2
+        for col in range(-1, 4):
+            x0, y0 = col * 4 + off, row * 4
+            sp.rect(x0, y0, x0 + 2, y0 + 2, "#6a6a72" if noise(col, row, 62) % 3 else "#5e5e66")
+            sp.set(x0, y0, "#8a8a92")
+    out["sampietrini"] = sp
+    pz = T("#f4f4f4")  # light, so a colour can tint it
+    for i in range(S):
+        pz.set(i, 7, "#c8c8c8")
+        pz.set(i, 15, "#c8c8c8")
+        pz.set(7, i, "#c8c8c8")
+        pz.set(15, i, "#c8c8c8")
+    for (x, y) in [(2, 2), (10, 2), (2, 10), (10, 10)]:
+        pz.set(x, y, "#ffffff")
+        pz.set(x + 1, y, "#ffffff")
+    out["piastrelle"] = pz
+    mt = T("#a84830")
+    for row in range(4):
+        y0 = row * 4
+        mt.rect(0, y0 + 3, 15, y0 + 3, "#d8c8b0")
+        off = 0 if row % 2 == 0 else 4
+        for xx in range(off, S, 8):
+            mt.rect(xx, y0, xx, y0 + 2, "#d8c8b0")
+        mt.rect(0, y0, 15, y0, "#c06048")
+    out["mattoni"] = mt
+    gh = T("#b8b0a0")
+    gh.specks(["#9a9282", "#d8d0c0", "#8a8272", "#e8e0d0"], 45, 63)
+    out["ghiaia"] = gh
+    gr = T("#a07040")
+    for x in range(0, S, 4):
+        gr.rect(x, 0, x + 2, 15, "#e8c048")
+        for y in range(0, S, 3):
+            gr.set(x + 1, y, "#f8e080")
+            gr.set(x, y + 1, "#c89830")
+    out["grano"] = gr
+    ma = T("#8a6038")
+    for x in range(1, S, 5):
+        ma.rect(x, 0, x + 2, 15, "#3a8a30")
+        for y in range(1, S, 4):
+            ma.set(x - 1, y, "#58b048")
+            ma.set(x + 3, y + 2, "#58b048")
+            ma.set(x + 1, y + 1, "#f0d050")
+    out["mais"] = ma
+    vi = T("#9a7448")
+    for y in (3, 11):
+        vi.rect(0, y, 15, y, "#6a4a28")
+        for x in range(0, S, 2):
+            vi.set(x, y - 1, "#3a8a30" if noise(x, y, 64) % 3 else "#58b048")
+            vi.set(x + 1, y - 2, "#3a8a30")
+        for x in (3, 10):
+            vi.set(x, y + 1, "#6a2a6a")
+            vi.set(x + 1, y + 1, "#8a3a8a")
+    out["vigneto"] = vi
+    oo = T("#8a5a32")
+    for y in (2, 6, 10, 14):
+        oo.rect(0, y, 15, y, "#6a4022")
+        for x in range(1, S, 4):
+            oo.set(x, y - 1, "#58b048")
+            oo.set(x + 1, y - 1, "#3a8a30")
+            oo.set(x, y - 2, "#78c860")
+    out["ortaggi"] = oo
+    ab = T("#88c0f0")
+    for (x0, y0) in [(2, 4), (9, 9), (4, 13), (11, 2)]:
+        ab.rect(x0, y0, x0 + 2, y0, "#c8e8ff")
+    ab.specks(["#b8a878"], 6, 65)
+    out["acqua_bassa"] = ab
+    ca = T("#58a0e8")
+    for x in range(1, S, 3):
+        h = 6 + noise(x, 0, 66) % 7
+        ca.rect(x, S - h, x, 15, "#6a8a30")
+        ca.rect(x, S - h, x, S - h + 1, "#8a6a30")
+    out["canneto"] = ca
+    si = T("#2f6a28")
+    si.specks(["#3a8030", "#245a20", "#4a9a3a"], 50, 67)
+    si.rect(0, 14, 15, 15, "#1f4a1a")
+    out["siepe"] = si
+    ai = T("#7a5030")
+    ai.rect(0, 0, 15, 1, "#b8b0a0")
+    ai.rect(0, 14, 15, 15, "#b8b0a0")
+    ai.rect(0, 0, 1, 15, "#b8b0a0")
+    ai.rect(14, 0, 15, 15, "#b8b0a0")
+    for (x, y, c) in [(4, 4, "#f06060"), (9, 5, "#f8d030"), (5, 9, "#f8f8f8"), (10, 10, "#c070f0"), (7, 7, "#f06060")]:
+        ai.set(x, y, c)
+        ai.set(x + 1, y, c)
+        ai.set(x, y + 1, "#3a8a30")
+    out["aiuola"] = ai
+    pl = T("#5a6a40")
+    pl.specks(["#4a5a30", "#6a7a4a", "#58a0a0"], 30, 68)
+    for (x0, y0) in [(3, 5), (10, 11)]:
+        pl.rect(x0, y0, x0 + 3, y0 + 1, "#4a8a90")
+    out["palude"] = pl
+    bi = T("#8a7a6a")
+    bi.specks(["#7a6a5a", "#9a8a7a"], 20, 69)
+    for y in range(1, S, 4):
+        bi.rect(0, y, 15, y + 1, "#6a4a2a")
+    bi.rect(3, 0, 3, 15, "#b0b0b8")
+    bi.rect(12, 0, 12, 15, "#b0b0b8")
+    out["binari"] = bi
     # Tall tree drawn over the map (16×32: canopy one tile above its cell).
     return {k: v.img for k, v in out.items()}
 

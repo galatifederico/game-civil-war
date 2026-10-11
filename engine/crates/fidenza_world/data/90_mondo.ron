@@ -239,6 +239,7 @@
         "building:deposito": (sheet: "bld_deposito"),
         "building:fungaia_porcini": (sheet: "bld_fungaia_porcini"),
         "building:scrigno_antico": (sheet: "bld_scrigno_antico"),
+        "building:nascondiglio": (sheet: "bld_scrigno_antico"),
         "building:luppoleto": (sheet: "bld_luppoleto"),
         "building:campo_orzo": (sheet: "bld_campo_orzo"),
         "building:campo_grano": (sheet: "bld_campo_grano"),

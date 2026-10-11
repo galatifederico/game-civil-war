@@ -580,6 +580,22 @@ impl Validator<'_> {
                     }
                 }
             }
+            let mut seen = std::collections::BTreeSet::new();
+            for t in &m.legend {
+                if !seen.insert(t.ch) {
+                    self.errors.push(format!("legenda: il carattere '{}' è usato da più caselle", t.ch));
+                }
+                if let Some(col) = &t.color
+                    && !(col.len() == 7 && col.starts_with('#') && col[1..].chars().all(|c| c.is_ascii_hexdigit()))
+                {
+                    self.errors.push(format!("casella {}: colore '{col}' non valido (serve #rrggbb)", t.id));
+                }
+                if let Some(to) = t.dig_to
+                    && !m.legend.iter().any(|x| x.ch == to)
+                {
+                    self.errors.push(format!("casella {}: scavata diventa '{to}', che non è nella legenda", t.id));
+                }
+            }
             for w in &m.walls {
                 if !m.layers.iter().any(|l| l.id == w.layer) {
                     self.errors.push(format!("muro {}: livello '{}' non esiste", w.name, w.layer));
@@ -653,10 +669,13 @@ impl Validator<'_> {
                             self.errors.push(format!("{ctx}: giocatore '{l}' non esiste"));
                         }
                 }
-                Placement::Building { building, zone, owner_faction, owner_template, .. } => {
+                Placement::Building { building, zone, owner_faction, owner_template, stock, .. } => {
                     let ctx = format!("piazzamento edificio {building}");
                     self.check(&c.buildings, "edificio", building, &ctx);
                     self.zone(zone, &ctx);
+                    for i in stock.iter().flat_map(|s| s.keys()) {
+                        self.check(&c.items, "oggetto", i, &ctx);
+                    }
                     if let Some(f) = owner_faction {
                         self.check(&c.factions, "fazione", f, &ctx);
                     }

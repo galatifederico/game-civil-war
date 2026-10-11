@@ -257,3 +257,68 @@ pub fn process_recipe(world: &mut World, building: Entity, recipe: usize) -> Res
     let out: Vec<String> = r.outputs.iter().map(|(i, n)| format!("{n}× {}", content.items.get(i).map_or(i.as_str(), |d| d.name.as_str()))).collect();
     Ok(format!("{}: {} ({})", def.name, r.name, out.join(", ")))
 }
+
+/// A building nobody knows about (a hiding place, a secret chest): left out of the players' view and of
+/// the AI's targets until a pawn passing next to it finds it.
+#[derive(Component, Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Hidden;
+
+/// Pawns next to a hidden building may find it (chance per tick: `hidden.find_chance` plus perception
+/// × `hidden.find_per_perception`). A hiding place (tag `nascondiglio`) is emptied by whoever finds it and
+/// disappears; anything else just becomes visible.
+pub fn find_hidden(world: &mut World) {
+    let hidden = crate::sorted_entities::<Hidden>(world);
+    if hidden.is_empty() {
+        return;
+    }
+    let params = world.resource::<crate::params::Params>();
+    let (base, per) = (params.get("hidden.find_chance", 0.25) as f32, params.get("hidden.find_per_perception", 0.005) as f32);
+    let range = params.get("hidden.find_range", 1.0) as i32;
+    let content = world.resource::<Content>().clone();
+    let pawns: Vec<(Entity, Position)> = crate::sorted_entities::<crate::stats::Pawn>(world)
+        .into_iter()
+        .filter(|e| world.get::<crate::stats::Dead>(*e).is_none())
+        .filter_map(|e| world.get::<Position>(e).map(|p| (e, *p)))
+        .collect();
+    for h in hidden {
+        let Some(pos) = world.get::<Position>(h).copied() else { continue };
+        let def = world.get::<Building>(h).and_then(|b| content.buildings.get(&b.def)).cloned();
+        for (p, _) in pawns.iter().filter(|(_, pp)| pp.within(&pos, range)) {
+            let perception = world.get::<crate::stats::Stats>(*p).map_or(0.0, |s| s.get(&content.bindings.perception));
+            if !world.resource_mut::<crate::rng::SimRng>().chance((base + perception * per).clamp(0.0, 1.0)) {
+                continue;
+            }
+            world.entity_mut(h).remove::<Hidden>();
+            let (finder, what) = (crate::effects::name_of(world, *p), crate::effects::name_of(world, h));
+            let stash = def.as_ref().is_some_and(|d| d.tags.iter().any(|t| t == "nascondiglio"));
+            let mut taken = Vec::new();
+            if stash {
+                let items: Vec<(String, u32)> = world.get::<Stock>(h).map(|s| s.0.iter().map(|(k, v)| (k.clone(), *v)).collect()).unwrap_or_default();
+                for (item, qty) in items {
+                    let n = crate::inventory_ops::transfer(world, h, *p, &item, qty);
+                    if n > 0 {
+                        taken.push(format!("{n} {}", content.items.get(&item).map_or(item.clone(), |d| d.name.clone())));
+                    }
+                }
+            }
+            let tick = world.resource::<SimClock>().tick;
+            let (actor, target) = (world.get::<SimId>(*p).copied(), world.get::<SimId>(h).copied());
+            let msg = if stash {
+                format!("{finder} trova {what}: {}", if taken.is_empty() { "è vuoto".to_string() } else { taken.join(", ") })
+            } else {
+                format!("{finder} scopre {what}")
+            };
+            world.resource_mut::<EventLog>().push(
+                tick,
+                EventBuilder::new(kind::FOUND_HIDDEN, msg).actor(actor).target(target).pos(Some(pos)).news(0.3).tags(["scoperta"]),
+            );
+            if stash && world.get::<Stock>(h).is_none_or(|s| s.0.values().all(|v| *v == 0)) {
+                if let Some(id) = target {
+                    world.resource_mut::<crate::ids::IdIndex>().remove(id);
+                }
+                world.despawn(h);
+            }
+            break;
+        }
+    }
+}

@@ -3,6 +3,7 @@
 //! The simulation lives behind a mutex; a ticker task advances it in real time. Every write goes through
 //! [`SimCommand`]s (queued for the next tick, or applied at once with `?now=true`).
 
+pub mod mapedit;
 pub mod mcp;
 
 use std::net::SocketAddr;
@@ -66,6 +67,8 @@ fn router_inner(state: AppState) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/admin/", get(admin_page))
+        .route("/admin/mapeditor.js", get(map_editor_js))
+        .route("/api/admin/map", get(mapedit::get_map).put(mapedit::put_map))
         .route("/api/content", get(content_all))
         .route("/api/assets", get(assets_list))
         .route("/assets/{file}", get(asset_file))
@@ -157,7 +160,7 @@ pub async fn serve_on(state: AppState, listener: tokio::net::TcpListener) -> std
     res
 }
 
-type ApiResult = Result<Json<Value>, (StatusCode, String)>;
+pub(crate) type ApiResult = Result<Json<Value>, (StatusCode, String)>;
 
 async fn auth(State(s): State<AppState>, req: axum::extract::Request, next: axum::middleware::Next) -> Response {
     if let Some(token) = &s.token {
@@ -774,6 +777,10 @@ async fn admin_page() -> Html<&'static str> {
     Html(include_str!("admin.html"))
 }
 
+async fn map_editor_js() -> Response {
+    ([(header::CONTENT_TYPE, "text/javascript; charset=utf-8")], include_str!("mapeditor.js")).into_response()
+}
+
 /// Every loaded definition (items, buildings, races, jobs, actions, factions, templates, placements…).
 async fn content_all(State(s): State<AppState>) -> ApiResult {
     let sim = s.sim.lock().unwrap();
@@ -1006,8 +1013,19 @@ async fn ui_map(State(s): State<AppState>) -> ApiResult {
     let sim = s.sim.lock().unwrap();
     let m = sim.world.resource::<WorldMap>();
     let env = sim.world.resource::<crate::map::Environment>();
+    // Legend: character → [terrain id, walkable, picture (tile_<picture>), tint colour or null].
+    let defs = sim.world.resource::<crate::content::Content>().map.as_ref().map(|d| d.legend.clone()).unwrap_or_default();
+    let legend: serde_json::Map<String, Value> = m
+        .legend
+        .iter()
+        .map(|(ch, (id, walk))| {
+            let d = defs.iter().find(|t| t.ch == *ch);
+            let sprite = d.and_then(|t| t.sprite.clone()).unwrap_or_else(|| id.clone());
+            (ch.to_string(), json!([id, walk, sprite, d.and_then(|t| t.color.clone())]))
+        })
+        .collect();
     Ok(Json(json!({ "layers": m.layers, "zones": m.zones, "portals": m.portals, "networks": m.networks, "network_load": env.network_load,
-                     "legend": m.legend, "props": m.props })))
+                     "legend": legend, "props": m.props })))
 }
 
 #[derive(Deserialize, Default)]

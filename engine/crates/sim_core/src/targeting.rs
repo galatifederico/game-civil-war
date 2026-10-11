@@ -90,7 +90,7 @@ pub struct TargetIndex {
 
 pub fn rebuild_index(world: &mut World) {
     let tick = world.resource::<crate::time::SimClock>().tick;
-    let mut q = world.query_filtered::<(Entity, &SimId, Option<&Position>, Has<Pawn>, Has<Building>), Without<Dead>>();
+    let mut q = world.query_filtered::<(Entity, &SimId, Option<&Position>, Has<Pawn>, Has<Building>), (Without<Dead>, Without<crate::buildings::Hidden>)>();
     let mut entries: Vec<(SimId, Entity, Option<Position>, bool)> = q
         .iter(world)
         .filter(|(_, _, _, pawn, building)| *pawn || *building)

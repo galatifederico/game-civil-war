@@ -8,6 +8,7 @@ Everything comes from this one script so that tiles, doors and buildings always 
 
     python3 tools/maps/build_maps.py
 """
+import sys
 import zlib
 from pathlib import Path
 
@@ -41,6 +42,32 @@ LEGEND += [
     ("h", "fossile", "Roccia con fossili", False), ("j", "fossile_riva", "Riva con fossili", False), ("Y", "osso_fossile", "Osso di dinosauro nella roccia", False),
     ("A", "vena_oro", "Vena d'oro", False),
 ]
+# Added for the console's map editor (not used by the generator itself).
+LEGEND += [
+    ("i", "cemento", "Cemento", True), ("l", "sampietrini", "Sampietrini", True), ("z", "piastrelle", "Piastrelle", True),
+    ("v", "ghiaia", "Ghiaia", True), ("N", "binari", "Binari", True), ("y", "grano", "Campo di grano", True),
+    ("Z", "mais", "Campo di mais", True), ("V", "vigneto", "Vigneto", True), ("U", "ortaggi", "Orto", True),
+    ("a", "acqua_bassa", "Acqua bassa (guado)", True), ("L", "palude", "Palude", True),
+    ("B", "mattoni", "Muro di mattoni", False), ("C", "canneto", "Canneto", False), ("H", "siepe", "Siepe", False),
+    ("E", "aiuola", "Aiuola", False),
+    ("Q", "piastrelle_azzurre", "Piastrelle azzurre", True), ("X", "piastrelle_rosse", "Piastrelle rosse", True),
+    ("J", "piastrelle_verdi", "Piastrelle verdi", True),
+]
+# Picture and tint of coloured variants: id → (picture, colour).
+LOOK = {"piastrelle_azzurre": ("piastrelle", "#8ac4f0"), "piastrelle_rosse": ("piastrelle", "#e8907a"), "piastrelle_verdi": ("piastrelle", "#9ad49a")}
+# Groups of the map editor's palette.
+GROUPS = {
+    "Pavimenti": "lastricato piazza asfalto parquet marmo tappeto pietra moquette zerbino cemento sampietrini piastrelle ghiaia binari "
+                 "piastrelle_azzurre piastrelle_rosse piastrelle_verdi ponte scala",
+    "Terreno": "erba fiori erba_alta sterrato sabbia terra palude",
+    "Campi": "grano mais vigneto ortaggi",
+    "Piante": "albero cespuglio siepe aiuola canneto",
+    "Acqua": "acqua acqua_bassa piscina fontana fango_bollente",
+    "Muri e arredi": "muro parete mattoni staccionata sbarre panca bancone",
+    "Sottosuolo": "grotta muschio crosta_salina roccia rupe porcino_gigante scala_su scala_giu vena_ferro vena_sale gemma fossile "
+                  "fossile_riva osso_fossile vena_oro",
+}
+GROUP_OF = {tid: g for g, ids in GROUPS.items() for tid in ids.split()}
 WALK = {ch: walk for ch, _, _, walk in LEGEND}
 
 
@@ -1089,7 +1116,12 @@ def ron():
         if ch in DIG:
             to, (item, n) = DIG[ch]
             dig = f", dig_to: '{to}', yields: (\"{item}\", {n})"
-        out.append(f"            (ch: '{c}', id: \"{tid}\", name: \"{name}\", walkable: {'true' if walk else 'false'}{dig}),")
+        look = ""
+        if tid in LOOK:
+            look = f', sprite: "{LOOK[tid][0]}", color: "{LOOK[tid][1]}"'
+        if tid in GROUP_OF:
+            look += f', group: "{GROUP_OF[tid]}"'
+        out.append(f"            (ch: '{c}', id: \"{tid}\", name: \"{name}\", walkable: {'true' if walk else 'false'}{dig}{look}),")
     out.append("        ],")
     out.append("        layers: [")
     for m in MAPS:
@@ -1146,6 +1178,12 @@ def check():
 
 
 def main():
+    edited = DATA / "70_mappa.json"
+    if edited.exists() and "--force" not in sys.argv:
+        sys.exit(f"{edited.name} esiste: la mappa è stata modificata con l'editor della console e rigenerarla cancellerebbe "
+                 "quelle modifiche. Usa --force per rigenerare comunque (cancella il file).")
+    if edited.exists():
+        edited.unlink()
     merge()
     (DATA / "maps").mkdir(parents=True, exist_ok=True)
     for old in (DATA / "maps").glob("*.map"):

@@ -131,6 +131,7 @@ impl SimPlugin for MioMondo {
 | `GET /api/ui/state?lite=true&faction=&since=TICK` | stato leggero per il client, una volta per tick e per fazione, gzip; `{"unchanged": true}` se il tick è lo stesso |
 | `GET /api/ui/collections?player=` | collezioni con pezzi posseduti dal team e totale |
 | `GET /api/ui/terrain?since=N` | caselle cambiate dopo la N-esima modifica (scavi, pittura) |
+| `GET /api/admin/map`, `PUT /api/admin/map` | editor della mappa della console (`/admin/#mapedit`): legge e salva mappe, zone, passaggi e piazzamenti; `?dry=true` solo verifica, `?restart=true` nuova partita |
 | `GET /api/ui/player/{id}` | vista del giocatore: membri (razza, classe, salute, umore, soldi, attività, obbedienza), riepilogo e inventario del team, squadre, stipendi |
 | `GET /api/ui/feed?filter=&player=` | il Piccione: `main` (canale principale: notizie sulla fazione del giocatore e grandi fatti, soglie `press.main_*`), `mine`, `all`, una categoria |
 | `POST /api/ui/step` `{"player", "dx", "dy"}` | un passo del campione, subito (anche in pausa); risponde con la posizione |

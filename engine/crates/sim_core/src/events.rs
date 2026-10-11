@@ -52,6 +52,7 @@ pub mod kind {
     pub const CLASS_OFFER: &str = "class_offer";
     pub const ROLE_CHALLENGE: &str = "role_challenge";
     pub const ROLE_LOST: &str = "role_lost";
+    pub const FOUND_HIDDEN: &str = "found_hidden";
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

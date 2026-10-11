@@ -247,6 +247,9 @@ pub struct WorldSnapshot {
 /// One entity. With `truth` the admin view shows hidden identities; otherwise the apparent one.
 pub fn entity_view(world: &World, e: Entity, truth: bool) -> Option<EntityView> {
     let id = *world.get::<SimId>(e)?;
+    if !truth && world.get::<crate::buildings::Hidden>(e).is_some() {
+        return None;
+    }
     let content = world.resource::<Content>();
     let disguise = world.get::<Disguise>(e);
     let hide = disguise.is_some() && !truth;

@@ -42,7 +42,20 @@ public static class TileMap
         return l != null && (bool)l[1];
     }
 
-    static bool IsWater(string id) => id == "acqua" || id == "piscina";
+    static bool IsWater(string id) => id == "acqua" || id == "piscina" || id == "acqua_bassa";
+
+    /// Picture (tile_&lt;sprite&gt;) and tint of a cell: legend entries are [id, walkable, sprite, colour].
+    static (string sprite, Color32? tint) Look(JArray rows, JObject legend, int x, int y)
+    {
+        if (y < 0 || y >= rows.Count) return (null, null);
+        string row = (string)rows[y];
+        if (x < 0 || x >= row.Length) return (null, null);
+        if (legend[row[x].ToString()] is not JArray l) return (null, null);
+        string sprite = l.Count > 2 && l[2].Type == JTokenType.String ? (string)l[2] : (string)l[0];
+        Color32? tint = null;
+        if (l.Count > 3 && l[3].Type == JTokenType.String && ColorUtility.TryParseHtmlString((string)l[3], out var c)) tint = c;
+        return (sprite, tint);
+    }
 
     public static Texture2D Build(JToken layer, JObject legend)
     {
@@ -85,14 +98,19 @@ public static class TileMap
         int W = w * S;
         int oy = row0 >= 0 ? 0 : (h - 1 - y) * S, ox = row0 >= 0 ? 0 : x * S; // texture rows start at the bottom
         string id = Id(rows, legend, x, y);
-        if (id != null && TallTiles.TryGetValue(id, out var under)) id = under;
+        var (pic, tint) = Look(rows, legend, x, y);
+        if (id != null && TallTiles.TryGetValue(id, out var under)) pic = under;
         // Cliff/rock front: a solid tile above walkable ground shows its face.
-        if (id != null && !Walkable(rows, legend, x, y) && Walkable(rows, legend, x, y + 1) && Tile(id + "_face") != null)
-            id += "_face";
-        var px = id != null ? Tile(id) : null;
+        if (pic != null && !Walkable(rows, legend, x, y) && Walkable(rows, legend, x, y + 1) && Tile(pic + "_face") != null)
+            pic += "_face";
+        var px = pic != null ? Tile(pic) : null;
         for (int ty = 0; ty < S; ty++)
         for (int tx = 0; tx < S; tx++)
-            all[(oy + ty) * W + ox + tx] = px != null ? px[ty * S + tx] : fallback;
+        {
+            var c = px != null ? px[ty * S + tx] : fallback;
+            if (tint is Color32 t) c = new Color32((byte)(c.r * t.r / 255), (byte)(c.g * t.g / 255), (byte)(c.b * t.b / 255), c.a);
+            all[(oy + ty) * W + ox + tx] = c;
+        }
         if (id == null) return;
         if (IsWater(id))
         {

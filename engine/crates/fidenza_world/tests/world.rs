@@ -863,3 +863,33 @@ fn every_map_and_dungeon_can_be_reached_and_has_its_boss() {
         assert!(map.in_zone(zone, &pos), "{boss} dovrebbe stare in {zone}");
     }
 }
+
+#[test]
+fn hidden_stash_is_invisible_until_a_pawn_finds_it() {
+    let mut sim = sim(4);
+    let (finder_id, finder) = id_of(&mut sim, "scippatore");
+    let pos = *sim.world.get::<Position>(finder).unwrap();
+    let near = Position::new(pos.layer, pos.x + 1, pos.y);
+    let stash = sim_core::buildings::spawn_building(&mut sim.world, "nascondiglio", near, None, sim_core::buildings::Owner::None).unwrap();
+    sim.world.entity_mut(stash).insert((sim_core::inventory::Stock([("santino".to_string(), 2)].into()), sim_core::buildings::Hidden));
+    let stash_id = *sim.world.get::<SimId>(stash).unwrap();
+    assert!(sim.snapshot(false).entities.iter().all(|e| e.id != stash_id), "players must not see it");
+    assert!(sim.snapshot(true).entities.iter().any(|e| e.id == stash_id), "the admin view shows it");
+    sim.world.resource_mut::<Params>().set("hidden.find_chance", 1.0);
+    sim_core::buildings::find_hidden(&mut sim.world);
+    let found = sim.events().all().iter().any(|e| e.kind == kind::FOUND_HIDDEN && e.target == Some(stash_id));
+    assert!(found, "a pawn next to it finds it");
+    assert!(sim.entity(stash_id).is_none(), "an emptied hiding place disappears");
+    let got: u32 = sim.snapshot(true).entities.iter().filter(|e| e.kind == "pawn").flat_map(|e| e.inventory.iter().filter(|(i, _)| i == "santino").map(|(_, n)| *n)).sum();
+    assert!(got >= 2, "someone took the santini (finder {finder_id:?})");
+}
+
+#[test]
+fn map_editor_fields_load() {
+    let sim = sim(1);
+    let legend = &sim.content().map.as_ref().unwrap().legend;
+    let blue = legend.iter().find(|t| t.id == "piastrelle_azzurre").expect("coloured tile");
+    assert_eq!(blue.sprite.as_deref(), Some("piastrelle"));
+    assert!(blue.color.as_deref().is_some_and(|c| c.starts_with('#')));
+    assert!(legend.iter().any(|t| t.id == "sampietrini" && t.group.as_deref() == Some("Pavimenti")));
+}

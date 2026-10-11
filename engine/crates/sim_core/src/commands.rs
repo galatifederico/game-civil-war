@@ -74,6 +74,8 @@ pub enum SimCommand {
     },
     /// Admin: paint a tile.
     SetTile { layer: String, x: i32, y: i32, tile: char },
+    /// Admin: paint many tiles of one map at once (the map editor), as `(x, y, tile)`.
+    SetTiles { layer: String, cells: Vec<(i32, i32, char)> },
     /// Admin: put a building on a cell (its door/anchor).
     PlaceBuilding { building: String, layer: String, x: i32, y: i32, #[serde(default)] owner_faction: Option<String>, #[serde(default)] name: Option<String> },
     /// Admin: move an entity to a cell.
@@ -385,6 +387,22 @@ pub fn apply(world: &mut World, cmd: SimCommand) -> Result<String, String> {
             }
             crate::map::change_tile(world, crate::map::Position::new(li, x, y), tile);
             Ok(format!("({x},{y}) = '{tile}'"))
+        }
+        SimCommand::SetTiles { layer, cells } => {
+            let map = world.resource::<WorldMap>().clone();
+            let li = map.layers.iter().position(|l| l.id == layer).ok_or("mappa inesistente")? as u16;
+            if let Some((_, _, t)) = cells.iter().find(|(_, _, t)| !map.legend.contains_key(t)) {
+                return Err(format!("'{t}' non è nella legenda"));
+            }
+            let mut n = 0;
+            for (x, y, t) in cells {
+                let p = crate::map::Position::new(li, x, y);
+                if map.tile(&p).is_some_and(|c| c != t) {
+                    crate::map::change_tile(world, p, t);
+                    n += 1;
+                }
+            }
+            Ok(format!("{n} caselle cambiate"))
         }
         SimCommand::PlaceBuilding { building, layer, x, y, owner_faction, name } => {
             let content = world.resource::<Content>().clone();

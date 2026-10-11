@@ -105,3 +105,66 @@ async fn rest_api_and_mcp() {
     let (st, _) = http(addr, "POST", "/mcp", Some(json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }))).await;
     assert_eq!(st, 202);
 }
+
+/// The console's map editor: reads the map file, refuses invalid edits, writes tile rows and restarts.
+#[tokio::test]
+async fn map_editor_saves_and_restarts() {
+    // The town pack split in two files, since the editor rewrites the file holding the map.
+    let dir = std::env::temp_dir().join(format!("sim_core_mapedit_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let src = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/town/town.ron"));
+    let mut rest = sim_core::content::parse_pack(&std::fs::read_to_string(src).unwrap(), src).unwrap();
+    let map_pack = sim_core::content::ContentPack { map: rest.map.take(), placements: std::mem::take(&mut rest.placements), ..Default::default() };
+    std::fs::write(dir.join("10_town.json"), serde_json::to_string(&rest).unwrap()).unwrap();
+    std::fs::write(dir.join("70_map.json"), serde_json::to_string(&map_pack).unwrap()).unwrap();
+    let build = {
+        let dir = dir.clone();
+        move || -> Result<sim_core::sim::SimBuilder, String> {
+            let mut b = Simulation::builder(3);
+            b.load_pack_dir(&dir).map_err(|e| e.to_string())?;
+            Ok(b)
+        }
+    };
+    let sim = Arc::new(Mutex::new(build().unwrap().build().unwrap()));
+    let state = AppState { sim: sim.clone(), control: Arc::new(Mutex::new(Control { paused: true, tick_ms: 1000 })), metrics: None, ui_html: None, factory: Some(Arc::new(build)), token: None, assets: None, ui_cache: Default::default() };
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(sim_core::server::serve_on(state, listener));
+
+    let (st, doc) = http(addr, "GET", "/api/admin/map", None).await;
+    assert_eq!(st, 200, "{doc}");
+    assert_eq!(doc["file"], "70_map.json");
+    assert_eq!(doc["map"]["layers"][0]["width"], 40);
+    let n = doc["placements"].as_array().unwrap().len();
+
+    // A coloured tile type, the map painted with it, a hidden thing; then something invalid.
+    let mut edit = json!({ "map": doc["map"], "placements": doc["placements"] });
+    edit["map"]["legend"] = json!([{ "ch": ".", "id": "grass", "name": "Grass" }, { "ch": "z", "id": "blue_tiles", "sprite": "tiles", "color": "#3366cc", "walkable": true }]);
+    let mut rows = vec![".".repeat(40); 40];
+    rows[5] = "z".repeat(40);
+    edit["map"]["layers"][0]["tiles"] = json!(rows);
+    let mut bad = edit.clone();
+    bad["placements"].as_array_mut().unwrap().push(json!({ "Entity": { "template": "cop", "zone": "nowhere" } }));
+    let (st, _) = http(addr, "PUT", "/api/admin/map?dry=true", Some(bad)).await;
+    assert_eq!(st, 400);
+    assert!(!dir.join("maps").exists(), "a dry run writes nothing");
+
+    edit["placements"].as_array_mut().unwrap().push(json!({ "Entity": { "template": "cop", "zone": "jail", "at": [31, 31], "name": "Warden" } }));
+    let (st, v) = http(addr, "PUT", "/api/admin/map?restart=true", Some(edit)).await;
+    assert_eq!(st, 200, "{v}");
+    assert_eq!(std::fs::read_to_string(dir.join("maps/surface.map")).unwrap().lines().nth(5).unwrap(), "z".repeat(40));
+    let (_, again) = http(addr, "GET", "/api/admin/map", None).await;
+    assert_eq!(again["placements"].as_array().unwrap().len(), n + 1);
+    assert_eq!(again["map"]["layers"][0]["tiles"][5], "z".repeat(40));
+    let (_, ui) = http(addr, "GET", "/api/ui/map", None).await;
+    assert_eq!(ui["legend"]["z"], json!(["blue_tiles", true, "tiles", "#3366cc"]));
+    let (_, ents) = http(addr, "GET", "/api/entities", None).await;
+    assert!(ents.as_array().unwrap().iter().any(|e| e["name"] == "Warden"), "the new game has the new NPC");
+
+    // Many tiles at once in the running game.
+    let (st, v) = http(addr, "POST", "/api/commands?now=true", Some(json!({ "type": "set_tiles", "layer": "surface", "cells": [[0, 0, "z"], [1, 0, "z"], [2, 5, "z"]] }))).await;
+    assert_eq!(st, 200, "{v}");
+    assert_eq!(sim.lock().unwrap().world.resource::<WorldMap>().tile(&Position::new(0, 1, 0)), Some('z'));
+    let _ = std::fs::remove_dir_all(&dir);
+}

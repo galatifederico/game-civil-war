@@ -917,6 +917,16 @@ pub struct TileDef {
     pub dig_to: Option<char>,
     #[serde(default)]
     pub yields: Option<(Id, u32)>,
+    /// Image drawn for this tile (`tile_<sprite>`; default: its own id), e.g. several coloured floors
+    /// sharing one tile picture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sprite: Option<Id>,
+    /// Colour the picture is tinted with (`#rrggbb`), e.g. tiles of a chosen colour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// Group in the map editor's palette (floors, plants, water, walls…).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1076,6 +1086,12 @@ pub enum Placement {
         owner_faction: Option<Id>,
         #[serde(default)]
         owner_template: Option<Id>,
+        /// Not shown to players (nor targeted by the AI) until a pawn passing by finds it.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        hidden: bool,
+        /// Contents instead of the building's default stock (e.g. what a hiding place holds).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stock: Option<BTreeMap<Id, u32>>,
     },
     Player {
         id: Id,
