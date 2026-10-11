@@ -15,6 +15,7 @@ const ME = (() => {
     opt: { building: "", owner: "", bname: "", template: "", faction: "", npcName: "", count: 1, hideItem: "", hideQty: 1, wall: "W", floor: "w", door: "d" },
   };
   const TOOLS = [
+    ["hand", "✋", "Mano: trascina per spostarti sulla mappa (T, o tieni premuto spazio)", "t"],
     ["select", "↖", "Seleziona e sposta (V)", "v"], ["brush", "✎", "Pennello (B)", "b"], ["eraser", "⌫", "Gomma: dipinge la secondaria (E)", "e"],
     ["line", "╱", "Linea, strade e fiumi (L)", "l"], ["rect", "▭", "Rettangolo (R)", "r"], ["ellipse", "◯", "Ellisse (O)", "o"],
     ["fill", "▧", "Riempimento (F)", "f"], ["pick", "⊙", "Contagocce (I)", "i"], ["room", "⌂", "Stanza: muri, pavimento e porta (Q)", "q"],
@@ -307,6 +308,8 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     sec.innerHTML = `
 <div class="me-top">
   <b>Editor della mappa</b> <select id="meLayer"></select>
+  <button id="meNewMap" title="Crea una nuova mappa (un dungeon, un paese, un interno…)">＋ Nuova mappa</button>
+  <button id="meGrow" title="Aggiungi (o togli) caselle ai lati di questa mappa">⤡ Amplia</button>
   <span class="sep"></span>
   <button id="meUndo" title="Annulla (Ctrl+Z)">↶</button><button id="meRedo" title="Rifai (Ctrl+Y)">↷</button>
   <button id="meFit" title="Adatta alla finestra (0)">⤢</button><span id="meZoom" class="muted"></span>
@@ -346,13 +349,19 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     <button id="meExport">Esporta in JSON…</button>
     <label class="row" style="margin:0"><button id="meImportBtn">Importa da JSON…</button><input id="meImport" type="file" accept=".json" hidden></label>
     <button id="mePng">Esporta questa mappa come immagine</button>
-    <div class="muted">Scorciatoie: V B E L R O F I Q M Z P H N K strumenti · X scambia le caselle · [ ] grandezza del pennello · G griglia · 0 adatta · spazio o tasto centrale: sposta la vista · rotella: zoom · tasto destro: dipinge la secondaria · Ctrl+Z/Y · Ctrl+C/X/V nella selezione · Canc elimina · frecce: sposta di una casella · Esc annulla.</div>
+    <div class="muted">Scorciatoie: T mano · V B E L R O F I Q M Z P H N K strumenti · X scambia le caselle · [ ] grandezza del pennello · G griglia · 0 adatta · spazio o tasto centrale: sposta la vista · rotella: zoom · tasto destro: dipinge la secondaria · Ctrl+Z/Y · Ctrl+C/X/V nella selezione · Canc elimina · frecce: sposta di una casella · Esc annulla.</div>
   </div>
 </div>`;
     const dlg = document.createElement("div");
     dlg.id = "meLegDlg"; dlg.className = "modal";
     dlg.innerHTML = `<div class="modalbox" style="width:min(1180px,100%)"><div class="row" style="justify-content:space-between"><h3 style="margin:0">Legenda: i tipi di casella</h3><button id="meLegClose">Chiudi</button></div><div id="meLegBody" style="overflow:auto"></div></div>`;
     document.body.appendChild(dlg);
+    const dlg2 = document.createElement("div");
+    dlg2.id = "meDlg"; dlg2.className = "modal";
+    dlg2.innerHTML = `<div class="modalbox" style="width:min(640px,100%)"><div id="meDlgBody"></div></div>`;
+    document.body.appendChild(dlg2);
+    dlg2.addEventListener("pointerdown", (e) => { if (e.target === dlg2) dlg2.style.display = "none"; });
+    $("meNewMap").onclick = newMapDialog; $("meGrow").onclick = growDialog;
     dlg.querySelector("#meLegClose").onclick = () => { dlg.style.display = "none"; st.tab = "palette"; renderTab(); };
     $("meTools").innerHTML = TOOLS.map(([id, ic, tip]) => `<button data-tool="${id}" title="${esc(tip)}">${ic}</button>`).join("");
     for (const b of $("meTools").querySelectorAll("button")) b.onclick = () => setTool(b.dataset.tool);
@@ -389,7 +398,7 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     cv.addEventListener("pointerleave", () => { st.hover = null; draw(); renderStatus(); });
     window.addEventListener("pointerup", onUp);
     window.addEventListener("keydown", onKey);
-    window.addEventListener("keyup", (e) => { if (e.code === "Space") { st.space = false; } });
+    window.addEventListener("keyup", (e) => { if (e.code === "Space") { st.space = false; if (st.built && !st.pan) setCursor(); } });
     window.addEventListener("resize", () => { if (visible()) resize(); });
     window.addEventListener("beforeunload", (e) => { if (st.dirty) { e.preventDefault(); e.returnValue = ""; } });
     const mini = $("meMini");
@@ -613,7 +622,7 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
       } else if (["brush", "eraser"].includes(st.tool) || (["line", "rect", "ellipse", "fill"].includes(st.tool) && !st.drag)) {
         ctx.strokeStyle = "#ffeb3b"; ctx.lineWidth = 1.5 * px;
         for (const c of (["brush", "eraser", "line"].includes(st.tool) ? stamp(h.x, h.y) : [h])) ctx.strokeRect(c.x * TS, c.y * TS, TS, TS);
-      } else { ctx.strokeStyle = "#ffeb3b"; ctx.lineWidth = 2 * px; ctx.strokeRect(h.x * TS, h.y * TS, TS, TS); }
+      } else if (st.tool !== "hand") { ctx.strokeStyle = "#ffeb3b"; ctx.lineWidth = 2 * px; ctx.strokeRect(h.x * TS, h.y * TS, TS, TS); }
     }
     $("meZoom").textContent = Math.round(v.scale * 100) + "%";
     drawMiniView();
@@ -669,7 +678,7 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     if (!st.doc) return;
     $("meMoreMenu").style.display = "none";
     const cv = $("meCanvas");
-    if (e.button === 1 || (e.button === 0 && st.space)) { st.pan = { x: e.clientX, y: e.clientY, ox: st.view.ox, oy: st.view.oy }; cv.setPointerCapture(e.pointerId); return; }
+    if (e.button === 1 || (e.button === 0 && st.space) || st.tool === "hand") { cv.style.cursor = "grabbing"; st.pan = { x: e.clientX, y: e.clientY, ox: st.view.ox, oy: st.view.oy }; cv.setPointerCapture(e.pointerId); return; }
     const c = cellAt(e, false); if (!c) return;
     cv.setPointerCapture(e.pointerId);
     const right = e.button === 2, ch = right ? st.secondary : st.primary;
@@ -725,7 +734,7 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     draw(); renderStatus();
   }
   function onUp() {
-    if (st.pan) { st.pan = null; return; }
+    if (st.pan) { st.pan = null; setCursor(); return; }
     const d = st.drag; st.drag = null;
     if (!d) return;
     if (["brush", "eraser"].includes(st.tool)) endTiles(st.tool === "eraser" ? "gomma" : "pennello");
@@ -872,7 +881,7 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     const tag = document.activeElement?.tagName;
     if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
     const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
-    if (e.code === "Space") { st.space = true; e.preventDefault(); return; }
+    if (e.code === "Space") { st.space = true; setCursor(); e.preventDefault(); return; }
     if (mod && k === "z") { e.preventDefault(); undoRedo(e.shiftKey); return; }
     if (mod && k === "y") { e.preventDefault(); undoRedo(true); return; }
     if (mod && k === "s") { e.preventDefault(); save(false); return; }
@@ -905,10 +914,11 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
   }
 
   // ── Panels ──────────────────────────────────────────────────────────────────
+  function setCursor() { $("meCanvas").style.cursor = st.tool === "hand" || st.space ? "grab" : st.tool === "select" ? "default" : "crosshair"; }
   function setTool(t) {
     st.tool = t; st.pasting = false; if (t !== "portal") st.pendingPortal = null;
     for (const b of $("meTools").querySelectorAll("button")) b.classList.toggle("on", b.dataset.tool === t);
-    $("meCanvas").style.cursor = t === "select" ? "default" : "crosshair";
+    setCursor();
     renderToolBox(); draw();
   }
   function renderAll() { renderLayerSelect(); setTool(st.tool); renderSel(); renderTab(); renderStatus(); }
@@ -950,7 +960,8 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     } else if (st.tool === "hidden") {
       h += `<div class="me-form">Oggetto <select id="meHideItem">${opts(Object.values(C("items")).sort((a, b) => a.name.localeCompare(b.name)).map((i) => [i.id, i.name]), o.hideItem)}</select> Quantità <input id="meHideQty" type="number" min="1" value="${o.hideQty}"></div>
         <div class="muted">Clicca dove nasconderlo. I giocatori non lo vedono; una pedina che ci passa accanto può trovarlo (più facilmente con tanta percezione) e se lo prende. Altri oggetti si aggiungono dalla scheda del nascondiglio.</div>`;
-    } else h += `<div class="muted">Clicca per selezionare edifici, NPC, oggetti nascosti, passaggi e zone; trascina per spostarli (le zone selezionate si ridimensionano dagli angoli). Canc elimina, frecce spostano di una casella.</div>`;
+    } else if (st.tool === "hand") h += `<div class="muted">Trascina la mappa per spostarti. Funziona anche con qualsiasi altro strumento tenendo premuto <b>spazio</b> o col tasto centrale del mouse; la rotella fa lo zoom, la miniatura in basso salta a un punto.</div>`;
+    else h += `<div class="muted">Clicca per selezionare edifici, NPC, oggetti nascosti, passaggi e zone; trascina per spostarli (le zone selezionate si ridimensionano dagli angoli). Canc elimina, frecce spostano di una casella.</div>`;
     box.innerHTML = h;
     const bind = (id, f, ev = "onchange") => { const el = $(id); if (el) el[ev] = () => f(el); };
     bind("meSwap", () => { [st.primary, st.secondary] = [st.secondary, st.primary]; renderToolBox(); if (st.tab === "palette") renderTab(); }, "onclick");
@@ -1115,7 +1126,7 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     $("meTab").innerHTML = h;
     $("mePalQ").oninput = (e) => { st.palQ = e.target.value; tabPalette(); const i = $("mePalQ"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); };
     for (const b of $("meTab").querySelectorAll(".me-pal button")) {
-      b.onclick = () => { st.primary = b.dataset.ch; if (["select", "pick", "area", "zone", "portal", "building", "npc", "hidden", "room"].includes(st.tool)) setTool("brush"); renderToolBox(); tabPalette(); };
+      b.onclick = () => { st.primary = b.dataset.ch; if (["hand", "select", "pick", "area", "zone", "portal", "building", "npc", "hidden", "room"].includes(st.tool)) setTool("brush"); renderToolBox(); tabPalette(); };
       b.oncontextmenu = (e) => { e.preventDefault(); st.secondary = b.dataset.ch; renderToolBox(); tabPalette(); };
     }
     const prev = () => { const t = st.leg[$("meVarBase").value]; $("meVarPrev").src = art({ ...t, sprite: t.sprite || t.id, color: $("meVarColor").value }).toDataURL(); };
@@ -1206,15 +1217,7 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
     for (const b of $("meTab").querySelectorAll("[data-erm]")) b.onclick = () => { change("togli il bordo", () => { m.edges.splice(Number(b.dataset.erm), 1); }); tabMap(); draw(); };
     $("meEdgeAdd").onclick = () => { const to = $("meEdgeTo").value; if (!to) return; change("nuovo bordo", () => { m.edges.push({ a: l.id, side: $("meEdgeSide").value, b: to }); }); tabMap(); draw(); };
     for (const d of $("meTab").querySelectorAll("[data-pi]")) d.onclick = () => { st.sel = { type: "portal", i: Number(d.dataset.pi), end: m.portals[Number(d.dataset.pi)].a[0] === l.id ? "a" : "b" }; centerOn(Number(d.dataset.x), Number(d.dataset.y)); renderSel(); };
-    $("mnAdd").onclick = () => {
-      const id = $("mnId").value.trim(), name = $("mnName").value.trim() || id, w = Number($("mnW").value), h = Number($("mnH").value);
-      if (!/^[a-z0-9_]+$/.test(id)) { toast("Id: solo lettere minuscole, cifre e _", true); return; }
-      if (layerIdx(id) >= 0 || zones().some((z) => z.id === id)) { toast("Id già usato", true); return; }
-      if (!(w >= 4 && h >= 4 && w <= 1000 && h <= 1000)) { toast("Dimensioni fra 4 e 1000", true); return; }
-      const under = $("mnUnder").checked;
-      change("nuova mappa", () => { m.layers.push({ id, name, width: w, height: h, underground: under, depth: under ? -1 : 0, tags: under ? ["sotterraneo", "dungeon"] : [], grid: blank(w, h, st.secondary) }); st.layer = m.layers.length - 1; }, true);
-      renderLayerSelect(); setLayer(st.layer); toast("Mappa creata: collegala con un passaggio (P) o un bordo");
-    };
+    $("mnAdd").onclick = () => { createMap($("mnId").value.trim(), $("mnName").value.trim(), Number($("mnW").value), Number($("mnH").value), st.secondary, $("mnUnder").checked); };
     $("mnDup").onclick = () => {
       let id = l.id + "_copia", n = 2; while (layerIdx(id) >= 0) id = l.id + "_copia" + n++;
       change("duplica la mappa", () => { m.layers.push({ ...JSON.parse(JSON.stringify({ ...l, grid: undefined })), id, name: l.name + " (copia)", grid: l.grid.map((r) => [...r]) }); st.layer = m.layers.length - 1; }, true);
@@ -1252,20 +1255,77 @@ table.me-leg td { padding: 2px 4px; } table.me-leg input { padding: 1px 4px; }
   }
   function resizeLayer(w, h, anchor) {
     const l = L();
-    if (!(w >= 4 && h >= 4 && w <= 1000 && h <= 1000)) { toast("Dimensioni fra 4 e 1000", true); return; }
-    if (w === l.width && h === l.height) return;
     const dx = [0, 0.5, 1][anchor % 3], dy = [0, 0.5, 1][Math.floor(anchor / 3)];
-    const ox = Math.round((w - l.width) * dx), oy = Math.round((h - l.height) * dy);
+    return resizeTo(w, h, Math.round((w - l.width) * dx), Math.round((h - l.height) * dy), st.secondary);
+  }
+  /** New size of the current map; its content moves by (ox, oy) and new cells get `fill`. */
+  function resizeTo(w, h, ox, oy, fill) {
+    const l = L();
+    if (!(w >= 4 && h >= 4 && w <= 1000 && h <= 1000)) { toast("Dimensioni fra 4 e 1000", true); return false; }
+    if (w === l.width && h === l.height) return false;
     change("ridimensiona la mappa", () => {
-      const g = blank(w, h, st.secondary);
+      const g = blank(w, h, fill);
       for (let y = 0; y < l.height; y++) for (let x = 0; x < l.width; x++) if (y + oy >= 0 && y + oy < h && x + ox >= 0 && x + ox < w) g[y + oy][x + ox] = l.grid[y][x];
       l.grid = g; l.width = w; l.height = h;
       for (const z of zones()) if (z.layer === l.id) { z.rect[0] += ox; z.rect[1] += oy; }
       for (const p of st.doc.map.portals) for (const e of [p.a, p.b]) if (e[0] === l.id) { e[1] += ox; e[2] += oy; }
       for (const p of st.doc.placements) { const P = pl(p); if (P.pos?.layer === st.layer && P.b.at) P.b.at = [P.b.at[0] + ox, P.b.at[1] + oy]; }
     }, true);
-    if (ox || oy) toast("Attenzione: zone e piazzamenti di questa mappa negli altri file non vengono spostati", true);
+    const moved = st.others.some((o) => pl(o.placement).pos?.layer === st.layer);
+    if ((ox || oy) && moved) toast("Attenzione: i piazzamenti di questa mappa che stanno in altri file (col lucchetto) non vengono spostati", true);
+    else toast(`Mappa ora ${w}×${h}`);
     st.view.fitted = false; fit(); buildTerrain(); renderAll();
+    return true;
+  }
+  const closeDlg = () => { $("meDlg").style.display = "none"; };
+  function openDlg(html) { $("meDlgBody").innerHTML = html; $("meDlg").style.display = "flex"; $("meDlgBody").querySelector("[data-cancel]").onclick = closeDlg; }
+  function createMap(id, name, w, h, fill, under) {
+    const m = st.doc.map;
+    if (!/^[a-z0-9_]+$/.test(id)) { toast("Id: solo lettere minuscole, cifre e _", true); return false; }
+    if (layerIdx(id) >= 0 || zones().some((z) => z.id === id)) { toast("Id già usato", true); return false; }
+    if (!(w >= 4 && h >= 4 && w <= 1000 && h <= 1000)) { toast("Dimensioni fra 4 e 1000", true); return false; }
+    change("nuova mappa", () => { m.layers.push({ id, name: name || id, width: w, height: h, underground: under, depth: under ? -1 : 0, tags: under ? ["sotterraneo", "dungeon"] : ["superficie"], grid: blank(w, h, fill) }); st.layer = m.layers.length - 1; }, true);
+    renderLayerSelect(); setLayer(st.layer); toast("Mappa creata: collegala alle altre con un passaggio (P) o un bordo (scheda Mappa)");
+    return true;
+  }
+  function newMapDialog() {
+    const rock = st.doc.map.legend.find((t) => t.id === "roccia")?.ch ?? st.secondary, grass = st.doc.map.legend.find((t) => t.id === "erba")?.ch ?? st.secondary;
+    openDlg(`<h3 style="margin:0 0 10px">Nuova mappa</h3><div class="me-form">
+      Nome <input id="nmName" placeholder="es. Bunker dell'Overmind"> Id <input id="nmId" placeholder="(dal nome)">
+      Tipo <select id="nmKind"><option value="under">Sotterranea (dungeon, cantina, grotta)</option><option value="surface">All'aperto (paese, campagna)</option></select>
+      Dimensioni <span><input id="nmW" type="number" min="4" max="1000" value="64" style="width:80px"> × <input id="nmH" type="number" min="4" max="1000" value="40" style="width:80px"> caselle
+        <button data-size="40,28">piccola</button><button data-size="64,40">media</button><button data-size="240,168">grande</button></span>
+      Riempita di ${tileSelect("nmFill", rock)}</div>
+      <div class="muted" style="margin-top:8px">Le mappe grandi di superficie sono 240×168. Dopo averla creata, collegala alle altre con un passaggio (strumento ⇅) o un bordo.</div>
+      <div class="row" style="margin-top:10px;justify-content:flex-end"><button data-cancel>Annulla</button><button class="primary" id="nmOk">Crea</button></div>`);
+    let idTouched = false;
+    $("nmName").oninput = () => { if (!idTouched) $("nmId").value = slug($("nmName").value); };
+    $("nmId").oninput = () => { idTouched = true; };
+    $("nmKind").onchange = () => { $("nmFill").value = $("nmKind").value === "under" ? rock : grass; };
+    for (const b of $("meDlgBody").querySelectorAll("[data-size]")) b.onclick = () => { [$("nmW").value, $("nmH").value] = b.dataset.size.split(","); };
+    $("nmOk").onclick = () => { if (createMap($("nmId").value.trim() || slug($("nmName").value), $("nmName").value.trim(), Number($("nmW").value), Number($("nmH").value), $("nmFill").value, $("nmKind").value === "under")) closeDlg(); };
+    $("nmName").focus();
+  }
+  function growDialog() {
+    const l = L();
+    const side = (k, t) => `<span style="white-space:nowrap">${t} <input id="gr${k}" type="number" value="0" style="width:70px"> <button data-add="${k},10">+10</button><button data-add="${k},40">+40</button></span>`;
+    openDlg(`<h3 style="margin:0 0 4px">Amplia «${esc(l.name)}»</h3><div class="muted" style="margin-bottom:10px">Ora è ${l.width}×${l.height}. Scrivi quante caselle aggiungere su ogni lato (un numero negativo le toglie).</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:center;justify-items:center">
+        <span></span>${side("N", "Nord")}<span></span>
+        ${side("W", "Ovest")}<div id="grPrev" class="card" style="margin:0;text-align:center;min-width:110px"></div>${side("E", "Est")}
+        <span></span>${side("S", "Sud")}<span></span></div>
+      <div class="me-form" style="margin-top:10px">Caselle nuove ${tileSelect("grFill", st.secondary)}</div>
+      <div class="muted" style="margin-top:8px">Zone, passaggi, edifici e NPC di questa mappa si spostano insieme al contenuto. Se la mappa confina con un'altra lungo un bordo, ricontrolla lo «spostamento» del bordo nella scheda Mappa.</div>
+      <div class="row" style="margin-top:10px;justify-content:flex-end"><button data-cancel>Annulla</button><button class="primary" id="grOk">Amplia</button></div>`);
+    const val = (k) => Math.round(Number($("gr" + k).value) || 0);
+    const prev = () => { $("grPrev").innerHTML = `<b>${l.width + val("W") + val("E")} × ${l.height + val("N") + val("S")}</b><div class="muted">nuove dimensioni</div>`; };
+    for (const k of "NSEW") $("gr" + k).oninput = prev;
+    for (const b of $("meDlgBody").querySelectorAll("[data-add]")) b.onclick = () => { const [k, n] = b.dataset.add.split(","); $("gr" + k).value = val(k) + Number(n); prev(); };
+    prev();
+    $("grOk").onclick = () => {
+      if (!(val("N") || val("S") || val("E") || val("W"))) { closeDlg(); return; }
+      if (resizeTo(l.width + val("W") + val("E"), l.height + val("N") + val("S"), val("W"), val("N"), $("grFill").value)) closeDlg();
+    };
   }
   function tabLegend() {
     const m = st.doc.map, counts = {};

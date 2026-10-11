@@ -64,6 +64,14 @@ oggetti e inserire degli NPC; il più completo possibile.
   `PUT /api/admin/map` (`?dry=true` solo verifica, `?restart=true` nuova partita); comando
   `SetTiles { layer, cells: [(x, y, casella)] }`.
 
+## Aggiunte
+- **Mano** (✋, tasto T): si trascina la mappa per spostarsi; con gli altri strumenti resta lo spazio premuto o
+  il tasto centrale.
+- **＋ Nuova mappa** nella barra in alto: nome (l'id si ricava dal nome), sotterranea o all'aperto, dimensioni
+  (piccola 40×28, media 64×40, grande 240×168) e casella di riempimento.
+- **⤡ Amplia** nella barra in alto: caselle da aggiungere (o togliere, con un numero negativo) a nord, sud, est e
+  ovest, con la casella delle parti nuove; zone, passaggi e piazzamenti seguono il contenuto.
+
 **Da rifinire.** Le decorazioni (`props`) non hanno ancora un uso nei client e l'editor non le tocca; i
 piazzamenti degli altri file restano in sola lettura; `Applica caselle` non porta nella partita in corso i
 tipi di casella appena creati (serve ricominciare); i parametri della scoperta sono da bilanciare.
